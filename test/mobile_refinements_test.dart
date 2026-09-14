@@ -406,6 +406,8 @@ void main() {
       await tester.tap(find.byKey(const Key('voice-button')));
       await tester.pump();
       await tester.pump();
+      // The composer now animates height changes; wait before hit-testing controls.
+      await tester.pump(const Duration(milliseconds: 200));
       await tester.tap(find.text('完成'));
       await tester.pump();
       await tester.pump();

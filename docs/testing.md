@@ -6,16 +6,16 @@
 |---|---|
 | 格式检查 | `dart format`，格式与 CI 检查一致 |
 | 静态分析 | `flutter analyze --fatal-infos`：无问题 |
-| 客户端单元 / 组件测试 | **59 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
-| 真实 v1.0.3 服务协议测试 | **3 项通过**：实际 HTTP、Dart Socket.IO、AppController、文件/图片与 STT 链路，非 FakeTransport |
-| Flutter 设计预览 | 单独运行 **1 项通过**，生成登录、首页、聊天、分组模型选择及深色预览 |
+| 客户端单元 / 组件测试 | **65 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
+| 真实 v1.0.3 服务协议测试（1.0.1 验证，本轮 UI 修订未重复） | **3 项通过**：实际 HTTP、Dart Socket.IO、AppController、文件/图片与 STT 链路，非 FakeTransport |
+| Flutter 设计预览 | 单独运行 **1 项通过**，生成登录、首页、聊天、分组模型选择、历史阅读模式及深色预览 |
 | 上游认证回归（首轮交付已验证，本轮未重复运行） | `app-connections-auth.test.ts`、`user-auth.test.ts`：2 个文件 **57 项通过** |
 | CodeGraph | 实际运行 orient / explore，JSON 存于 docs/analysis |
 | Android Release APK | 实际编译成功，apksigner v2 签名验证通过，非 debug 包 |
 | Android Release AAB | 实际编译成功，bundletool 1.18.3 validate 通过 |
 | 自动化脚本 | actionlint 1.7.12 检查 3 个 workflow 通过；Bash / Python / plist 语法检查通过 |
 
-本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.1`，versionCode `2`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
+本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.2`，versionCode `3`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
 
 ## 没有完成、不能混同为已验证
 
@@ -110,3 +110,8 @@ flutter test test/preview_test.dart
 - 真实媒体测试额外设置 `EKKO_TEST_MEDIA=1`；必须是无已有 STT 设置的隔离 Profile。CI 已配置此开关。
 - Android Release 已验证仅新增 `RECORD_AUDIO`，没有广泛存储/媒体读取权限；原生系统文件/相册选择由插件处理。
 - 真机重点补验：麦克风首次授权/拒绝后重试、60 秒自动结束、来电/后台取消、中文文件名、相册 HEIC、弱网上传取消、附件-only 发送、原签名覆盖安装。
+
+
+## 1.0.2 阅读模式
+
+`test/reading_mode_test.dart` 的 6 项组件测试覆盖真实列表手势与恢复、折叠栏停止生成、焦点/附件/录音保护。手动恢复前后编辑器实例相同，草稿与滚动 offset 保留，列表可见高度增加；短滚动和程序跳转不误触发。没有用组件动画代替真机性能测量。

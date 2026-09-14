@@ -22,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _lastSession;
   int _lastLength = 0;
   bool _showJump = false;
+  bool _composerCollapsed = false, _userScrolling = false;
   AppController get c => widget.controller;
   @override
   void initState() {
@@ -31,14 +32,52 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _scrollChanged() {
-    final value = _scroll.hasClients && _scroll.position.pixels > 220;
-    if (value != _showJump && mounted) setState(() => _showJump = value);
+    if (!mounted || !_scroll.hasClients) return;
+    final pixels = _scroll.position.pixels;
+    final showJump = pixels > 220;
+    final restore = _composerCollapsed && pixels <= 24;
+    if (showJump != _showJump || restore) {
+      setState(() {
+        _showJump = showJump;
+        if (restore) _composerCollapsed = false;
+      });
+    }
+  }
+
+  bool _chatScrolled(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _userScrolling = true;
+    } else if (notification is ScrollEndNotification) {
+      _userScrolling = false;
+    } else if (notification is ScrollUpdateNotification &&
+        _userScrolling &&
+        (notification.scrollDelta ?? 0) > 0 &&
+        notification.metrics.pixels > 160 &&
+        !_composerCollapsed &&
+        c.timeline.messages.isNotEmpty) {
+      // reverse:true: increasing offset means browsing older messages. Ignore
+      // programmatic restores, pagination and streaming layout changes.
+      setState(() => _composerCollapsed = true);
+    }
+    return false;
+  }
+
+  void _expandComposer() {
+    // Expanding while a fling is settling should not immediately fold again.
+    _userScrolling = false;
+    setState(() => _composerCollapsed = false);
   }
 
   void _changed() {
     if (!mounted) return;
     if (_lastSession != c.sessionId) {
       _lastSession = c.sessionId;
+      _composerCollapsed = false;
+      _userScrolling = false;
       _input.clear();
       _lastLength = 0;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -253,69 +292,73 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 Expanded(
-                  child: Stack(
-                    children: [
-                      if (c.timeline.messages.isEmpty && !c.loadingMessages)
-                        _welcome(context)
-                      else if (c.loadingMessages && c.timeline.messages.isEmpty)
-                        const Center(
-                          child: CircularProgressIndicator.adaptive(),
-                        )
-                      else
-                        SelectionArea(
-                          child: ListView.builder(
-                            key: const Key('message-list'),
-                            controller: _scroll,
-                            reverse: true,
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: const EdgeInsets.only(bottom: 8, top: 8),
-                            itemCount:
-                                c.timeline.messages.length +
-                                (c.hasMoreMessages ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (index == c.timeline.messages.length) {
-                                return Center(
-                                  child: TextButton(
-                                    onPressed: c.loadingMessages
-                                        ? null
-                                        : () => c.loadHistory(more: true),
-                                    child: Text(
-                                      c.loadingMessages ? '正在加载…' : '加载更早的消息',
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _chatScrolled,
+                    child: Stack(
+                      children: [
+                        if (c.timeline.messages.isEmpty && !c.loadingMessages)
+                          _welcome(context)
+                        else if (c.loadingMessages &&
+                            c.timeline.messages.isEmpty)
+                          const Center(
+                            child: CircularProgressIndicator.adaptive(),
+                          )
+                        else
+                          SelectionArea(
+                            child: ListView.builder(
+                              key: const Key('message-list'),
+                              controller: _scroll,
+                              reverse: true,
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.only(bottom: 8, top: 8),
+                              itemCount:
+                                  c.timeline.messages.length +
+                                  (c.hasMoreMessages ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                if (index == c.timeline.messages.length) {
+                                  return Center(
+                                    child: TextButton(
+                                      onPressed: c.loadingMessages
+                                          ? null
+                                          : () => c.loadHistory(more: true),
+                                      child: Text(
+                                        c.loadingMessages ? '正在加载…' : '加载更早的消息',
+                                      ),
                                     ),
-                                  ),
+                                  );
+                                }
+                                final message =
+                                    c.timeline.messages[c
+                                            .timeline
+                                            .messages
+                                            .length -
+                                        index -
+                                        1];
+                                return MessageBubble(
+                                  key: ValueKey(message.id),
+                                  message: message,
                                 );
-                              }
-                              final message =
-                                  c.timeline.messages[c
-                                          .timeline
-                                          .messages
-                                          .length -
-                                      index -
-                                      1];
-                              return MessageBubble(
-                                key: ValueKey(message.id),
-                                message: message,
-                              );
-                            },
-                          ),
-                        ),
-                      if (_showJump)
-                        Positioned(
-                          bottom: 12,
-                          right: 20,
-                          child: FloatingActionButton.small(
-                            heroTag: 'jump',
-                            tooltip: '回到最新消息',
-                            onPressed: () => _scroll.animateTo(
-                              0,
-                              duration: const Duration(milliseconds: 250),
-                              curve: Curves.easeOut,
+                              },
                             ),
-                            child: const Icon(Icons.arrow_downward_rounded),
                           ),
-                        ),
-                    ],
+                        if (_showJump)
+                          Positioned(
+                            bottom: 12,
+                            right: 20,
+                            child: FloatingActionButton.small(
+                              heroTag: 'jump',
+                              tooltip: '回到最新消息',
+                              onPressed: () => _scroll.animateTo(
+                                0,
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeOut,
+                              ),
+                              child: const Icon(Icons.arrow_downward_rounded),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 if (c.timeline.interaction != null)
@@ -481,8 +524,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _input.selection = TextSelection.collapsed(offset: prompt.length);
     },
   );
-  Widget _composer(BuildContext context) =>
-      ChatComposer(controller: c, input: _input);
+  Widget _composer(BuildContext context) => ChatComposer(
+    controller: c,
+    input: _input,
+    collapsed: _composerCollapsed,
+    onExpand: _expandComposer,
+  );
 
   Widget _drawer(BuildContext context) {
     final colors = Theme.of(context).colorScheme;

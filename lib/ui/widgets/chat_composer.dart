@@ -12,10 +12,14 @@ class ChatComposer extends StatefulWidget {
     required this.controller,
     required this.input,
     this.media,
+    this.collapsed = false,
+    this.onExpand,
   });
   final AppController controller;
   final TextEditingController input;
   final MediaAccess? media;
+  final bool collapsed;
+  final VoidCallback? onExpand;
   @override
   State<ChatComposer> createState() => _ChatComposerState();
 }
@@ -24,6 +28,7 @@ class _ChatComposerState extends State<ChatComposer>
     with WidgetsBindingObserver {
   late final MediaAccess _media = widget.media ?? NativeMediaAccess();
   final _attachments = <LocalAttachment>[];
+  final _focus = FocusNode();
   String _phase = '';
   int _operation = 0, _seconds = 0;
   late int _revision;
@@ -35,9 +40,14 @@ class _ChatComposerState extends State<ChatComposer>
   @override
   void initState() {
     super.initState();
+    _focus.addListener(_focusChanged);
     _revision = c.chatRevision;
     c.addListener(_contextChanged);
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _focusChanged() {
+    if (mounted) setState(() {});
   }
 
   void _contextChanged() {
@@ -82,6 +92,8 @@ class _ChatComposerState extends State<ChatComposer>
   @override
   void dispose() {
     c.removeListener(_contextChanged);
+    _focus.removeListener(_focusChanged);
+    _focus.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _operation++;
     _timer?.cancel();
@@ -246,6 +258,56 @@ class _ChatComposerState extends State<ChatComposer>
 
   @override
   Widget build(BuildContext context) {
+    final folded =
+        widget.collapsed && !_busy && !_focus.hasFocus && _attachments.isEmpty;
+    return AnimatedSize(
+      duration: MediaQuery.of(context).disableAnimations
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.bottomCenter,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Keep the same editor/recorder subtree: folding is not disposal.
+          Visibility(
+            visible: !folded,
+            maintainState: true,
+            child: _expanded(context),
+          ),
+          if (folded)
+            Padding(
+              key: const Key('collapsed-composer'),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ValueListenableBuilder(
+                      valueListenable: widget.input,
+                      builder: (context, value, _) => TextButton.icon(
+                        key: const Key('expand-composer'),
+                        onPressed: widget.onExpand,
+                        icon: const Icon(Icons.keyboard_outlined, size: 20),
+                        label: Text(value.text.isEmpty ? '展开输入框' : '继续编辑草稿'),
+                      ),
+                    ),
+                  ),
+                  if (c.working)
+                    IconButton(
+                      key: const Key('collapsed-stop-button'),
+                      tooltip: '停止生成',
+                      onPressed: c.connected ? c.stop : null,
+                      icon: const Icon(Icons.stop_circle_outlined),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _expanded(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -370,6 +432,7 @@ class _ChatComposerState extends State<ChatComposer>
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: TextField(
                   key: const Key('message-input'),
+                  focusNode: _focus,
                   controller: widget.input,
                   readOnly: _busy,
                   minLines: 1,
