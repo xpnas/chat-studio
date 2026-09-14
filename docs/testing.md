@@ -6,16 +6,16 @@
 |---|---|
 | 格式检查 | `dart format`，格式与 CI 检查一致 |
 | 静态分析 | `flutter analyze --fatal-infos`：无问题 |
-| 客户端单元 / 组件测试 | **44 项通过**，默认跳过 2 项需真实服务的测试及 1 项需本地字体的预览测试 |
-| 真实 v1.0.3 服务协议测试 | **2 项通过**：实际 HTTP、Dart Socket.IO 及 AppController，非 FakeTransport |
-| Flutter 设计预览 | 单独运行 **1 项通过**，生成登录、首页、聊天及深色预览 |
-| 上游认证回归 | `app-connections-auth.test.ts`、`user-auth.test.ts`：2 个文件 **57 项通过** |
+| 客户端单元 / 组件测试 | **59 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
+| 真实 v1.0.3 服务协议测试 | **3 项通过**：实际 HTTP、Dart Socket.IO、AppController、文件/图片与 STT 链路，非 FakeTransport |
+| Flutter 设计预览 | 单独运行 **1 项通过**，生成登录、首页、聊天、分组模型选择及深色预览 |
+| 上游认证回归（首轮交付已验证，本轮未重复运行） | `app-connections-auth.test.ts`、`user-auth.test.ts`：2 个文件 **57 项通过** |
 | CodeGraph | 实际运行 orient / explore，JSON 存于 docs/analysis |
 | Android Release APK | 实际编译成功，apksigner v2 签名验证通过，非 debug 包 |
 | Android Release AAB | 实际编译成功，bundletool 1.18.3 validate 通过 |
 | 自动化脚本 | actionlint 1.7.12 检查 3 个 workflow 通过；Bash / Python / plist 语法检查通过 |
 
-本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.0`，versionCode `1`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
+本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.1`，versionCode `2`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
 
 ## 没有完成、不能混同为已验证
 
@@ -41,9 +41,9 @@ flutter build appbundle --release
 
 ## 真实服务契约测试
 
-**仅对一次性、可删除的隔离环境运行。测试会创建/删除会话、变更测试会话模型和标题。切勿指向生产服务。**
+**仅对一次性、可删除的隔离环境运行。测试会创建/删除会话、变更测试会话模型和标题；媒体测试还会配置/删除临时 STT 提供商并上传测试文件。切勿指向生产服务。**
 
-最方便：推送后手动运行 `Studio contract`，它自动 checkout 固定上游 SHA、安装 Node 依赖、创建一次性目录、运行本地 Provider、旋转初始密码、执行两项 Dart 测试，最后停止子进程，不上传含凭据的服务端状态/日志。
+最方便：推送后手动运行 `Studio contract`，它自动 checkout 固定上游 SHA、安装 Node 依赖、创建一次性目录、运行本地 Provider、旋转初始密码、执行三项 Dart 测试，最后停止子进程，不上传含凭据的服务端状态/日志。
 
 本地复现步骤：
 
@@ -79,7 +79,9 @@ flutter test test/live_contract_test.dart --reporter expanded
 
 bootstrap 会等待启动，用一次性的默认凭据登入，然后立即改为指定随机密码。测试结束后停止源码服务和 Provider。此次 Studio/Hermes 测试状态位于 `.local/`；上游 Ekko 也会在隔离 checkout 的 `packages/ekko-agent/.ekko` 创建运行数据。这些状态均未提交；两个测试监听已停止。
 
-两项真实测试覆盖：
+三项真实测试覆盖：
+
+- 原生录音格式 WAV → 真实 Studio STT multipart → 本地识别夹具 → 文字；文件/图片 multipart → 内容块 run → 持久历史附件名称。音频夹具不验证实际语音识别准确率。
 
 - AppController 登录 → run → 部分流式内容 → reconnect/resume → assistant 不重复 → abort。
 - HTTP/Socket.IO 登录 → profiles/models → Ekko 新会话 → delta/completed → 持久历史 → rename/model/search → 完成快照 → 第二轮生成中断线恢复 → abort → delete。
@@ -100,3 +102,11 @@ flutter test test/preview_test.dart
 3. 弱网、切 Wi-Fi/蜂窝、后台恢复、长回答与历史分页；确认不会重复发送。
 4. 在 Android profile build / iOS 真机上测长列表与 token streaming 的帧耗时，再决定是否进一步缩小 UI 重建范围。
 5. 两个平台验证局域网权限、HTTPS/WSS 代理与真实模型，并完成商店分发/隐私验收。
+
+
+## 1.0.1 新增验收
+
+- `test/mobile_refinements_test.dart` 新增 15 项：Codex 路由/历史、STT 配置、空白与思考行、父子模型树与搜索、multipart 认证与错误、附件选择/移除、录音拒权/取消/过期识别结果、浅深主题消息圆角底。
+- 真实媒体测试额外设置 `EKKO_TEST_MEDIA=1`；必须是无已有 STT 设置的隔离 Profile。CI 已配置此开关。
+- Android Release 已验证仅新增 `RECORD_AUDIO`，没有广泛存储/媒体读取权限；原生系统文件/相册选择由插件处理。
+- 真机重点补验：麦克风首次授权/拒绝后重试、60 秒自动结束、来电/后台取消、中文文件名、相册 HEIC、弱网上传取消、附件-only 发送、原签名覆盖安装。

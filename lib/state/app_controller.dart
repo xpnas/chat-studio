@@ -30,6 +30,10 @@ class AppController extends ChangeNotifier {
   Conversation? current;
   String? sessionId;
   String engine = 'ekko-agent';
+  bool? codexInstalled;
+  String? sttProvider;
+  String voiceHint = '请在服务端配置语音识别（STT）；仅配置 TTS 不能语音输入';
+  int get chatRevision => _chatEpoch;
   String theme = 'system';
   String serverInput = '';
   String search = '';
@@ -200,6 +204,8 @@ class AppController extends ChangeNotifier {
               )
               .firstOrNull ??
           models.firstOrNull;
+      await refreshCapabilities();
+      if (!_valid(epoch)) return;
       await storage.saveSession(_saved());
       if (!_valid(epoch)) return;
       reconnect();
@@ -207,6 +213,47 @@ class AppController extends ChangeNotifier {
     } catch (e) {
       if (_valid(epoch)) reportError(e);
     }
+  }
+
+  Future<void> refreshCapabilities() async {
+    final client = api;
+    if (client == null) return;
+    final epoch = _epoch, activeProfile = profile;
+    bool valid() => _valid(epoch) && api == client && profile == activeProfile;
+    await Future.wait([
+      (() async {
+        try {
+          final data = await client.request('/api/coding-agents');
+          if (!valid()) return;
+          final tool = asList(
+            data['tools'],
+          ).map(asMap).where((t) => t['id'] == 'codex').firstOrNull;
+          codexInstalled = tool == null ? null : flag(tool['installed']);
+        } catch (_) {
+          if (valid()) codexInstalled = null;
+        }
+      })(),
+      (() async {
+        try {
+          final data = await client.request('/api/studio/stt/profile-status');
+          if (!valid()) return;
+          sttProvider =
+              flag(data['configured']) &&
+                  text(data['activeProvider']).isNotEmpty
+              ? text(data['activeProvider'])
+              : null;
+          voiceHint = sttProvider == null
+              ? '请在当前 Profile 配置语音识别（STT）；仅配置 TTS 不能语音输入'
+              : '语音输入';
+        } catch (_) {
+          if (valid()) {
+            sttProvider = null;
+            voiceHint = '无法读取语音识别配置，请检查服务端权限后重试';
+          }
+        }
+      })(),
+    ]);
+    if (valid()) _notify();
   }
 
   void reconnect() {
@@ -243,6 +290,8 @@ class AppController extends ChangeNotifier {
     conversations = [];
     models = [];
     selectedModel = null;
+    sttProvider = null;
+    codexInstalled = null;
     _resetChat();
     _notify();
     await _loadWorkspace(epoch);
@@ -309,7 +358,9 @@ class AppController extends ChangeNotifier {
     _resetChat();
     current = conversation;
     sessionId = conversation.id;
-    engine = conversation.agent == 'ekko-agent' ? 'ekko-agent' : 'hermes';
+    engine = ['ekko-agent', 'codex'].contains(conversation.agent)
+        ? conversation.agent
+        : 'hermes';
     selectedModel =
         models
             .where(
@@ -374,15 +425,17 @@ class AppController extends ChangeNotifier {
   }
 
   void chooseEngine(String value) {
-    if (sessionId == null && !working) {
+    if (sessionId == null &&
+        !working &&
+        ['ekko-agent', 'hermes', 'codex'].contains(value)) {
       engine = value;
       _notify();
     }
   }
 
-  bool send(String input) {
+  bool send(String input, {List<Map<String, dynamic>> attachments = const []}) {
     input = input.trim();
-    if (input.isEmpty || !canSend) return false;
+    if ((input.isEmpty && attachments.isEmpty) || !canSend) return false;
     if (input.length > 64000) {
       reportError('消息过长，请拆分后发送（最多 64000 字符）');
       return false;
@@ -391,12 +444,18 @@ class AppController extends ChangeNotifier {
     final queueId = const Uuid().v4();
     try {
       transport.emit('run', {
-        'input': input,
+        'input': attachments.isEmpty
+            ? input
+            : [
+                if (input.isNotEmpty) {'type': 'text', 'text': input},
+                ...attachments,
+              ],
         'session_id': sid,
         'profile': profile,
         'queue_id': queueId,
-        if (engine == 'ekko-agent') 'agent_id': 'ekko-agent',
-        if (engine == 'ekko-agent') 'source': 'coding_agent',
+        if (engine != 'hermes') 'agent_id': engine,
+        if (engine != 'hermes') 'source': 'coding_agent',
+        if (engine == 'codex') 'mode': 'scoped',
         if (selectedModel != null) 'model': selectedModel!.id,
         if (selectedModel != null) 'provider': selectedModel!.provider,
         if (selectedModel?.apiMode.isNotEmpty == true)
@@ -404,7 +463,13 @@ class AppController extends ChangeNotifier {
       });
       _chatEpoch++;
       sessionId = sid;
-      timeline.begin(input, 'local:$queueId');
+      timeline.begin(
+        [
+          input,
+          if (attachments.isNotEmpty) messageText(attachments),
+        ].where((s) => s.isNotEmpty).join('\n'),
+        'local:$queueId',
+      );
       error = null;
       _runTimer?.cancel();
       _runTimer = Timer(const Duration(seconds: 25), () {
@@ -620,6 +685,8 @@ class AppController extends ChangeNotifier {
     models = [];
     conversations = [];
     selectedModel = null;
+    sttProvider = null;
+    codexInstalled = null;
     _resetChat();
     connected = false;
     busy = false;

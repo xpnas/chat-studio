@@ -55,10 +55,11 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!message.visible) return const SizedBox.shrink();
     final colors = Theme.of(context).colorScheme, user = message.role == 'user';
     return RepaintBoundary(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
         child: Align(
           alignment: user ? Alignment.centerRight : Alignment.centerLeft,
           child: ConstrainedBox(
@@ -66,12 +67,12 @@ class MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!user)
+                if (!user && message.content.trim().isNotEmpty)
                   const Padding(
-                    padding: EdgeInsets.only(bottom: 12),
+                    padding: EdgeInsets.only(bottom: 4),
                     child: Row(
                       children: [
-                        EkkoMark(size: 26),
+                        EkkoMark(size: 20),
                         SizedBox(width: 9),
                         Text(
                           'Ekko',
@@ -81,13 +82,18 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
                 Container(
-                  padding: user
-                      ? const EdgeInsets.symmetric(horizontal: 18, vertical: 14)
+                  key: ValueKey('message-surface:${message.id}'),
+                  padding: message.content.trim().isNotEmpty
+                      ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
                       : EdgeInsets.zero,
-                  decoration: user
+                  decoration: message.content.trim().isNotEmpty
                       ? BoxDecoration(
-                          color: colors.primaryContainer.withValues(alpha: .5),
-                          borderRadius: BorderRadius.circular(22),
+                          color: user
+                              ? colors.primaryContainer.withValues(alpha: .42)
+                              : colors.surfaceContainerLow.withValues(
+                                  alpha: .8,
+                                ),
+                          borderRadius: BorderRadius.circular(20),
                         )
                       : null,
                   child: Column(
@@ -96,7 +102,11 @@ class MessageBubble extends StatelessWidget {
                       if (message.reasoning.isNotEmpty)
                         ExpansionTile(
                           tilePadding: EdgeInsets.zero,
-                          childrenPadding: const EdgeInsets.only(bottom: 12),
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          shape: const Border(),
+                          collapsedShape: const Border(),
+                          childrenPadding: const EdgeInsets.only(bottom: 4),
                           title: Text(
                             message.pending ? '思考中…' : '思考过程',
                             style: TextStyle(
@@ -109,18 +119,19 @@ class MessageBubble extends StatelessWidget {
                               message.reasoning,
                               style: TextStyle(
                                 fontSize: 13,
-                                height: 1.7,
+                                height: 1.45,
                                 color: colors.onSurfaceVariant,
                               ),
                             ),
                           ],
                         ),
-                      if (user || message.pending)
+                      if (message.content.trim().isNotEmpty &&
+                          (user || message.pending))
                         SelectableText(
-                          message.content.isEmpty ? '…' : message.content,
-                          style: const TextStyle(fontSize: 16, height: 1.65),
+                          message.content,
+                          style: const TextStyle(fontSize: 16, height: 1.5),
                         )
-                      else
+                      else if (message.content.trim().isNotEmpty)
                         MarkdownBody(
                           data: message.content,
                           selectable: true,
@@ -137,7 +148,7 @@ class MessageBubble extends StatelessWidget {
                               ).copyWith(
                                 p: TextStyle(
                                   fontSize: 16,
-                                  height: 1.7,
+                                  height: 1.45,
                                   color: colors.onSurface,
                                 ),
                                 code: TextStyle(
@@ -149,8 +160,8 @@ class MessageBubble extends StatelessWidget {
                                   color: colors.surfaceContainer,
                                   borderRadius: BorderRadius.circular(14),
                                 ),
-                                codeblockPadding: const EdgeInsets.all(16),
-                                blockSpacing: 16,
+                                codeblockPadding: const EdgeInsets.all(12),
+                                blockSpacing: 8,
                               ),
                         ),
                     ],

@@ -71,12 +71,14 @@ class EkkoMark extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
-        borderRadius: BorderRadius.circular(size * .33),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF159C90), Color(0xFF125D70)],
+        ),
+        borderRadius: BorderRadius.circular(size * .28),
       ),
-      child: CustomPaint(
-        painter: _MarkPainter(Theme.of(context).colorScheme.onPrimary),
-      ),
+      child: CustomPaint(painter: _MarkPainter(const Color(0xFFF5FFF9))),
     ),
   );
 }
@@ -86,23 +88,38 @@ class _MarkPainter extends CustomPainter {
   final Color color;
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = size.width * .065
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    for (var i = 0; i < 3; i++) {
-      final x = size.width * (.27 + i * .23);
-      final path = Path()
-        ..moveTo(x, size.height * .34)
-        ..quadraticBezierTo(
-          x - size.width * .13,
-          size.height * .5,
-          x,
-          size.height * .66,
-        );
-      canvas.drawPath(path, paint);
+    canvas.save();
+    canvas.scale(size.width, size.height);
+    canvas.translate(.5, .5);
+    final path = Path()
+      ..moveTo(0, -.19)
+      ..lineTo(0, -.31)
+      ..cubicTo(0, -.40, .14, -.41, .20, -.31)
+      ..lineTo(.30, -.14)
+      ..cubicTo(.35, -.05, .29, .025, .21, .025)
+      ..lineTo(.125, .025);
+    for (var i = 0; i < 6; i++) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = const Color(0xFF127C78)
+          ..strokeWidth = .075
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..style = PaintingStyle.stroke,
+      );
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color
+          ..strokeWidth = .038
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..style = PaintingStyle.stroke,
+      );
+      canvas.rotate(3.141592653589793 / 3);
     }
+    canvas.restore();
   }
 
   @override

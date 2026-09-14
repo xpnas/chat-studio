@@ -90,3 +90,15 @@ flowchart LR
 ## 已验证与边界
 
 真实 v1.0.3 服务 + 本地 OpenAI-compatible SSE 夹具，使用实际 Dart HTTP / Socket.IO 客户端完成登录、模型目录、新建流式 run、历史、重命名、模型写入、搜索、完成恢复、运行中断线恢复、abort 和删除。没有使用外部付费模型、没有据此宣称 Hermes Python Runtime 或全部工具生态已端到端验证。
+
+
+## v1.0.1 移动端修订：Codex / STT / 附件
+
+以下为同一 v1.0.3 SHA 的本地源码核对，不依赖猜测的 OpenAI 或聊天兼容接口：
+
+- `packages/client/src/api/coding-agents.ts`：GET `/api/coding-agents` 返回 `tools[]`，Codex ID 是 `codex`，安装标记为 `installed`。`handle-coding-agent-run.ts` 接受 `source: coding_agent`、`agent_id: codex`、`mode: scoped`；模型与 api_mode 使用同一 Profile 配置。移动端只支持 scoped 对话，不开放 global 模式。
+- `modules/studio/controllers/stt.ts`：GET `/api/studio/stt/profile-status` 返回 `configured` 与 `activeProvider`，不需要读取 STT Secrets。POST `/api/studio/stt/transcribe` 使用 multipart 字段 `audio`、`provider`；响应 `text`。`browser` 不是移动端可用的服务端识别提供商。客户端录制单声道 16 kHz WAV，最长 60 秒。
+- `modules/studio/controllers/upload.ts`、Web store `uploadFiles` / `buildContentBlocks`：POST `/api/studio/uploads`，重复 multipart `file` 字段，返回 `files[{name,path}]`。Socket run 的 `input` 使用 `{type:text,text}` 与 `{type:image|file,name,path,media_type}`，不是直接传手机文件路径，也不是自行发明 attachments 字段。
+- `services/chat-run/content-blocks.ts`：服务端把上传后的图片路径转换为原生图片输入，把文档路径交给 Agent 工具。移动端在历史序列化内容块中保留图片/文件名称，不把工具块当作正文。
+- 默认通用上传总量上限 50 MB（含 multipart）；移动端主动限制单文件 20 MB、总计 40 MB / 5 个，为请求封装留余量。失败不自动提交 run，取消后不自动重试。
+- 父子模型树按 provider ID 分组（不是按可能重复的展示名称）；当前模型即使不在新目录中也显示在当前提供商下。搜索保留父级；渲染仍为懒加载，展开大量模型不一次性创建全部控件。

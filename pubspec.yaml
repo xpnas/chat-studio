@@ -1,7 +1,7 @@
 name: ekko_app
 description: A native-feeling Android and iOS client for Ekko Studio v1.0.3.
 publish_to: none
-version: 1.0.0+1
+version: 1.0.1+2
 environment:
   sdk: '>=3.12.0 <4.0.0'
 dependencies:
@@ -16,6 +16,11 @@ dependencies:
   uuid: 4.6.0
   flutter_markdown_plus: 1.0.12
   url_launcher: 6.3.2
+  record: 7.1.1
+  path_provider: 2.1.6
+  file_picker: 13.0.0
+  image_picker: 1.2.3
+  mime: 2.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

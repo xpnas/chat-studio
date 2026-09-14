@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../data/models.dart';
 import '../state/app_controller.dart';
 import 'profile_screen.dart';
 import 'theme.dart';
 import 'widgets/message_bubble.dart';
+import 'widgets/chat_composer.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
@@ -70,13 +70,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _scroll.dispose();
     _searchTimer?.cancel();
     super.dispose();
-  }
-
-  void _send() {
-    if (c.send(_input.text)) {
-      _input.clear();
-      HapticFeedback.lightImpact();
-    }
   }
 
   Future<void> _models() async {
@@ -276,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             reverse: true,
                             keyboardDismissBehavior:
                                 ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: const EdgeInsets.only(bottom: 20, top: 12),
+                            padding: const EdgeInsets.only(bottom: 8, top: 8),
                             itemCount:
                                 c.timeline.messages.length +
                                 (c.hasMoreMessages ? 1 : 0),
@@ -427,18 +420,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   underline: const SizedBox.shrink(),
                   isDense: true,
                   style: TextStyle(fontSize: 13, color: colors.onSurface),
-                  items: const [
-                    DropdownMenuItem(
+                  items: [
+                    const DropdownMenuItem(
                       value: 'ekko-agent',
                       child: Text(
                         'Ekko Agent',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: 'hermes',
                       child: Text(
                         'Hermes Agent',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'codex',
+                      child: Text(
+                        c.codexInstalled == false
+                            ? 'Codex · 服务端未安装'
+                            : 'Codex Agent',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -479,76 +481,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _input.selection = TextSelection.collapsed(offset: prompt.length);
     },
   );
-  Widget _composer(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-      child: Column(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: colors.outlineVariant),
-            ),
-            padding: const EdgeInsets.fromLTRB(18, 6, 8, 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const Key('message-input'),
-                    controller: _input,
-                    minLines: 1,
-                    maxLines: 6,
-                    maxLength: 64000,
-                    textCapitalization: TextCapitalization.sentences,
-                    keyboardType: TextInputType.multiline,
-                    decoration: const InputDecoration(
-                      hintText: '发消息给 Ekko',
-                      counterText: '',
-                      filled: false,
-                      contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                    ),
-                    style: const TextStyle(fontSize: 16),
-                    onTapOutside: (_) =>
-                        FocusManager.instance.primaryFocus?.unfocus(),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                ValueListenableBuilder(
-                  valueListenable: _input,
-                  builder: (context, value, _) => IconButton.filled(
-                    key: Key(c.working ? 'stop-button' : 'send-button'),
-                    tooltip: c.working ? '停止生成' : '发送消息',
-                    onPressed: c.working
-                        ? (c.connected ? c.stop : null)
-                        : (c.canSend && value.text.trim().isNotEmpty
-                              ? _send
-                              : null),
-                    icon: Icon(
-                      c.working
-                          ? Icons.stop_rounded
-                          : Icons.arrow_upward_rounded,
-                      size: 23,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'AI 的回答可能有误，请核实重要信息。',
-            style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _composer(BuildContext context) =>
+      ChatComposer(controller: c, input: _input);
 
   Widget _drawer(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -783,17 +717,34 @@ class _ModelSheet extends StatefulWidget {
 
 class _ModelSheetState extends State<_ModelSheet> {
   String query = '';
+  late final Set<String> expanded = {
+    if (widget.selected != null) widget.selected!.provider,
+  };
   @override
   Widget build(BuildContext context) {
-    final visible = widget.models
-        .where(
-          (m) => '${m.label} ${m.id} ${m.providerLabel}'.toLowerCase().contains(
-            query.toLowerCase(),
-          ),
-        )
-        .toList();
+    final ordered = [
+      if (widget.selected != null) widget.selected!,
+      ...widget.models.where((m) => m.key != widget.selected?.key),
+    ];
+    final groups = <String, List<ModelChoice>>{};
+    final search = query.trim().toLowerCase();
+    for (final model in ordered) {
+      if ('${model.label} ${model.id} ${model.providerLabel} ${model.provider}'
+          .toLowerCase()
+          .contains(search)) {
+        groups.putIfAbsent(model.provider, () => []).add(model);
+      }
+    }
+    final rows = <({String provider, ModelChoice? model})>[];
+    for (final entry in groups.entries) {
+      rows.add((provider: entry.key, model: null));
+      if (search.isNotEmpty || expanded.contains(entry.key)) {
+        rows.addAll(entry.value.map((m) => (provider: entry.key, model: m)));
+      }
+    }
+    final colors = Theme.of(context).colorScheme;
     return SizedBox(
-      height: MediaQuery.sizeOf(context).height * .72,
+      height: MediaQuery.sizeOf(context).height * .78,
       child: Column(
         children: [
           const Text(
@@ -801,11 +752,13 @@ class _ModelSheetState extends State<_ModelSheet> {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
-          const Text('使用服务端已配置的模型，不在手机保存模型密钥', style: TextStyle(fontSize: 12)),
+          Text(
+            '按提供商分组 · 当前模型优先',
+            style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+          ),
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
             child: TextField(
-              autofocus: false,
               decoration: const InputDecoration(
                 hintText: '搜索模型或提供商',
                 prefixIcon: Icon(Icons.search_rounded),
@@ -814,31 +767,88 @@ class _ModelSheetState extends State<_ModelSheet> {
             ),
           ),
           Expanded(
-            child: visible.isEmpty
-                ? const Center(child: Text('没有可用模型，请在 Studio 中配置'))
+            child: rows.isEmpty
+                ? Center(
+                    child: Text(
+                      search.isEmpty ? '没有可用模型，请在 Studio 中配置' : '没有匹配的提供商或模型',
+                    ),
+                  )
                 : ListView.builder(
-                    itemCount: visible.length,
+                    key: ValueKey(search),
+                    itemCount: rows.length,
                     itemBuilder: (context, index) {
-                      final model = visible[index];
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 4,
+                      final row = rows[index], model = row.model;
+                      if (model == null) {
+                        final first = groups[row.provider]!.first;
+                        final open =
+                            search.isNotEmpty ||
+                            expanded.contains(row.provider);
+                        return Semantics(
+                          expanded: open,
+                          child: ListTile(
+                            key: ValueKey('provider:${row.provider}'),
+                            leading: Icon(
+                              Icons.dns_outlined,
+                              size: 21,
+                              color: colors.primary,
+                            ),
+                            title: Text(
+                              first.providerLabel.isEmpty
+                                  ? row.provider
+                                  : first.providerLabel,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${row.provider} · ${groups[row.provider]!.length} 个模型',
+                            ),
+                            trailing: Icon(
+                              open
+                                  ? Icons.expand_less_rounded
+                                  : Icons.expand_more_rounded,
+                            ),
+                            onTap: search.isNotEmpty
+                                ? null
+                                : () => setState(() {
+                                    if (open) {
+                                      expanded.remove(row.provider);
+                                    } else {
+                                      expanded.add(row.provider);
+                                    }
+                                  }),
+                          ),
+                        );
+                      }
+                      final selected = widget.selected?.key == model.key;
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 38, right: 12),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border(
+                              left: BorderSide(color: colors.outlineVariant),
+                            ),
+                          ),
+                          child: ListTile(
+                            key: ValueKey('model:${model.key}'),
+                            selected: selected,
+                            selectedTileColor: colors.primaryContainer
+                                .withValues(alpha: .35),
+                            title: Text(model.label),
+                            subtitle: Text(
+                              '${selected ? '当前使用 · ' : ''}${model.id}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: selected
+                                ? Icon(
+                                    Icons.check_circle_rounded,
+                                    color: colors.primary,
+                                  )
+                                : null,
+                            onTap: () => Navigator.pop(context, model),
+                          ),
                         ),
-                        leading: const Icon(Icons.auto_awesome_outlined),
-                        title: Text(model.label),
-                        subtitle: Text(
-                          model.providerLabel.isEmpty
-                              ? model.provider
-                              : model.providerLabel,
-                        ),
-                        trailing: widget.selected?.key == model.key
-                            ? Icon(
-                                Icons.check_circle_rounded,
-                                color: Theme.of(context).colorScheme.primary,
-                              )
-                            : null,
-                        onTap: () => Navigator.pop(context, model),
                       );
                     },
                   ),

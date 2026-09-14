@@ -90,3 +90,10 @@ flutter build apk --release --target-platform android-arm64
 - Maven TLS / 下载失败：确认网络，重试；不要全局禁用 TLS 验证。
 - iOS Profile mismatch：检查 Team、Bundle ID、证书是否包含私钥及 profile 的分发方式。
 - GitHub 未启动：先把本地提交推送至 GitHub，并确认 Actions 已启用。默认流程没有 SSH 到你的服务器、公开部署服务或发布到商店的权限。
+
+
+## 1.0.1 更新说明
+
+版本号 `1.0.1+2`，沿用 1.0.0 的签名密钥以便覆盖安装。新增 Android 麦克风权限与 iOS 麦克风/相册用途说明，原生插件版本锁定在 `pubspec.lock`。不得把本地 `.local/signing`、`android/key.properties` 提交到 Git。
+
+在同一工作目录内串行执行 `flutter test` 与 `flutter build`：它们会重新生成插件注册表，并发执行可能让 release 编译错误引用仅测试使用的 integration_test 插件。CI 原有分 Job 隔离不受影响。

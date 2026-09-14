@@ -29,8 +29,9 @@ String messageText(dynamic value) {
             return text(data['text']);
           }
           if (data['type'] == 'image' || data['type'] == 'image_url') {
-            return '[图片]';
+            return '[图片：${text(data['name']).isEmpty ? '附件' : text(data['name'])}]';
           }
+          if (data['type'] == 'file') return '[文件：${text(data['name'])}]';
           return '';
         })
         .where((part) => part.isNotEmpty)
@@ -108,7 +109,10 @@ class Conversation {
   final String id, title, preview, profile, agent, source, model, provider;
   final int updatedAt;
   bool get canContinue =>
-      (agent.isEmpty || agent == 'hermes' || agent == 'ekko-agent') &&
+      (agent.isEmpty ||
+          agent == 'hermes' ||
+          agent == 'ekko-agent' ||
+          agent == 'codex') &&
       !['workflow', 'group_chat', 'global_agent'].contains(source);
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
     id: text(json['id']),
@@ -133,7 +137,9 @@ class ChatMessage {
   });
   final String id, role, content, reasoning;
   final bool pending;
-  bool get visible => role == 'user' || role == 'assistant';
+  bool get visible =>
+      (role == 'user' || role == 'assistant') &&
+      (content.trim().isNotEmpty || reasoning.trim().isNotEmpty);
   ChatMessage copyWith({
     String? id,
     String? content,

@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:ekko_app/data/mobile_media.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
 import 'package:ekko_app/core/server_address.dart';
@@ -13,6 +16,111 @@ import 'support.dart';
 // Never point this at your production workspace.
 void main() {
   final server = Platform.environment['EKKO_TEST_SERVER'];
+  test(
+    'real upload references round-trip and server STT transcription',
+    () async {
+      final c = AppController(storage: MemoryStorage());
+      final dir = await Directory.systemTemp.createTemp('ekko-live-media-');
+      String? sid;
+      var configured = false;
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['EKKO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        final api = c.api!;
+        final settings = await api.request('/api/studio/stt/settings');
+        if (asList(settings['settings']).isNotEmpty ||
+            settings['activeProvider'] != null) {
+          throw StateError(
+            'Media fixture requires disposable Studio without existing STT settings',
+          );
+        }
+        await api.request(
+          '/api/studio/stt/settings/custom',
+          method: 'PUT',
+          body: {
+            'settings': {
+              'baseUrl': 'http://127.0.0.1:18648/v1',
+              'model': 'fixture-whisper',
+            },
+            'secrets': {'apiKey': 'local-fixture-not-a-real-key'},
+          },
+        );
+        configured = true;
+        await c.refreshCapabilities();
+        expect(c.sttProvider, 'custom');
+        final wav = ByteData(32044);
+        void ascii(int at, String value) {
+          for (var i = 0; i < value.length; i++) {
+            wav.setUint8(at + i, value.codeUnitAt(i));
+          }
+        }
+
+        ascii(0, 'RIFF');
+        wav.setUint32(4, 32036, Endian.little);
+        ascii(8, 'WAVEfmt ');
+        wav.setUint32(16, 16, Endian.little);
+        wav.setUint16(20, 1, Endian.little);
+        wav.setUint16(22, 1, Endian.little);
+        wav.setUint32(24, 16000, Endian.little);
+        wav.setUint32(28, 32000, Endian.little);
+        wav.setUint16(32, 2, Endian.little);
+        wav.setUint16(34, 16, Endian.little);
+        ascii(36, 'data');
+        wav.setUint32(40, 32000, Endian.little);
+        final audio = File('${dir.path}/voice.wav');
+        await audio.writeAsBytes(wav.buffer.asUint8List());
+        expect(await api.transcribe(audio.path, 'custom'), '这是本地语音识别协议自测。');
+        final document = File('${dir.path}/fixture.txt');
+        await document.writeAsString('A test attachment, not private data.');
+        final image = File('${dir.path}/fixture.png');
+        await image.writeAsBytes(
+          base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7e0AAAAASUVORK5CYII=',
+          ),
+        );
+        final blocks = await api.uploadAttachments([
+          await LocalAttachment.fromPath(document.path, '需求.txt'),
+          await LocalAttachment.fromPath(image.path, '示例.png'),
+        ]);
+        expect(blocks.map((b) => b['type']), ['file', 'image']);
+        final deadline = DateTime.now().add(const Duration(seconds: 50));
+        while (!c.canSend && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        expect(c.send('请检查附件', attachments: blocks), true);
+        sid = c.sessionId;
+        while (c.working && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        expect(c.working, false);
+        expect(c.error, isNull);
+        final page = await api.messages(sid!);
+        final user = page.messages.firstWhere((m) => m.role == 'user');
+        expect(user.content, contains('需求.txt'));
+        expect(user.content, contains('示例.png'));
+      } finally {
+        if (configured) {
+          await c.api?.request(
+            '/api/studio/stt/settings/custom',
+            method: 'DELETE',
+          );
+        }
+        if (sid != null) await c.api?.delete(sid);
+        c.dispose();
+        await dir.delete(recursive: true);
+      }
+    },
+    skip: server == null || Platform.environment['EKKO_TEST_MEDIA'] != '1',
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
   test(
     'real controller restores an active stream without duplicate bubbles',
     () async {

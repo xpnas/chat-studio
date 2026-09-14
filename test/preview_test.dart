@@ -72,6 +72,41 @@ void main() {
     h.controller.dismissError();
     await tester.pumpAndSettle();
     await capture('chat');
+    h.controller.models = const [
+      ModelChoice(
+        id: 'gpt-5',
+        provider: 'custom:openai',
+        providerLabel: 'OpenAI',
+        label: 'GPT-5',
+      ),
+      ModelChoice(
+        id: 'gpt-5-mini',
+        provider: 'custom:openai',
+        providerLabel: 'OpenAI',
+        label: 'GPT-5 mini',
+      ),
+      ModelChoice(
+        id: 'claude-sonnet',
+        provider: 'custom:anthropic',
+        providerLabel: 'Anthropic',
+        label: 'Claude Sonnet',
+      ),
+      ModelChoice(
+        id: 'deepseek-chat',
+        provider: 'custom:deepseek',
+        providerLabel: 'DeepSeek',
+        label: 'DeepSeek Chat',
+      ),
+    ];
+    h.controller.selectedModel = h.controller.models.first;
+    h.controller.dismissError();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('GPT-5'));
+    await tester.pumpAndSettle();
+    await capture('models');
+    await tester.tap(find.byKey(const ValueKey('model:custom:openai::gpt-5')));
+    await tester.pumpAndSettle();
+
     await h.controller.setTheme('dark');
     await tester.pumpAndSettle();
     await capture('chat-dark');

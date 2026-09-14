@@ -35,6 +35,7 @@ jobs:
         working-directory: mobile
         run: |
           set -euo pipefail
+          export EKKO_TEST_MEDIA=1
           export EKKO_TEST_SERVER=http://127.0.0.1:18647
           export EKKO_TEST_PASSWORD="$(openssl rand -hex 24)"
           echo "::add-mask::$EKKO_TEST_PASSWORD"

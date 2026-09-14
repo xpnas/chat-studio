@@ -9,12 +9,14 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
 - 自定义服务地址，设备绑定账号密码登录、安全保存会话、过期退出。
 - 个人信息、修改用户名/密码、退出登录、浅色/深色/跟随系统。
 - Profile 切换，会话分页、搜索、重命名、二次确认删除。
-- 新建会话，模型/Provider 选择，Ekko / Hermes 引擎选择。
-- 流式文字与思考内容、停止生成、断线/前台恢复、消息复制、Markdown。
+- 新建会话，Ekko / Hermes / Codex 引擎选择；按提供商折叠分组的模型选择，当前提供商与模型置顶。
+- 流式文字与折叠思考内容、停止生成、断线/前台恢复、消息复制、Markdown；用户/AI 使用淡色圆角背景区分，空白工具消息不显示头像。
+- 原生文件与相册选择、图片发送前预览、附件移除；最多 5 个，单个 20 MB、总计 40 MB，点击发送才上传。
+- 原生麦克风录音 → 当前 Profile 的服务端 STT → 可编辑草稿；最长 60 秒，取消/后台停止，不自动发送。
 - 工具的一次性授权/拒绝、澄清问题；不支持的复杂会话仅供阅读。
 - 移动端懒加载列表、40ms 流式刷新合并；生成中不反复解析 Markdown，不强制滚动打断阅读。
 
-**范围边界：** 不提供终端、工作流编辑、群聊编辑、文件/图片上传、语音、推送通知、离线聊天缓存、云中继授权码登录或模型密钥配置。模型密钥应在 Studio 网页端配置。本客户端没有收费模型调用的演示凭据。
+**范围边界：** 不提供终端、工作流编辑、群聊编辑、语音朗读/TTS 播放、实时语音通话、推送通知、离线聊天缓存、云中继授权码登录或模型密钥配置。模型密钥应在 Studio 网页端配置。本客户端没有收费模型调用的演示凭据。
 
 ## 界面预览
 
@@ -24,6 +26,7 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
   <img src="docs/screenshots/login.png" width="230" alt="登录页" />
   <img src="docs/screenshots/home.png" width="230" alt="新建对话" />
   <img src="docs/screenshots/chat.png" width="230" alt="对话页" />
+  <img src="docs/screenshots/models.png" width="230" alt="按提供商分组选择模型" />
   <img src="docs/screenshots/chat-dark.png" width="230" alt="深色对话页" />
 </p>
 
@@ -53,11 +56,15 @@ flutter run
 - 反向代理必须支持 `/socket.io/` 的 WebSocket upgrade，不能只转发 `/api`。
 - 账号需拥有对应 Profile 权限；Hermes 引擎还需服务端 Hermes Runtime 正常。内置 Ekko 引擎不需要 Hermes Python Runtime。
 
+**语音注意：** TTS 是语音合成，不能替代 STT。请在 Studio 当前 Profile 配置并激活服务端 STT；`browser` 识别不用于移动端。麦克风按钮在配置缺失时会说明原因，点击时重新检测配置。
+
+**Codex 注意：** 需在服务端安装并配置 Codex；客户端只负责选择和协议接入，不会在手机执行 CLI。工作流/群聊/全局 Agent 会话仍只读。
+
 详见 [服务配置](docs/server-setup.md)。
 
 ## Android 安装包
 
-已整理好的交付包位于 `dist/ekko-mobile-1.0.0-android-release.apk` 和同名 `.aab`，校验值见 `dist/SHA256SUMS.txt`。
+已整理好的交付包位于 `dist/ekko-mobile-1.0.1-android-release.apk` 和同名 `.aab`，校验值见 `dist/SHA256SUMS.txt`。
 
 原始本地构建产物（被 Git 忽略，不作为源码提交）：
 

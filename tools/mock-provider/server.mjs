@@ -8,6 +8,12 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({object: 'list', data: [{id:'ekko-test',object:'model',owned_by:'local'}]})); return;
   }
+  if (req.method === 'POST' && req.url === '/v1/audio/transcriptions') {
+    let size = 0;
+    for await (const chunk of req) { size += chunk.length; if (size > 4_000_000) { res.writeHead(413); res.end(); return; } }
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({text:'这是本地语音识别协议自测。'})); return;
+  }
   if (req.method !== 'POST' || req.url !== '/v1/chat/completions') { res.writeHead(404);res.end();return; }
   let raw = '';
   for await (const chunk of req) { raw += chunk; if(raw.length > 2_000_000) {res.writeHead(413);res.end();return;} }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../core/server_address.dart';
 import 'models.dart';
+import 'mobile_media.dart';
 
 class StudioApi {
   StudioApi(this.address, {http.Client? client})
@@ -57,6 +58,146 @@ class StudioApi {
     } on http.ClientException {
       throw const ApiException('网络连接失败，请检查地址与 HTTPS 证书');
     }
+  }
+
+  Future<Map<String, dynamic>> _multipart(
+    String path,
+    List<http.MultipartFile> files, {
+    Map<String, String> fields = const {},
+    Future<void>? cancel,
+  }) async {
+    final abort = Completer<void>();
+    void stop() {
+      if (!abort.isCompleted) abort.complete();
+    }
+
+    cancel?.then((_) => stop());
+    final request =
+        http.AbortableMultipartRequest(
+            'POST',
+            address.uri.replace(path: path),
+            abortTrigger: abort.future,
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            'Authorization': 'Bearer $token',
+            'X-Hermes-Profile': profile,
+            'Accept': 'application/json',
+          })
+          ..fields.addAll(fields)
+          ..files.addAll(files);
+    try {
+      final response =
+          await (() async => http.Response.fromStream(
+            await _client.send(request),
+          ))().timeout(
+            const Duration(seconds: 120),
+            onTimeout: () {
+              stop();
+              throw const ApiException('上传或识别超时，请重试');
+            },
+          );
+      if (response.statusCode == 401) onUnauthorized?.call();
+      Map<String, dynamic> data;
+      try {
+        data = asMap(jsonDecode(utf8.decode(response.bodyBytes)));
+      } on FormatException {
+        throw ApiException(
+          '服务返回了无效内容 (${response.statusCode})',
+          response.statusCode,
+        );
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          text(data['error']).isEmpty
+              ? '上传失败 (${response.statusCode})'
+              : text(data['error']),
+          response.statusCode,
+        );
+      }
+      return data;
+    } on http.RequestAbortedException {
+      throw const ApiException('已取消');
+    } on SocketException {
+      throw const ApiException('网络连接失败，请重试');
+    } on http.ClientException {
+      throw const ApiException('上传连接失败，请检查网络和证书');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> uploadAttachments(
+    List<LocalAttachment> attachments, {
+    Future<void>? cancel,
+  }) async {
+    if (attachments.isEmpty ||
+        attachments.length > LocalAttachment.maxCount ||
+        attachments.any(
+          (f) => f.size <= 0 || f.size > LocalAttachment.maxBytes,
+        ) ||
+        attachments.fold<int>(0, (sum, f) => sum + f.size) >
+            LocalAttachment.maxTotalBytes) {
+      throw const ApiException('最多 5 个附件，单个不超过 20 MB，总计不超过 40 MB');
+    }
+    final scope = profile, credential = token;
+    var canceled = false;
+    cancel?.then((_) => canceled = true);
+    final files = <http.MultipartFile>[];
+    for (final file in attachments) {
+      final part = await http.MultipartFile.fromPath(
+        'file',
+        file.path,
+        filename: file.name,
+      );
+      if (part.length != file.size) throw const ApiException('附件已发生变化，请重新选择');
+      files.add(part);
+    }
+    if (canceled || scope != profile || credential != token) {
+      throw const ApiException('已取消：会话或 Profile 已变化');
+    }
+    final data = await _multipart('/api/studio/uploads', files, cancel: cancel);
+    final rows = asList(data['files']).map(asMap).toList();
+    if (rows.length != attachments.length ||
+        rows.any((f) => text(f['path']).isEmpty)) {
+      throw const ApiException('服务端未返回完整附件，请重试');
+    }
+    return List.generate(
+      rows.length,
+      (i) => {
+        'type': attachments[i].isImage ? 'image' : 'file',
+        'name': attachments[i].name,
+        'path': text(rows[i]['path']),
+        'media_type': attachments[i].mimeType,
+      },
+    );
+  }
+
+  Future<String> transcribe(
+    String path,
+    String provider, {
+    Future<void>? cancel,
+  }) async {
+    final scope = profile, credential = token;
+    var canceled = false;
+    cancel?.then((_) => canceled = true);
+    final audio = await http.MultipartFile.fromPath(
+      'audio',
+      path,
+      filename: 'voice.wav',
+      contentType: http.MediaType('audio', 'wav'),
+    );
+    if (audio.length > 4 * 1024 * 1024) throw const ApiException('录音过长，请分段输入');
+    if (canceled || scope != profile || credential != token) {
+      throw const ApiException('已取消：会话或 Profile 已变化');
+    }
+    final data = await _multipart(
+      '/api/studio/stt/transcribe',
+      [audio],
+      fields: {'provider': provider},
+      cancel: cancel,
+    );
+    final result = text(data['text']).trim();
+    if (result.isEmpty) throw const ApiException('未识别到语音，请重试');
+    return result;
   }
 
   Future<Map<String, dynamic>> login(
