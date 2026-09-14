@@ -6,7 +6,7 @@
 |---|---|
 | 格式检查 | `dart format`，格式与 CI 检查一致 |
 | 静态分析 | `flutter analyze --fatal-infos`：无问题 |
-| 客户端单元 / 组件测试 | **65 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
+| 客户端单元 / 组件测试 | **70 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
 | 真实 v1.0.3 服务协议测试（1.0.1 验证，本轮 UI 修订未重复） | **3 项通过**：实际 HTTP、Dart Socket.IO、AppController、文件/图片与 STT 链路，非 FakeTransport |
 | Flutter 设计预览 | 单独运行 **1 项通过**，生成登录、首页、聊天、分组模型选择、历史阅读模式及深色预览 |
 | 上游认证回归（首轮交付已验证，本轮未重复运行） | `app-connections-auth.test.ts`、`user-auth.test.ts`：2 个文件 **57 项通过** |
@@ -15,7 +15,7 @@
 | Android Release AAB | 实际编译成功，bundletool 1.18.3 validate 通过 |
 | 自动化脚本 | actionlint 1.7.12 检查 3 个 workflow 通过；Bash / Python / plist 语法检查通过 |
 
-本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.2`，versionCode `3`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
+本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.3`，versionCode `4`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
 
 ## 没有完成、不能混同为已验证
 
@@ -115,3 +115,8 @@ flutter test test/preview_test.dart
 ## 1.0.2 阅读模式
 
 `test/reading_mode_test.dart` 的 6 项组件测试覆盖真实列表手势与恢复、折叠栏停止生成、焦点/附件/录音保护。手动恢复前后编辑器实例相同，草稿与滚动 offset 保留，列表可见高度增加；短滚动和程序跳转不误触发。没有用组件动画代替真机性能测量。
+
+
+## 1.0.3 悬浮双线
+
+`reading_mode_test.dart` 现有 11 项，通过真实组件布局验证折叠后列表延伸至底部、无文字 footer，双线点击区仍可恢复草稿；进度与加载范围一致，并覆盖浅深主题、空范围/越界、320px 屏幕底部手势区以及停止/回到最新按钮不重叠。浅深预览分别为 `docs/screenshots/reading.png`、`reading-dark.png`。

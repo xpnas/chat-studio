@@ -5,6 +5,7 @@ import 'package:ekko_app/data/mobile_media.dart';
 import 'package:ekko_app/data/models.dart';
 import 'package:ekko_app/main.dart';
 import 'package:ekko_app/ui/widgets/chat_composer.dart';
+import 'package:ekko_app/ui/widgets/reading_handle.dart';
 import 'support.dart';
 
 class ReadingMedia implements MediaAccess {
@@ -78,7 +79,16 @@ void main() {
       expect(find.byKey(const Key('collapsed-composer')), findsOneWidget);
       expect(find.byKey(const Key('message-input')), findsNothing);
       expect(tester.getSize(getList()).height, greaterThan(height + 30));
-      expect(find.text('继续编辑草稿'), findsOneWidget);
+      expect(find.text('继续编辑草稿'), findsNothing);
+      expect(find.bySemanticsLabel('继续编辑草稿'), findsOneWidget);
+      // The line overlays the bottom of the list; no footer row is reserved.
+      final stage = tester.getRect(find.byKey(const Key('reading-stage')));
+      expect(tester.getRect(getList()).bottom, closeTo(stage.bottom, 1));
+      expect(
+        tester.getRect(find.byKey(const Key('expand-composer'))).bottom,
+        lessThan(stage.bottom),
+      );
+      expect(stage.bottom, closeTo(tester.view.physicalSize.height, 1));
       final offset = position(tester).pixels;
       await tester.tap(find.byKey(const Key('expand-composer')));
       await tester.pumpAndSettle();
@@ -242,4 +252,139 @@ void main() {
     h.dispose();
     input.dispose();
   });
+  testWidgets(
+    'floating line tracks loaded scroll range including new page metrics',
+    (tester) async {
+      final h = await chat(tester);
+      await tester.drag(getList(), const Offset(0, 420));
+      await tester.pumpAndSettle();
+      double painted() =>
+          (tester
+                      .widget<CustomPaint>(
+                        find.byKey(const Key('reading-progress-lines')),
+                      )
+                      .painter!
+                  as ReadingHandlePainter)
+              .progress;
+      final initial = painted();
+      expect(initial, greaterThan(0));
+      position(tester).jumpTo(1800);
+      await tester.pumpAndSettle();
+      expect(painted(), greaterThan(initial));
+      expect(painted(), closeTo(historyReadProgress(position(tester)), .001));
+      h.controller.timeline.prepend(
+        List.generate(
+          40,
+          (i) => ChatMessage(
+            id: 'older-$i',
+            role: 'assistant',
+            content: '更早的历史内容\n继续回看。',
+          ),
+        ),
+      );
+      h.controller.dismissError();
+      await tester.pumpAndSettle();
+      expect(painted(), closeTo(historyReadProgress(position(tester)), .001));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'floating line has accessible hit area without visible footer text $brightness',
+      (tester) async {
+        final progress = ValueNotifier<double>(.5);
+        final semantics = tester.ensureSemantics();
+
+        var taps = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(brightness: brightness),
+            home: Scaffold(
+              body: Center(
+                child: ReadingHandle(
+                  progress: progress,
+                  onExpand: () => taps++,
+                ),
+              ),
+            ),
+          ),
+        );
+        expect(find.text('展开输入框'), findsNothing);
+        expect(find.bySemanticsLabel('展开输入框'), findsOneWidget);
+        final target = tester.getRect(find.byKey(const Key('expand-composer')));
+        expect(target.height, greaterThanOrEqualTo(48));
+        expect(target.width, 128);
+        await tester.tapAt(target.topLeft + const Offset(4, 4));
+        await tester.pump();
+        expect(taps, 1);
+        final painter =
+            tester
+                    .widget<CustomPaint>(
+                      find.byKey(const Key('reading-progress-lines')),
+                    )
+                    .painter!
+                as ReadingHandlePainter;
+        expect(painter.progress, .5);
+        progress.value = 1;
+        await tester.pump();
+        final updated =
+            tester
+                    .widget<CustomPaint>(
+                      find.byKey(const Key('reading-progress-lines')),
+                    )
+                    .painter!
+                as ReadingHandlePainter;
+        expect(updated.progress, 1);
+        expect(updated.shouldRepaint(painter), true);
+        await tester.pumpWidget(const SizedBox.shrink());
+        progress.dispose();
+        semantics.dispose();
+      },
+    );
+  }
+  test('read progress handles overscroll, empty and unbounded ranges', () {
+    double value(double pixels, double max) => historyReadProgress(
+      FixedScrollMetrics(
+        minScrollExtent: 0,
+        maxScrollExtent: max,
+        pixels: pixels,
+        viewportDimension: 800,
+        axisDirection: AxisDirection.up,
+        devicePixelRatio: 1,
+      ),
+    );
+    expect(value(500, 1000), .5);
+    expect(value(-20, 1000), 0);
+    expect(value(1100, 1000), 1);
+    expect(value(0, 0), 0);
+    expect(value(500, double.infinity), 0);
+  });
+  testWidgets(
+    'floating controls clear gesture inset and each other on a small screen',
+    (tester) async {
+      final h = await chat(tester);
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.padding = const FakeViewPadding(bottom: 34);
+      tester.view.viewPadding = const FakeViewPadding(bottom: 34);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      h.controller.timeline.working = true;
+      h.controller.timeline.activity = '';
+      h.controller.dismissError();
+      await tester.pumpAndSettle();
+      await tester.drag(getList(), const Offset(0, 420));
+      await tester.pumpAndSettle();
+      final handle = tester.getRect(find.byKey(const Key('expand-composer')));
+      final stop = tester.getRect(
+        find.byKey(const Key('collapsed-stop-button')),
+      );
+      final latest = tester.getRect(find.byTooltip('回到最新消息'));
+      expect(handle.bottom, lessThanOrEqualTo(700 - 34));
+      expect(handle.overlaps(stop), false);
+      expect(handle.overlaps(latest), false);
+      expect(stop.overlaps(latest), false);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }

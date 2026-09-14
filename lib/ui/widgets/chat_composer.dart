@@ -4,6 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/mobile_media.dart';
 import '../../state/app_controller.dart';
+import 'reading_handle.dart';
+import 'package:flutter/foundation.dart';
+
+typedef ComposerLayoutBuilder =
+    Widget Function(Widget editor, Widget? readingHandle, Widget? stopButton);
 
 /// Native pickers/recorder; no upload until Send (or Finish for speech).
 class ChatComposer extends StatefulWidget {
@@ -14,12 +19,16 @@ class ChatComposer extends StatefulWidget {
     this.media,
     this.collapsed = false,
     this.onExpand,
+    this.readingProgress = const AlwaysStoppedAnimation<double>(0),
+    this.layoutBuilder,
   });
   final AppController controller;
   final TextEditingController input;
   final MediaAccess? media;
   final bool collapsed;
   final VoidCallback? onExpand;
+  final ValueListenable<double> readingProgress;
+  final ComposerLayoutBuilder? layoutBuilder;
   @override
   State<ChatComposer> createState() => _ChatComposerState();
 }
@@ -259,51 +268,58 @@ class _ChatComposerState extends State<ChatComposer>
   @override
   Widget build(BuildContext context) {
     final folded =
-        widget.collapsed && !_busy && !_focus.hasFocus && _attachments.isEmpty;
-    return AnimatedSize(
+        widget.collapsed &&
+        !_busy &&
+        !_focus.hasFocus &&
+        _attachments.isEmpty &&
+        c.timeline.interaction == null;
+    final editor = AnimatedSize(
       duration: MediaQuery.of(context).disableAnimations
           ? Duration.zero
           : const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
       alignment: Alignment.bottomCenter,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Keep the same editor/recorder subtree: folding is not disposal.
-          Visibility(
-            visible: !folded,
-            maintainState: true,
-            child: _expanded(context),
-          ),
-          if (folded)
-            Padding(
-              key: const Key('collapsed-composer'),
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ValueListenableBuilder(
-                      valueListenable: widget.input,
-                      builder: (context, value, _) => TextButton.icon(
-                        key: const Key('expand-composer'),
-                        onPressed: widget.onExpand,
-                        icon: const Icon(Icons.keyboard_outlined, size: 20),
-                        label: Text(value.text.isEmpty ? '展开输入框' : '继续编辑草稿'),
-                      ),
-                    ),
-                  ),
-                  if (c.working)
-                    IconButton(
-                      key: const Key('collapsed-stop-button'),
-                      tooltip: '停止生成',
-                      onPressed: c.connected ? c.stop : null,
-                      icon: const Icon(Icons.stop_circle_outlined),
-                    ),
-                ],
-              ),
-            ),
-        ],
+      // Keep the editor subtree mounted, but consume zero height when folded.
+      child: Visibility(
+        visible: !folded,
+        maintainState: true,
+        child: _expanded(context),
       ),
+    );
+    final handle = folded
+        ? ValueListenableBuilder(
+            key: const Key('collapsed-composer'),
+            valueListenable: widget.input,
+            builder: (context, value, _) => ReadingHandle(
+              progress: widget.readingProgress,
+              onExpand: widget.onExpand,
+              hasDraft: value.text.isNotEmpty,
+            ),
+          )
+        : null;
+    final stop = folded && c.working
+        ? IconButton.filledTonal(
+            key: const Key('collapsed-stop-button'),
+            tooltip: '停止生成',
+            onPressed: c.connected ? c.stop : null,
+            icon: const Icon(Icons.stop_rounded, size: 21),
+          )
+        : null;
+    if (widget.layoutBuilder != null) {
+      return widget.layoutBuilder!(editor, handle, stop);
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        editor,
+        if (handle != null)
+          Row(
+            children: [
+              Expanded(child: Center(child: handle)),
+              ?stop,
+            ],
+          ),
+      ],
     );
   }
 

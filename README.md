@@ -14,7 +14,7 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
 - 原生文件与相册选择、图片发送前预览、附件移除；最多 5 个，单个 20 MB、总计 40 MB，点击发送才上传。
 - 原生麦克风录音 → 当前 Profile 的服务端 STT → 可编辑草稿；最长 60 秒，取消/后台停止，不自动发送。
 - 工具的一次性授权/拒绝、澄清问题；不支持的复杂会话仅供阅读。
-- 阅读历史时自动折叠输入框；回到最新消息自动展开，可手动恢复，草稿保留；录音/上传/附件待发送时保持展开。
+- 阅读历史时输入框收为悬浮双线，不占底栏；线长表示当前已加载历史的回看位置。轻点恢复、回到最新自动展开，草稿保留；录音/上传/附件待发送时保持展开。
 - 移动端懒加载列表、40ms 流式刷新合并；生成中不反复解析 Markdown，不强制滚动打断阅读。
 
 **范围边界：** 不提供终端、工作流编辑、群聊编辑、语音朗读/TTS 播放、实时语音通话、推送通知、离线聊天缓存、云中继授权码登录或模型密钥配置。模型密钥应在 Studio 网页端配置。本客户端没有收费模型调用的演示凭据。
@@ -27,7 +27,7 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
   <img src="docs/screenshots/login.png" width="230" alt="登录页" />
   <img src="docs/screenshots/home.png" width="230" alt="新建对话" />
   <img src="docs/screenshots/chat.png" width="230" alt="对话页" />
-  <img src="docs/screenshots/reading.png" width="230" alt="历史阅读模式，输入框自动折叠" />
+  <img src="docs/screenshots/reading.png" width="230" alt="悬浮双线历史阅读模式" />
   <img src="docs/screenshots/models.png" width="230" alt="按提供商分组选择模型" />
   <img src="docs/screenshots/chat-dark.png" width="230" alt="深色对话页" />
 </p>
@@ -66,7 +66,7 @@ flutter run
 
 ## Android 安装包
 
-已整理好的交付包位于 `dist/ekko-mobile-1.0.2-android-release.apk` 和同名 `.aab`，校验值见 `dist/SHA256SUMS.txt`。
+已整理好的交付包位于 `dist/ekko-mobile-1.0.3-android-release.apk` 和同名 `.aab`，校验值见 `dist/SHA256SUMS.txt`。
 
 原始本地构建产物（被 Git 忽略，不作为源码提交）：
 

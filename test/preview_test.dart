@@ -123,7 +123,7 @@ void main() {
             id: 'reader-a$i',
             role: 'assistant',
             content:
-                '向上翻看历史时，输入框会自动折叠，为正文腾出更多空间。\n\n草稿会保留，也不会因为折叠而丢失附件。点击下方入口即可继续编辑，回到最新消息时会自动展开。',
+                '向上翻看历史时，输入框会自动折叠，为正文腾出更多空间。\n\n草稿会保留，也不会因为折叠而丢失附件。底部双线随回看进度舒展，轻点即可继续编辑。回到最新消息时，输入框会自动展开。',
           ),
         ],
       ]);
@@ -135,7 +135,15 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('collapsed-composer')), findsOneWidget);
+      final history = tester
+          .widget<ListView>(find.byKey(const Key('message-list')))
+          .controller!;
+      history.jumpTo(history.position.maxScrollExtent * .52);
+      await tester.pumpAndSettle();
       await capture('reading');
+      await h.controller.setTheme('dark');
+      await tester.pumpAndSettle();
+      await capture('reading-dark');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     } finally {

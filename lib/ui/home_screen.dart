@@ -6,6 +6,7 @@ import 'profile_screen.dart';
 import 'theme.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/chat_composer.dart';
+import 'widgets/reading_handle.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
@@ -18,6 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _scaffold = GlobalKey<ScaffoldState>();
   final _input = TextEditingController(), _search = TextEditingController();
   final _scroll = ScrollController();
+  final _readingProgress = ValueNotifier<double>(0);
   Timer? _searchTimer;
   String? _lastSession;
   int _lastLength = 0;
@@ -33,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _scrollChanged() {
     if (!mounted || !_scroll.hasClients) return;
+    _updateReadingProgress();
     final pixels = _scroll.position.pixels;
     final showJump = pixels > 220;
     final restore = _composerCollapsed && pixels <= 24;
@@ -41,6 +44,14 @@ class _HomeScreenState extends State<HomeScreen> {
         _showJump = showJump;
         if (restore) _composerCollapsed = false;
       });
+    }
+  }
+
+  void _updateReadingProgress() {
+    if (mounted &&
+        _scroll.hasClients &&
+        _scroll.position.hasContentDimensions) {
+      _readingProgress.value = historyReadProgress(_scroll.position);
     }
   }
 
@@ -76,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (_lastSession != c.sessionId) {
       _lastSession = c.sessionId;
+      _readingProgress.value = 0;
       _composerCollapsed = false;
       _userScrolling = false;
       _input.clear();
@@ -107,6 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _input.dispose();
     _search.dispose();
     _scroll.dispose();
+    _readingProgress.dispose();
     _searchTimer?.cancel();
     super.dispose();
   }
@@ -292,106 +305,129 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 Expanded(
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: _chatScrolled,
-                    child: Stack(
-                      children: [
-                        if (c.timeline.messages.isEmpty && !c.loadingMessages)
-                          _welcome(context)
-                        else if (c.loadingMessages &&
-                            c.timeline.messages.isEmpty)
-                          const Center(
-                            child: CircularProgressIndicator.adaptive(),
-                          )
-                        else
-                          SelectionArea(
-                            child: ListView.builder(
-                              key: const Key('message-list'),
-                              controller: _scroll,
-                              reverse: true,
-                              keyboardDismissBehavior:
-                                  ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.only(bottom: 8, top: 8),
-                              itemCount:
-                                  c.timeline.messages.length +
-                                  (c.hasMoreMessages ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                if (index == c.timeline.messages.length) {
-                                  return Center(
-                                    child: TextButton(
-                                      onPressed: c.loadingMessages
-                                          ? null
-                                          : () => c.loadHistory(more: true),
-                                      child: Text(
-                                        c.loadingMessages ? '正在加载…' : '加载更早的消息',
-                                      ),
-                                    ),
-                                  );
-                                }
-                                final message =
-                                    c.timeline.messages[c
-                                            .timeline
-                                            .messages
-                                            .length -
-                                        index -
-                                        1];
-                                return MessageBubble(
-                                  key: ValueKey(message.id),
-                                  message: message,
-                                );
-                              },
-                            ),
-                          ),
-                        if (_showJump)
-                          Positioned(
-                            bottom: 12,
-                            right: 20,
-                            child: FloatingActionButton.small(
-                              heroTag: 'jump',
-                              tooltip: '回到最新消息',
-                              onPressed: () => _scroll.animateTo(
-                                0,
-                                duration: const Duration(milliseconds: 250),
-                                curve: Curves.easeOut,
-                              ),
-                              child: const Icon(Icons.arrow_downward_rounded),
-                            ),
-                          ),
-                      ],
-                    ),
+                  child: NotificationListener<ScrollMetricsNotification>(
+                    onNotification: (_) {
+                      _updateReadingProgress();
+                      return false;
+                    },
+                    child: _composer(context),
                   ),
                 ),
-                if (c.timeline.interaction != null)
-                  _InteractionCard(controller: c),
-                if (c.working && c.timeline.activity.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
-                    child: Row(
-                      children: [
-                        const SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(strokeWidth: 1.5),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            c.timeline.activity,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colors.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                _composer(context),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _readingLayout(Widget editor, Widget? handle, Widget? stop) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Expanded(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _chatScrolled,
+            child: Stack(
+              key: const Key('reading-stage'),
+              children: [
+                if (c.timeline.messages.isEmpty && !c.loadingMessages)
+                  _welcome(context)
+                else if (c.loadingMessages && c.timeline.messages.isEmpty)
+                  const Center(child: CircularProgressIndicator.adaptive())
+                else
+                  SelectionArea(
+                    child: ListView.builder(
+                      key: const Key('message-list'),
+                      controller: _scroll,
+                      reverse: true,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.only(bottom: 8, top: 8),
+                      itemCount:
+                          c.timeline.messages.length +
+                          (c.hasMoreMessages ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == c.timeline.messages.length) {
+                          return Center(
+                            child: TextButton(
+                              onPressed: c.loadingMessages
+                                  ? null
+                                  : () => c.loadHistory(more: true),
+                              child: Text(
+                                c.loadingMessages ? '正在加载…' : '加载更早的消息',
+                              ),
+                            ),
+                          );
+                        }
+                        final message = c
+                            .timeline
+                            .messages[c.timeline.messages.length - index - 1];
+                        return MessageBubble(
+                          key: ValueKey(message.id),
+                          message: message,
+                        );
+                      },
+                    ),
+                  ),
+                if (handle != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 10,
+                    child: Center(child: RepaintBoundary(child: handle)),
+                  ),
+                if (stop != null)
+                  Positioned(
+                    right: 20,
+                    bottom: _showJump ? 70 : 12,
+                    child: stop,
+                  ),
+                if (_showJump)
+                  Positioned(
+                    bottom: 12,
+                    right: 20,
+                    child: FloatingActionButton.small(
+                      heroTag: 'jump',
+                      tooltip: '回到最新消息',
+                      onPressed: () => _scroll.animateTo(
+                        0,
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                      ),
+                      child: const Icon(Icons.arrow_downward_rounded),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (c.timeline.interaction != null) _InteractionCard(controller: c),
+        if (c.working && c.timeline.activity.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 1.5),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    c.timeline.activity,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        editor,
+      ],
     );
   }
 
@@ -529,6 +565,8 @@ class _HomeScreenState extends State<HomeScreen> {
     input: _input,
     collapsed: _composerCollapsed,
     onExpand: _expandComposer,
+    readingProgress: _readingProgress,
+    layoutBuilder: _readingLayout,
   );
 
   Widget _drawer(BuildContext context) {
