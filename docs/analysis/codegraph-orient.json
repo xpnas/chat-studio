@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 2,
+  "root": "D:\\code\\hermes-studio-v1.0.3",
+  "budget": "small",
+  "summary": [
+    "1874 file(s) in scope.",
+    "5 graph-central module(s) ranked for first follow-up.",
+    "Health analysis skipped for small budget."
+  ],
+  "focus": [
+    {
+      "id": 1,
+      "kind": "hotspot",
+      "file": "packages/server/src/modules/studio/public/logging.ts",
+      "why": "graph-central module: fan-in 80, fan-out 5, score 165",
+      "followUps": [
+        {
+          "tool": "packet_get",
+          "arguments": {
+            "target": "packages/server/src/modules/studio/public/logging.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "kind": "hotspot",
+      "file": "packages/ekko-agent/src/index.ts",
+      "why": "graph-central module: fan-in 46, fan-out 66, score 158",
+      "followUps": [
+        {
+          "tool": "packet_get",
+          "arguments": {
+            "target": "packages/ekko-agent/src/index.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "kind": "hotspot",
+      "file": "packages/server/src/modules/studio/infrastructure/database/schemas.ts",
+      "why": "graph-central module: fan-in 66, fan-out 1, score 133",
+      "followUps": [
+        {
+          "tool": "packet_get",
+          "arguments": {
+            "target": "packages/server/src/modules/studio/infrastructure/database/schemas.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "kind": "hotspot",
+      "file": "packages/server/src/modules/studio/public/config.ts",
+      "why": "graph-central module: fan-in 59, fan-out 2, score 120",
+      "followUps": [
+        {
+          "tool": "packet_get",
+          "arguments": {
+            "target": "packages/server/src/modules/studio/public/config.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "kind": "hotspot",
+      "file": "packages/client/src/api/client.ts",
+      "why": "graph-central module: fan-in 54, fan-out 2, score 110",
+      "followUps": [
+        {
+          "tool": "packet_get",
+          "arguments": {
+            "target": "packages/client/src/api/client.ts"
+          }
+        }
+      ]
+    }
+  ],
+  "tree": [
+    {
+      "path": ".github",
+      "kind": "directory",
+      "depth": 1
+    },
+    {
+      "path": "bin",
+      "kind": "directory",
+      "depth": 1
+    },
+    {
+      "path": "docs",
+      "kind": "directory",
+      "depth": 1
+    },
+    {
+      "path": "packages",
+      "kind": "directory",
+      "depth": 1
+    },
+    {
+      "path": "scripts",
+      "kind": "directory",
+      "depth": 1
+    },
+    {
+      "path": "tests",
+      "kind": "directory",
+      "depth": 1
+    },
+    {
+      "path": "AGENTS.md",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "DEVELOPMENT.md",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "README.md",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "README_zh.md",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "package-lock.json",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "package.json",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "playwright.config.ts",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "tsconfig.json",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "vite.config.ts",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": "vitest.config.ts",
+      "kind": "file",
+      "depth": 1
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE",
+      "kind": "directory",
+      "depth": 2
+    },
+    {
+      "path": "bin/ekko-studio-mcp.mjs",
+      "kind": "file",
+      "depth": 2
+    },
+    {
+      "path": "bin/hermes-studio-mcp.mjs",
+      "kind": "file",
+      "depth": 2
+    },
+    {
+      "path": "bin/hermes-web-ui-mcp.mjs",
+      "kind": "file",
+      "depth": 2
+    },
+    {
+      "path": "bin/hermes-web-ui.mjs",
+      "kind": "file",
+      "depth": 2
+    },
+    {
+      "path": "docs/architecture",
+      "kind": "directory",
+      "depth": 2
+    },
+    {
+      "path": "docs/chat-chain-changes",
+      "kind": "directory",
+      "depth": 2
+    },
+    {
+      "path": "docs/harness",
+      "kind": "directory",
+      "depth": 2
+    }
+  ],
+  "health": {
+    "cycles": null,
+    "unresolved": null,
+    "duplicateGroups": null
+  },
+  "recommendedNext": [
+    {
+      "label": "Rank scoped hotspots",
+      "command": "codegraph hotspots . --limit 20"
+    },
+    {
+      "label": "Map current worktree impact",
+      "command": "codegraph impact --base HEAD --head WORKTREE"
+    },
+    {
+      "label": "Review current worktree",
+      "command": "codegraph review --base HEAD --head WORKTREE"
+    },
+    {
+      "label": "Search for a task-specific anchor",
+      "command": "codegraph search <query> --json"
+    }
+  ],
+  "omittedCounts": {
+    "treeEntries": 39,
+    "focusTargets": 1869,
+    "healthAnalyses": 3
+  }
+}

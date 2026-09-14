@@ -1,0 +1,58 @@
+name: Studio contract
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mobile
+      - uses: actions/checkout@v4
+        with:
+          repository: EKKOLearnAI/hermes-studio
+          ref: b44c74318fe5a0a1f3aed29d5095393964fc3d62
+          path: studio
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.13.1'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: studio
+      - run: npx vitest run tests/server/app-connections-auth.test.ts tests/server/user-auth.test.ts
+        working-directory: studio
+      - run: flutter pub get --enforce-lockfile
+        working-directory: mobile
+      - name: Exercise real Studio with local model fixture
+        shell: bash
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          export EKKO_TEST_SERVER=http://127.0.0.1:18647
+          export EKKO_TEST_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$EKKO_TEST_PASSWORD"
+          export HERMES_HOME="$RUNNER_TEMP/contract/hermes"
+          export HERMES_WEB_UI_HOME="$RUNNER_TEMP/contract/studio"
+          export HERMES_WEBUI_STATE_DIR="$HERMES_WEB_UI_HOME"
+          export HERMES_RUNTIME_SOURCE=none
+          export PORT=18647
+          export TS_NODE_PROJECT=packages/server/tsconfig.json
+          export TS_NODE_TRANSPILE_ONLY=true
+          export TS_NODE_COMPILER_OPTIONS='{"rootDir":"../../"}'
+          mkdir -p "$HERMES_HOME" "$HERMES_WEB_UI_HOME"
+          cp tools/mock-provider/config.yaml "$HERMES_HOME/config.yaml"
+          node tools/mock-provider/server.mjs > "$RUNNER_TEMP/provider.log" 2>&1 &
+          FIXTURE_PID=$!
+          (cd ../studio && exec node -r ts-node/register packages/server/src/index.ts) > "$RUNNER_TEMP/studio.log" 2>&1 &
+          STUDIO_PID=$!
+          trap 'kill "$STUDIO_PID" "$FIXTURE_PID" 2>/dev/null || true' EXIT
+          node tools/mock-provider/bootstrap.mjs
+          flutter test test/live_contract_test.dart --reporter expanded
+          # Never upload server state / logs, which may include provider secrets.

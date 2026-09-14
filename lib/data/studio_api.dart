@@ -1,0 +1,158 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import '../core/server_address.dart';
+import 'models.dart';
+
+class StudioApi {
+  StudioApi(this.address, {http.Client? client})
+    : _client = client ?? http.Client();
+  final ServerAddress address;
+  final http.Client _client;
+  String token = '';
+  String profile = 'default';
+  void Function()? onUnauthorized;
+
+  Future<Map<String, dynamic>> request(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? body,
+    Map<String, String>? query,
+    bool public = false,
+  }) async {
+    final uri = address.uri.replace(path: path, queryParameters: query);
+    final request = http.Request(method, uri)..followRedirects = false;
+    request.headers.addAll({
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      if (!public) 'Authorization': 'Bearer $token',
+      if (!public) 'X-Hermes-Profile': profile,
+    });
+    if (body != null) request.body = jsonEncode(body);
+    try {
+      final response = await (() async => http.Response.fromStream(
+        await _client.send(request),
+      ))().timeout(const Duration(seconds: 25));
+      Map<String, dynamic> data;
+      try {
+        data = asMap(jsonDecode(utf8.decode(response.bodyBytes)));
+      } on FormatException {
+        throw ApiException('服务返回了非 JSON 内容，请检查地址和反向代理', response.statusCode);
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode == 401 && !public) onUnauthorized?.call();
+        throw ApiException(
+          text(data['error']).isEmpty
+              ? '请求失败 (${response.statusCode})'
+              : text(data['error']),
+          response.statusCode,
+        );
+      }
+      return data;
+    } on TimeoutException {
+      throw const ApiException('连接超时，请检查服务器是否在线');
+    } on SocketException {
+      throw const ApiException('无法连接服务器，请检查网络、地址和局域网权限');
+    } on http.ClientException {
+      throw const ApiException('网络连接失败，请检查地址与 HTTPS 证书');
+    }
+  }
+
+  Future<Map<String, dynamic>> login(
+    String username,
+    String password,
+    String deviceId,
+  ) => request(
+    '/api/auth/app-login',
+    method: 'POST',
+    public: true,
+    body: {
+      'username': username.trim(),
+      'password': password,
+      'device_code': deviceId,
+      'device_name': Platform.isIOS
+          ? 'Ekko Mobile · iOS'
+          : 'Ekko Mobile · Android',
+      'device_brand': Platform.isIOS ? 'Apple' : 'Android',
+      'device_model': 'Ekko Mobile',
+    },
+  );
+  Future<Account> me() async =>
+      Account.fromJson(asMap((await request('/api/auth/me'))['user']));
+  Future<List<String>> profiles() async =>
+      asList((await request('/api/app/profiles'))['profiles'])
+          .map((p) => p is String ? p : text(asMap(p)['name']))
+          .where((p) => p.isNotEmpty)
+          .toList();
+  Future<Map<String, dynamic>> models() =>
+      request('/api/hermes/available-models', query: {'profile': profile});
+  Future<Map<String, dynamic>> sessions({int offset = 0, String search = ''}) =>
+      search.isNotEmpty
+      ? request(
+          '/api/studio/search/sessions',
+          query: {'profile': profile, 'q': search, 'limit': '100'},
+        )
+      : request(
+          '/api/studio/sessions',
+          query: {'profile': profile, 'offset': '$offset', 'limit': '40'},
+        );
+  Future<MessagePage> messages(String id, {int offset = 0}) async {
+    final data = await request(
+      '/api/studio/sessions/conversations/${Uri.encodeComponent(id)}/messages/paginated',
+      query: {'profile': profile, 'offset': '$offset', 'limit': '60'},
+    );
+    final rows = asList(data['messages']);
+    return MessagePage(
+      rows.map((m) => ChatMessage.fromJson(asMap(m))).toList(),
+      integer(data['offset']) + rows.length,
+      integer(data['total']),
+      flag(data['hasMore']),
+    );
+  }
+
+  Future<void> rename(String id, String title) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/rename',
+      method: 'POST',
+      body: {'title': title},
+    );
+  }
+
+  Future<void> delete(String id) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}',
+      method: 'DELETE',
+    );
+  }
+
+  Future<void> setModel(String id, ModelChoice model) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/model',
+      method: 'POST',
+      body: {
+        'model': model.id,
+        'provider': model.provider,
+        if (model.apiMode.isNotEmpty) 'api_mode': model.apiMode,
+      },
+    );
+  }
+
+  Future<void> changePassword(String current, String replacement) async {
+    await request(
+      '/api/auth/change-password',
+      method: 'POST',
+      body: {'currentPassword': current, 'newPassword': replacement},
+    );
+  }
+
+  Future<void> changeUsername(String password, String username) async {
+    await request(
+      '/api/auth/change-username',
+      method: 'POST',
+      body: {'currentPassword': password, 'newUsername': username},
+    );
+  }
+
+  void close() => _client.close();
+}

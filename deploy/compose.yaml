@@ -1,0 +1,24 @@
+# Run from this directory after cloning the pinned upstream source.
+# Intentionally loopback-only until bootstrap credentials are changed.
+services:
+  studio:
+    build:
+      context: ${STUDIO_SOURCE:-../../hermes-studio-v1.0.3}
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${HERMES_BASE_IMAGE:?Set a reviewed Hermes base image tag or digest}
+    ports:
+      - '${STUDIO_BIND:-127.0.0.1}:${STUDIO_PORT:-6060}:6060'
+    environment:
+      PORT: '6060'
+      HERMES_HOME: /home/agent/.hermes
+      HERMES_BIN: /opt/hermes/.venv/bin/hermes
+      HERMES_WEB_UI_MANAGED_GATEWAY: '1'
+      HERMES_ALLOW_ROOT_GATEWAY: '1'
+    volumes:
+      - hermes-data:/home/agent/.hermes
+      - studio-data:/home/agent/.hermes-web-ui
+    restart: unless-stopped
+volumes:
+  hermes-data:
+  studio-data:

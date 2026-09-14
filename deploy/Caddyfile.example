@@ -1,0 +1,5 @@
+# Example for Caddy installed on the SAME HOST as loopback-bound Studio.
+# Replace the hostname and configure DNS/TLS before use.
+studio.example.com {
+    reverse_proxy 127.0.0.1:6060
+}
