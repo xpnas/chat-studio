@@ -56,3 +56,4 @@ tools/mock-server/node_modules/
 .local/
 /dist/
 __pycache__/
+/android/build/
