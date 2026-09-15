@@ -55,27 +55,6 @@ void main() {
 
       await capture('login');
       await h.login();
-      await tester.pumpAndSettle();
-      await capture('home');
-      h.controller.sessionId = 'preview';
-      h.controller.current = const Conversation(
-        id: 'preview',
-        title: '把灵感变成行动',
-        profile: 'default',
-        agent: 'ekko-agent',
-      );
-      h.controller.timeline.replace(const [
-        ChatMessage(id: 'u1', role: 'user', content: '帮我规划一个轻松、专注的早晨。'),
-        ChatMessage(
-          id: 'a1',
-          role: 'assistant',
-          content:
-              '当然。让早晨从一件小事开始，不必一开始就填满日程。\n\n### 你的 30 分钟晨间计划\n\n1. **5 分钟 · 慢慢醒来**\n   喝杯水，拉开窗帘，让自然光进来。\n2. **10 分钟 · 给身体一点空间**\n   伸展或散步，先不用看手机。\n3. **15 分钟 · 只选一件重要的事**\n   写下今天最想完成的目标，再拆成一个小步骤。\n\n你通常几点开始工作？我可以再帮你调整节奏。',
-        ),
-      ]);
-      h.controller.dismissError();
-      await tester.pumpAndSettle();
-      await capture('chat');
       h.controller.models = const [
         ModelChoice(
           id: 'gpt-5',
@@ -103,6 +82,27 @@ void main() {
         ),
       ];
       h.controller.selectedModel = h.controller.models.first;
+      await tester.pumpAndSettle();
+      await capture('home');
+      h.controller.sessionId = 'preview';
+      h.controller.current = const Conversation(
+        id: 'preview',
+        title: '把灵感变成行动',
+        profile: 'default',
+        agent: 'ekko-agent',
+      );
+      h.controller.timeline.replace(const [
+        ChatMessage(id: 'u1', role: 'user', content: '帮我规划一个轻松、专注的早晨。'),
+        ChatMessage(
+          id: 'a1',
+          role: 'assistant',
+          content:
+              '当然。让早晨从一件小事开始，不必一开始就填满日程。\n\n### 你的 30 分钟晨间计划\n\n1. **5 分钟 · 慢慢醒来**\n   喝杯水，拉开窗帘，让自然光进来。\n2. **10 分钟 · 给身体一点空间**\n   伸展或散步，先不用看手机。\n3. **15 分钟 · 只选一件重要的事**\n   写下今天最想完成的目标，再拆成一个小步骤。\n\n你通常几点开始工作？我可以再帮你调整节奏。',
+        ),
+      ]);
+      h.controller.dismissError();
+      await tester.pumpAndSettle();
+      await capture('chat');
       h.controller.dismissError();
       await tester.pumpAndSettle();
       await tester.tap(find.text('GPT-5'));
@@ -274,7 +274,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await capture('history-tasks');
       await h.controller.setTheme('dark');
-      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump(); // Start the theme transition before advancing time.
+      // Nested ListTile/DefaultTextStyle transitions start after Theme settles.
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 350));
+      }
       await capture('history-tasks-dark');
 
       expect(tester.takeException(), isNull);

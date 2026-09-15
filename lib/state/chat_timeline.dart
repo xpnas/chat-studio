@@ -388,14 +388,25 @@ class ChatTimeline {
                   : m,
             )
             .toList();
+      case 'message.interim':
+        if (data['output'] is! String) return false;
+        continue assistantOutput;
+      assistantOutput:
       case 'message.delta':
         liveRevision++;
         _acknowledge();
         working = true;
         activity = '';
-        _assistant(delta: messageText(data['delta']));
+        // Bridge events carry a cumulative output in addition to the delta.
+        // Prefer it: replayed copies must not append the same delta again.
+        // Ordinary agent deltas have no output and remain strictly additive.
+        _assistant(
+          delta: messageText(data['delta']),
+          output: data['output'] is String ? data['output'] as String : null,
+        );
+      case 'thinking.delta':
       case 'reasoning.delta':
-        _assistant(reasoning: messageText(data['delta']));
+        _assistant(reasoning: messageText(data['delta'] ?? data['text']));
       case 'run.peer_user_message':
         final content = messageText(data['content'] ?? data['input']);
         if (content.isNotEmpty &&
@@ -578,23 +589,6 @@ class ChatTimeline {
           })
           .map((e) => e.$1)
           .toList();
-      // Missing metadata: accept only a snapshot tail that is demonstrably a
-      // prefix of this run's replay; never deduplicate arbitrary conversation text.
-      final replayText = currentEvents
-          .where((e) => e['event'] == 'message.delta')
-          .map((e) => messageText(asMap(e['data'])['delta']))
-          .join();
-      if (candidates.isEmpty && messages.isNotEmpty && lastUser >= 0) {
-        final tail = messages.last;
-        if (tail.role == 'assistant' &&
-            tail.runMarker.isEmpty &&
-            !tail.hasFinishReason &&
-            tail.content.isNotEmpty &&
-            replayText.startsWith(tail.content)) {
-          candidates.add(messages.length - 1);
-        }
-      }
-      final stored = candidates.map((i) => messages[i]).toList();
       // A render identity and its cached prefix belong to exactly one run.
       // Neither a global previousRun match nor a nonempty marker on an old
       // message proves that the message belongs to the resumed run.
@@ -607,6 +601,91 @@ class ChatTimeline {
                 m.runMarker == marker,
           )
           .lastOrNull;
+      // Bridge persistence uses cli_run_*/cli_resume_* whereas socket events
+      // use the runtime run_id. Resolve this alias only within the latest user
+      // turn, with open tool steps or a matching user marker, and cumulative
+      // text as evidence (a flushed interim row can already be marked stop).
+      // Never use text equality alone to consume an older completed run.
+      String replayText = '';
+      var cumulativeOutput = false;
+      for (final entry in currentEvents) {
+        if (!['message.delta', 'message.interim'].contains(entry['event'])) {
+          continue;
+        }
+        final payload = asMap(entry['data']);
+        if (payload['output'] is String) {
+          replayText = payload['output'] as String;
+          cumulativeOutput = true;
+        } else {
+          replayText += messageText(payload['delta']);
+        }
+      }
+      if (candidates.isEmpty && messages.isNotEmpty && lastUser >= 0) {
+        final tail = messages.last;
+        final bridge =
+            tail.runMarker.startsWith('cli_run_') ||
+            tail.runMarker.startsWith('cli_resume_');
+        final group = messages.indexed
+            .where(
+              (entry) =>
+                  entry.$1 > lastUser &&
+                  entry.$2.role == 'assistant' &&
+                  entry.$2.runMarker == tail.runMarker,
+            )
+            .toList();
+        final compact = group.map((e) => e.$2.content).join();
+        final open = group.any(
+          (e) =>
+              !e.$2.hasFinishReason ||
+              e.$2.finishReason == null ||
+              e.$2.finishReason == 'tool_calls',
+        );
+        // Bridge flushes an interim segment with finish_reason=stop even while
+        // the run continues. The persisted user shares that bridge marker.
+        final sameUserRun =
+            tail.runMarker.isNotEmpty &&
+            messages[lastUser].runMarker == tail.runMarker;
+        bool sharesPrefix(String reference) =>
+            compact.isNotEmpty &&
+            reference.isNotEmpty &&
+            (reference.startsWith(compact) || compact.startsWith(reference));
+        final matchingOutput = cumulativeOutput && sharesPrefix(replayText);
+        // During a long tool phase the bounded log may contain no text events.
+        // A verified local runtime prefix or an exact replayed tool-call ID can
+        // still establish the alias, without concatenating a second bubble.
+        final matchingLocal =
+            identity != null && sharesPrefix(identity.content);
+        final replayToolIds = currentEvents
+            .where(
+              (e) => [
+                'tool.started',
+                'tool.call',
+                'tool.completed',
+                'tool.failed',
+              ].contains(e['event']),
+            )
+            .map((e) => text(asMap(e['data'])['tool_call_id']))
+            .where((id) => id.isNotEmpty)
+            .toSet();
+        final matchingTool =
+            sameUserRun &&
+            group.any(
+              (entry) =>
+                  entry.$2.tools.any((tool) => replayToolIds.contains(tool.id)),
+            );
+        if (bridge &&
+            (matchingOutput || matchingLocal || matchingTool) &&
+            (open || sameUserRun)) {
+          candidates.addAll(group.map((e) => e.$1));
+        } else if (tail.role == 'assistant' &&
+            tail.runMarker.isEmpty &&
+            !tail.hasFinishReason &&
+            tail.content.isNotEmpty &&
+            replayText.startsWith(tail.content)) {
+          candidates.add(messages.length - 1);
+        }
+      }
+      final stored = candidates.map((i) => messages[i]).toList();
       final insertion = candidates.isEmpty ? messages.length : candidates.first;
       messages = messages.indexed
           .where((e) => !candidates.contains(e.$1))
@@ -630,39 +709,43 @@ class ChatTimeline {
         final replayBody = live.map((m) => m.content).join();
         final replayReasoning = live.map((m) => m.reasoning).join();
         final completeReplay = start >= 0;
-        String reconcile(List<String> parts, String replayValue) {
+        String reconcile(
+          List<String> parts,
+          String local,
+          String replayValue, {
+          bool authoritativeOutput = false,
+        }) {
           final compact = parts.join();
           final spaced = parts.where((s) => s.isNotEmpty).join('\n\n');
-          if (replayValue.startsWith(compact) && compact.isNotEmpty) {
-            return replayValue;
+          // Snapshot and local cache are PREFIX representations, not sequential
+          // pieces. Merge them first, before joining the retained event TAIL.
+          // Otherwise a short snapshot + nonadjacent tail creates a gap that
+          // cannot overlap the longer local prefix and gets appended twice.
+          var known = spaced;
+          if (compact.isNotEmpty &&
+              (local.startsWith(compact) || replayValue.startsWith(compact))) {
+            known = compact;
           }
+          if (known.isEmpty || local.startsWith(known)) known = local;
+          // Conflicting prefixes: prefer the server snapshot, never concatenate.
           return reconcileResumeText(
-            spaced,
+            known,
             replayValue,
-            completeReplay: completeReplay,
+            completeReplay: completeReplay || authoritativeOutput,
           );
         }
 
-        var body = reconcile(stored.map((m) => m.content).toList(), replayBody);
-        var reasoning = reconcile(
+        final body = reconcile(
+          stored.map((m) => m.content).toList(),
+          identity?.content ?? '',
+          replayBody,
+          authoritativeOutput: cumulativeOutput,
+        );
+        final reasoning = reconcile(
           stored.map((m) => m.reasoning).toList(),
+          identity?.reasoning ?? '',
           replayReasoning,
         );
-        if (identity != null) {
-          // The local bubble may contain the prefix already dropped from the
-          // bounded server event log. Restore that prefix once, then only new
-          // bytes. No reset to the replay tail on foreground/resume.
-          body = reconcileResumeText(
-            identity.content,
-            body,
-            completeReplay: completeReplay,
-          );
-          reasoning = reconcileResumeText(
-            identity.reasoning,
-            reasoning,
-            completeReplay: completeReplay,
-          );
-        }
         final base = stored.firstOrNull ?? live.firstOrNull ?? identity!;
         final merged = base.copyWith(
           content: body,

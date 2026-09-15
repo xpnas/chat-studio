@@ -1,6 +1,24 @@
 # 验证记录与复现
 
-## 本次实际完成
+## 当前验证（2026-09-15，1.0.16）
+
+- 客户端全量测试：**202 项通过，8 项按环境默认跳过**；新增 13 项断线恢复回归。
+- 静态分析：`flutter analyze --fatal-infos` 无问题；格式门禁通过。
+- 隔离官方 Studio v1.0.3：**7 项真实 HTTP / Socket.IO 联调通过**。生成中连续 3 次实际关闭 WebSocket，后台等待后重新连接，检查每次 `resumed` / `message.delta` 的正文，不仅检查最终回复。
+- 截图测试：**1 项通过**，重新生成 12 张实际 Flutter 组件预览；[截图说明与复现](screenshots/README.md)。
+- Android 构建、签名和校验信息见 [本次修复记录](release-1.0.16.md)。
+
+旧测试仅调用前后台生命周期，没有真正断开 socket，未覆盖本次用户描述的路径。桥接 run 标记差异及三方文本合并均已补充失败复现；桥接回归使用固定上游源码契约的夹具，并非声称运行了真实 Codex CLI。没有真机后台断网/系统杀进程或 iOS 验证；未推送远端或运行 GitHub Actions。
+
+Windows 可复现隔离联调（要求上游已安装 Node 依赖，脚本核对固定 SHA）：
+
+```powershell
+./scripts/studio-contract.ps1 -StudioPath D:/code/hermes-studio-v1.0.3 -Flutter D:/code/toolchains/flutter/bin/flutter.bat
+```
+
+脚本只在空闲的 18647 / 18648 回环端口启动自己的进程；使用独立 HOME/Profile/数据库和随机密码，结束后终止所启动进程树、还原环境变量。私有诊断状态保留在被 Git 忽略的 `.local/contract-*`，不要上传或公开。Linux 使用 `scripts/studio-contract.sh`。
+
+## 首轮交付记录（1.0.5，以下为历史验证）
 
 | 项目 | 实际结果 |
 |---|---|
@@ -43,7 +61,7 @@ flutter build appbundle --release
 
 **仅对一次性、可删除的隔离环境运行。测试会创建/删除会话、变更测试会话模型和标题；媒体测试还会配置/删除临时 STT 提供商并上传测试文件。切勿指向生产服务。**
 
-最方便：推送后手动运行 `Studio contract`，它自动 checkout 固定上游 SHA、安装 Node 依赖、创建一次性目录、运行本地 Provider、旋转初始密码、执行三项 Dart 测试，最后停止子进程，不上传含凭据的服务端状态/日志。
+最方便：推送后手动运行 `Studio contract`，它自动 checkout 固定上游 SHA、安装 Node 依赖、创建一次性目录、运行本地 Provider、旋转初始密码、执行 `test/live_contract_test.dart` 中的联调测试，最后停止子进程，不上传含凭据的服务端状态/日志。
 
 本地复现步骤：
 
@@ -196,7 +214,7 @@ bash scripts/studio-contract.sh /absolute/path/to/pinned-studio
 历史 1.0.14 验证记录为 175 项本地测试通过；7 项环境相关测试默认跳过。该记录对应此前版本；当前工作区新增的回归结果与未解决项见下方“当前前台恢复修复回归状态”。
 
 
-## 当前前台恢复修复回归状态（2026-09-15，1.0.15）
+## 1.0.15 前台恢复修复回归记录（2026-09-15）
 
 对 `c31696a` 的评审复测为 174 项通过、8 项跳过、2 项失败。失败项是 `multi_conversation_test.dart` 的后台审批时序，以及 `resume_snapshot_test.dart` 中相同文本跨轮次保留；此前按内容抵扣事件及不校验 run 的兜底拼接是原因。
 

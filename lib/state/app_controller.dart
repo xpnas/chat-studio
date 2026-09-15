@@ -1287,7 +1287,7 @@ class AppController extends ChangeNotifier {
       _notify();
       return;
     }
-    if (event == 'run.started' || event == 'message.delta') {
+    if (['run.started', 'message.delta', 'message.interim'].contains(event)) {
       state.awaitingStart = false;
       state.revision++;
       state.runTimer?.cancel();
@@ -1336,11 +1336,14 @@ class AppController extends ChangeNotifier {
       }
       unawaited(refreshSessions());
     }
-    if (state != _view &&
-        ['message.delta', 'reasoning.delta'].contains(event)) {
-      return;
-    }
-    _notify(batch: event == 'message.delta' || event == 'reasoning.delta');
+    final streaming = [
+      'message.delta',
+      'message.interim',
+      'reasoning.delta',
+      'thinking.delta',
+    ].contains(event);
+    if (state != _view && streaming) return;
+    _notify(batch: streaming);
   }
 
   void respondToInteraction(

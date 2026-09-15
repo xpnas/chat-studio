@@ -8,16 +8,15 @@ ThemeData ekkoTheme(Brightness brightness) {
     brightness: brightness,
     surface: dark ? const Color(0xFF141B18) : const Color(0xFFFAFAF6),
   );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: scheme,
+  final base = ThemeData(useMaterial3: true, colorScheme: scheme);
+  return base.copyWith(
     scaffoldBackgroundColor: scheme.surface,
     appBarTheme: AppBarTheme(
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,
       centerTitle: true,
       elevation: 0,
-      titleTextStyle: TextStyle(
+      titleTextStyle: base.textTheme.titleLarge!.copyWith(
         color: scheme.onSurface,
         fontSize: 17,
         fontWeight: FontWeight.w600,

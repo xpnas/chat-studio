@@ -744,7 +744,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   isExpanded: true,
                   underline: const SizedBox.shrink(),
                   isDense: true,
-                  style: TextStyle(fontSize: 13, color: colors.onSurface),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 13,
+                    color: colors.onSurface,
+                  ),
                   items: [
                     const DropdownMenuItem(
                       value: 'ekko-agent',

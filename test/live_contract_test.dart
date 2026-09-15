@@ -21,7 +21,11 @@ void main() {
   test(
     'real foreground resume after server 200-event buffer truncation keeps full text',
     () async {
-      final c = AppController(storage: _MultiDeviceStorage('foreground-long'));
+      final transport = _DisconnectableTransport();
+      final c = AppController(
+        storage: _MultiDeviceStorage('foreground-long'),
+        transport: transport,
+      );
       String? sid;
       final expected = List.generate(
         100,
@@ -41,6 +45,13 @@ void main() {
         }
       }
 
+      final invalidBodies = <String>[];
+      transport.afterEvent = (event, _) {
+        if (['resumed', 'message.delta'].contains(event) &&
+            !expected.startsWith(body())) {
+          invalidBodies.add(body());
+        }
+      };
       try {
         await c.initialize();
         expect(
@@ -59,10 +70,20 @@ void main() {
         final key = c.timeline.messages.last.renderKey;
         for (var i = 0; i < 3; i++) {
           c.onBackground();
-          await Future<void>.delayed(const Duration(milliseconds: 100));
           final before = body();
+          final connections = transport.connections;
+          final resumes = transport.resumes;
+          transport.cutNetwork();
+          expect(c.connected, false);
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+          expect(body(), before, reason: 'no events while socket is disposed');
           c.onForeground();
-          await until(() => !c.syncing);
+          await until(
+            () =>
+                transport.connections > connections &&
+                transport.resumes > resumes &&
+                !c.syncing,
+          );
           expect(body().length, greaterThanOrEqualTo(before.length));
           expect(
             expected.startsWith(body()),
@@ -78,6 +99,8 @@ void main() {
         c.onForeground();
         await until(() => !c.syncing);
         expect(body(), expected);
+        expect(transport.runs, 1, reason: 'reconnect must never resend input');
+        expect(invalidBodies, isEmpty, reason: 'check every live/sync update');
       } finally {
         if (sid != null) {
           c.stop();
@@ -690,4 +713,40 @@ class _MultiDeviceStorage extends MemoryStorage {
   final String id;
   @override
   Future<String> deviceId() async => id;
+}
+
+// A real Socket.IO transport with a deterministic network-loss boundary.
+// Closing the socket stops delivery; reconnect uses a new physical connection.
+class _DisconnectableTransport implements ChatTransport {
+  final _inner = SocketChatTransport();
+  SocketEvent? _listener;
+  SocketEvent? afterEvent;
+  int connections = 0;
+  int resumes = 0;
+  int runs = 0;
+
+  @override
+  void connect(StudioApi api, SocketEvent onEvent) {
+    _listener = onEvent;
+    _inner.connect(api, (event, data) {
+      if (event == 'connected') connections++;
+      if (event == 'resumed') resumes++;
+      onEvent(event, data);
+      afterEvent?.call(event, data);
+    });
+  }
+
+  void cutNetwork() {
+    _inner.dispose();
+    _listener?.call('disconnected', {});
+  }
+
+  @override
+  void emit(String event, Map<String, dynamic> data) {
+    if (event == 'run') runs++;
+    _inner.emit(event, data);
+  }
+
+  @override
+  void dispose() => _inner.dispose();
 }
