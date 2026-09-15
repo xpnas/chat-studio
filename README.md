@@ -121,6 +121,15 @@ docs/analysis/           v1.0.3 源码分析及 CodeGraph 原始结果
 .github/workflows/       双端质量检查及打包
 ```
 
+## 许可证、隐私与上游关系
+
+Ekko Mobile 是面向 EKKOLearnAI/hermes-studio 兼容接口的独立 Flutter 第三方客户端，不是 EKKOLearnAI 官方项目，也未获得其背书。本仓库不包含 Hermes Studio 源代码；兼容 REST / Socket.IO 协议不授予上游实现、商标、Logo 或其他资源的许可。
+
+本仓库原创源代码采用 [Apache License 2.0](LICENSE)。上游 Hermes Studio / Hermes Web UI 由 EKKOLearnAI 单独以 [Business Source License 1.1](https://github.com/EKKOLearnAI/hermes-studio/blob/main/LICENSE) 授权；使用、修改或再分发上游服务端时必须遵守其对应版本的许可证。第三方依赖和资源遵循各自许可证，详见 [第三方声明](THIRD_PARTY_NOTICES.md)。相关名称和 Logo 不授予商标权。
+
+- [隐私说明](PRIVACY.md)
+- [许可证](LICENSE)
+
 ## 验证、隐私和兼容性
 
 - [测试记录与复现](docs/testing.md)
