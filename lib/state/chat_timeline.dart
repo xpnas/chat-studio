@@ -1,3 +1,4 @@
+import '../data/task_plan.dart';
 import '../data/models.dart';
 import '../data/queued_message.dart';
 import 'resume_text.dart';
@@ -5,6 +6,53 @@ import 'resume_text.dart';
 /// Pure reducer. Historical pages are authoritative; live tokens affect only one
 /// pending bubble. It is independent of widgets and of the Socket.IO library.
 class ChatTimeline {
+  String? _sessionId;
+  String? get sessionId => _sessionId;
+  set sessionId(String? value) {
+    if (_sessionId != value) {
+      _plans.clear();
+      _planOutcomes.clear();
+    }
+    _sessionId = value;
+  }
+
+  final Map<String, TaskPlan> _plans = {};
+  final Map<String, String> _planOutcomes = {};
+  List<TaskPlan> get taskPlans =>
+      _plans.values
+          .map(
+            (p) =>
+                p.executionState == 'running' &&
+                    _planOutcomes.containsKey(p.runId)
+                ? p.stopped(_planOutcomes[p.runId]!)
+                : p,
+          )
+          .toList()
+        ..sort((a, b) {
+          final order = a.createdAt.compareTo(b.createdAt);
+          return order == 0 ? a.key.compareTo(b.key) : order;
+        });
+
+  bool mergeTaskPlans(Iterable<TaskPlan> plans) {
+    var changed = false;
+    for (final plan in plans) {
+      if (sessionId != null && plan.sessionId != sessionId) continue;
+      sessionId ??= plan.sessionId;
+      final old = _plans[plan.key];
+      if (old != null &&
+          (old.runId != plan.runId || old.revision >= plan.revision)) {
+        continue;
+      }
+      _plans[plan.key] = plan;
+      changed = true;
+    }
+    return changed;
+  }
+
+  void _stopPlans(String run, String state) {
+    if (run.isNotEmpty) _planOutcomes[run] = state;
+  }
+
   List<ChatMessage> messages = [];
   String? runId;
   bool working = false;
@@ -67,6 +115,8 @@ class ChatTimeline {
   final Set<String> _finishedRuns = {};
 
   void clear() {
+    _plans.clear();
+    _planOutcomes.clear();
     messages = [];
     _finishedRuns.clear();
     runId = null;
@@ -172,7 +222,31 @@ class ChatTimeline {
   /// Keep one visual assistant turn, while raw rows still determine pagination.
   List<ChatMessage> get displayMessages {
     final result = <ChatMessage>[];
-    for (final message in messages.where((m) => m.visible)) {
+    final rows = messages.where((m) => m.visible).toList();
+    for (final plan in taskPlans) {
+      var index = rows.indexWhere(
+        (m) =>
+            m.taskPlan == null &&
+            m.runMarker == plan.runId &&
+            m.role != 'user' &&
+            m.role != 'command',
+      );
+      if (index < 0) {
+        index = rows.indexWhere((m) => m.timestamp > plan.createdAt);
+      }
+      rows.insert(
+        index < 0 ? rows.length : index,
+        ChatMessage(
+          id: plan.key,
+          role: 'system',
+          content: '',
+          runMarker: plan.runId,
+          timestamp: plan.createdAt,
+          taskPlan: plan,
+        ),
+      );
+    }
+    for (final message in rows) {
       if (message.role == 'assistant' &&
           result.isNotEmpty &&
           result.last.role == 'assistant') {
@@ -281,6 +355,7 @@ class ChatTimeline {
             content: '',
             pending: true,
             runMarker: runId ?? '',
+            timestamp: DateTime.now().millisecondsSinceEpoch,
           );
     final next = old.copyWith(
       id: id,
@@ -297,6 +372,11 @@ class ChatTimeline {
 
   bool apply(String event, Map<String, dynamic> data) {
     final incomingRun = text(data['run_id']);
+    if (event == 'plan.updated') {
+      final plan = TaskPlan.parse(data);
+      return plan != null && mergeTaskPlans([plan]);
+    }
+
     final failedQueue = text(data['queue_id']);
     if (event == 'run.failed' &&
         failedQueue.isNotEmpty &&
@@ -324,6 +404,7 @@ class ChatTimeline {
         final terminal =
             data['terminal'] == true || data['action'] == 'destroy';
         if (terminal) {
+          _stopPlans(runId ?? '', data['ok'] == false ? 'failed' : 'ended');
           working = false;
           activity = '';
           interaction = null;
@@ -354,7 +435,11 @@ class ChatTimeline {
             data['action'] == 'clear' &&
             data['command'] == 'clear' &&
             data['ok'] != false;
-        if (cleared) messages = [];
+        if (cleared) {
+          messages = [];
+          _plans.clear();
+          _planOutcomes.clear();
+        }
         final result = text(data['message']);
         if (result.isNotEmpty && (!cleared || flag(data['clearHistory']))) {
           messages = [
@@ -477,6 +562,7 @@ class ChatTimeline {
           activity = data['stale'] == true ? '审批已失效' : '';
         }
       case 'run.completed':
+        _stopPlans(incomingRun.isEmpty ? runId ?? '' : incomingRun, 'ended');
         _acknowledge();
         liveRevision++;
         final output = data['output'];
@@ -495,6 +581,10 @@ class ChatTimeline {
         runId = null;
       case 'run.failed':
       case 'abort.completed':
+        _stopPlans(
+          incomingRun.isEmpty ? runId ?? '' : incomingRun,
+          event == 'run.failed' ? 'failed' : 'interrupted',
+        );
         final lastUser = messages.lastIndexWhere((m) => m.role == 'user');
         messages = messages.indexed.map((entry) {
           final m = entry.$2;
@@ -537,6 +627,8 @@ class ChatTimeline {
   /// text present in the event log, even when the final raw row is a tool.
   void resume(Map<String, dynamic> data) {
     final previous = messages;
+    final previousPlans = _plans.values.toList();
+    final previousOutcomes = Map<String, String>.of(_planOutcomes);
     final previousRun = runId;
     final finished = Set<String>.of(_finishedRuns);
     final unresolved = previous
@@ -568,6 +660,25 @@ class ChatTimeline {
     }
     clear();
     _finishedRuns.addAll(finished);
+    _planOutcomes.addAll(previousOutcomes);
+    mergeTaskPlans(previousPlans);
+    mergeTaskPlans(TaskPlan.parseList(data['taskPlans'], sessionId: sessionId));
+    // Plan revisions are independent of token replay and can include a terminal
+    // update for the previous run. Do not trim them at the latest run.started.
+    for (final event in events) {
+      final payload = asMap(event['data']);
+      if (event['event'] == 'plan.updated') {
+        final plan = TaskPlan.parse(payload);
+        if (plan != null) mergeTaskPlans([plan]);
+      }
+      final outcome = switch (event['event']) {
+        'run.completed' => 'ended',
+        'run.failed' => 'failed',
+        'abort.completed' => 'interrupted',
+        _ => null,
+      };
+      if (outcome != null) _stopPlans(text(payload['run_id']), outcome);
+    }
     messages = previous;
     replace(snapshot, keepOlder: flag(data['hasMoreBefore']));
     working = flag(data['isWorking']);

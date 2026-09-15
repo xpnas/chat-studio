@@ -16,7 +16,13 @@ class ConversationDraft {
 class ConversationState {
   ConversationState(this.profile);
   final String profile;
-  String? id;
+  String? _id;
+  String? get id => _id;
+  set id(String? value) {
+    _id = value;
+    timeline.sessionId = value;
+  }
+
   Conversation? conversation;
   final timeline = ChatTimeline();
   final draft = ConversationDraft();

@@ -1,3 +1,4 @@
+import '../data/agent_catalog.dart';
 import '../data/studio_protocol.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -208,7 +209,70 @@ class AppController extends ChangeNotifier {
     _notify();
   }
 
-  bool? codexInstalled;
+  List<AgentChoice> agents = const [];
+  bool agentsLoaded = false, agentsLoading = false;
+  String? agentsError;
+  int _agentsRequest = 0;
+  List<AgentChoice> get availableAgents =>
+      agents.where((a) => a.selectable).toList();
+  bool? get codexInstalled =>
+      agentsLoaded ? agents.any((a) => a.id == 'codex' && a.installed) : null;
+  bool get newChatAgentAvailable =>
+      agentsLoaded &&
+      agentsError == null &&
+      availableAgents.any((a) => a.id == engine);
+  void _clearAgents() {
+    _agentsRequest++;
+    agents = const [];
+    agentsLoaded = false;
+    agentsLoading = false;
+    agentsError = null;
+  }
+
+  Future<void> refreshAgents() async {
+    final client = api;
+    if (client == null || !authenticated) return;
+    final epoch = _epoch, activeProfile = profile, request = ++_agentsRequest;
+    bool valid() =>
+        _valid(epoch) &&
+        api == client &&
+        profile == activeProfile &&
+        request == _agentsRequest;
+    agentsLoading = true;
+    agentsError = null;
+    _notify();
+    try {
+      final data = await client.request('/api/agents/availability');
+      if (!valid()) return;
+      agents = AgentChoice.parse(data['agents']);
+      client.retryAgentIcons();
+      agentsLoaded = true;
+      final choices = availableAgents;
+      if (!choices.any((a) => a.id == _newChatEngine) && choices.isNotEmpty) {
+        _newChatEngine =
+            choices
+                .where((a) => a.id == StudioProtocol.builtInAgentId)
+                .firstOrNull
+                ?.id ??
+            choices.first.id;
+      }
+      if (sessionId == null &&
+          !choices.any((a) => a.id == engine) &&
+          choices.isNotEmpty) {
+        engine = _newChatEngine;
+        workspaceNotice =
+            '原 Agent 已不可用，新对话已改用 ${AgentChoice.metadata(engine).name}。';
+      }
+    } catch (_) {
+      if (valid()) agentsError = '无法读取服务端 Agent，请重试';
+    } finally {
+      if (valid()) {
+        agentsLoading = false;
+        _notify();
+      }
+    }
+  }
+
   String? sttProvider;
   String voiceHint = '请在服务端配置语音识别（STT）；仅配置 TTS 不能语音输入';
   int get chatRevision => _navigationRevision;
@@ -340,7 +404,8 @@ class AppController extends ChangeNotifier {
               ?.active ??
           false) &&
       !busy &&
-      current?.canContinue != false;
+      current?.canContinue != false &&
+      (sessionId != null || newChatAgentAvailable);
   String get profile => api?.profile ?? 'default';
   String get title => current?.title ?? '新对话';
   bool get allowLocalHttp => api?.address.allowLocalHttp ?? savedLocalHttp;
@@ -512,13 +577,11 @@ class AppController extends ChangeNotifier {
       _newChatReasoning = storedModel == null
           ? ''
           : normalizeReasoningEffort(remembered?['reasoning_effort']);
-      _newChatEngine =
-          [
-            StudioProtocol.builtInAgentId,
-            'hermes',
-            'codex',
-          ].contains(remembered?['engine'])
-          ? remembered!['engine'] as String
+      final rememberedAgent = AgentChoice.canonicalId(
+        text(remembered?['engine']),
+      );
+      _newChatEngine = AgentChoice.supportedIds.contains(rememberedAgent)
+          ? rememberedAgent
           : StudioProtocol.builtInAgentId;
       workspaceNotice = remembered?['model'] != null && storedModel == null
           ? '上次使用的模型已不可用，新对话已改用服务端默认模型。'
@@ -530,12 +593,6 @@ class AppController extends ChangeNotifier {
       }
       await refreshCapabilities();
       if (!_valid(epoch)) return;
-      if (_newChatEngine == 'codex' && codexInstalled == false) {
-        _newChatEngine = StudioProtocol.builtInAgentId;
-        if (sessionId == null) engine = _newChatEngine;
-        workspaceNotice =
-            '服务端 Codex 尚未安装，新对话已改用 ${StudioProtocol.builtInAgentLabel}。';
-      }
       await _persistSession();
       if (!_valid(epoch)) return;
       reconnect();
@@ -545,24 +602,13 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshCapabilities() async {
+  Future<void> refreshCapabilities({bool includeAgents = true}) async {
     final client = api;
     if (client == null) return;
     final epoch = _epoch, activeProfile = profile;
     bool valid() => _valid(epoch) && api == client && profile == activeProfile;
     await Future.wait([
-      (() async {
-        try {
-          final data = await client.request('/api/coding-agents');
-          if (!valid()) return;
-          final tool = asList(
-            data['tools'],
-          ).map(asMap).where((t) => t['id'] == 'codex').firstOrNull;
-          codexInstalled = tool == null ? null : flag(tool['installed']);
-        } catch (_) {
-          if (valid()) codexInstalled = null;
-        }
-      })(),
+      if (includeAgents) refreshAgents(),
       (() async {
         try {
           final data = await client.request('/api/studio/stt/profile-status');
@@ -639,7 +685,7 @@ class AppController extends ChangeNotifier {
     models = [];
     selectedModel = null;
     sttProvider = null;
-    codexInstalled = null;
+    _clearAgents();
     _notify();
     await _loadWorkspace(epoch);
     if (_valid(epoch)) {
@@ -711,6 +757,7 @@ class AppController extends ChangeNotifier {
     engine = _newChatEngine;
     reasoningEffort = _newChatReasoning;
     error = null;
+    unawaited(refreshAgents());
     _notify();
   }
 
@@ -731,10 +778,9 @@ class AppController extends ChangeNotifier {
     );
     _view = state;
     current = conversation;
-    engine =
-        [StudioProtocol.builtInAgentId, 'codex'].contains(conversation.agent)
-        ? conversation.agent
-        : 'hermes';
+    engine = conversation.agent.isEmpty
+        ? 'hermes'
+        : AgentChoice.canonicalId(conversation.agent);
     if (state.model == null) {
       selectedModel =
           models
@@ -819,6 +865,7 @@ class AppController extends ChangeNotifier {
       } else {
         state.timeline.replace(page.messages, keepOlder: page.hasMore);
       }
+      state.timeline.mergeTaskPlans(page.taskPlans);
       if (more ||
           state.offset <= page.offset ||
           state.timeline.messages.length <= page.messages.length) {
@@ -886,7 +933,9 @@ class AppController extends ChangeNotifier {
   void chooseEngine(String value) {
     if (sessionId == null &&
         !working &&
-        [StudioProtocol.builtInAgentId, 'hermes', 'codex'].contains(value)) {
+        !agentsLoading &&
+        agentsError == null &&
+        availableAgents.any((a) => a.id == value)) {
       engine = value;
       unawaited(_rememberChoice());
       _notify();
@@ -950,7 +999,8 @@ class AppController extends ChangeNotifier {
         'queue_id': queueId,
         if (engine != 'hermes') 'agent_id': engine,
         if (engine != 'hermes') 'source': 'coding_agent',
-        if (engine == 'codex') 'mode': 'scoped',
+        if (engine != 'hermes' && engine != StudioProtocol.builtInAgentId)
+          'mode': 'scoped',
         'reasoning_effort': reasoningEffort,
         if (selectedModel != null) 'model': selectedModel!.id,
         if (selectedModel != null) 'provider': selectedModel!.provider,
@@ -1108,6 +1158,7 @@ class AppController extends ChangeNotifier {
   void onForeground() {
     foreground = true;
     if (!authenticated) return;
+    if (sessionId == null) unawaited(refreshAgents());
     if (connected) {
       _recoverSessions();
     } else {
@@ -1649,7 +1700,7 @@ class AppController extends ChangeNotifier {
     conversations = [];
     selectedModel = null;
     sttProvider = null;
-    codexInstalled = null;
+    _clearAgents();
     _resetChat(preserve: false);
     connected = false;
     busy = preserveServer;

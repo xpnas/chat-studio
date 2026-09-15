@@ -14,8 +14,9 @@ Android / iOS 上的轻量 Hermes Studio 客户端。面向 **hermes-studio v1.0
 - 运行中的对话可切换查看，当前 Profile 的多会话输出/授权/停止独立处理；切回时恢复正文、草稿、附件和阅读位置。
 - 历史列表紧凑排版，运行任务带轻量动画；待确认、待同步、完成、失败分别标记，支持系统减少动画设置。
 - 输入框可选 8 档思考深度，通过真实 run / reasoning-effort 接口提交并记住偏好，实际效果取决于引擎与模型支持。
-- 新建会话，Ekko / Hermes / Codex 引擎选择；按提供商折叠分组的模型选择，当前提供商与模型置顶。
+- 新建会话动态读取当前服务器已安装的 Agent，以图标 + 名称展示、当前选项置顶；支持刷新、失败重试与未安装过滤。内置 Agent、Hermes、Claude、Codex、Pi、Grok、OpenCode 按各自协议路由，详见 [Agent 目录与选择](docs/agent-catalog.md)。模型按提供商折叠分组，当前提供商与模型置顶。
 - 流式文字与折叠思考内容、停止生成、断线/前台恢复、消息复制、Markdown；用户/AI 使用淡色圆角背景区分，空白工具消息不显示头像。
+- Agent 任务计划：轻量折叠卡片展示当前步骤、完成数量与进度，展开查看步骤状态；实时更新、历史恢复和断线重连按服务端版本去重，运行结束不会自动勾选未完成步骤。详见 [任务计划协议与实现](docs/task-plans.md)。
 - 原生文件与相册选择、图片发送前预览、附件移除；最多 5 个，单个 20 MB、总计 40 MB，点击发送才上传。
 - 原生麦克风录音 → 当前 Profile 的服务端 STT → 可编辑草稿；最长 60 秒，取消/后台停止，不自动发送。
 - 工具授权/拒绝、澄清问题；审批失败保留卡片，过期或提交中防重复操作，永久授权按服务端能力显示并二次确认。
@@ -33,17 +34,20 @@ Android / iOS 上的轻量 Hermes Studio 客户端。面向 **hermes-studio v1.0
 - 对话标题左侧和 AI 气泡同步展示当前 Agent 的图标与名称；图标从当前 Studio 的 Agent 管理静态资源加载，无法加载时使用本地标识或缩写。
 - 图片采用近全屏无标题预览，支持双指缩放，轻点图片关闭；右下角小尺寸保存/关闭控件，下载继续使用系统保存位置。
 
-**范围边界：** 不提供终端、工作流编辑、群聊编辑、语音朗读/TTS 播放、实时语音通话、推送通知、离线聊天缓存、云中继授权码登录或模型密钥配置。模型密钥应在 Studio 网页端配置。本客户端没有收费模型调用的演示凭据。
+**范围边界：** 不提供终端、工作流编辑、群聊编辑、普通文字回复的自动 TTS 朗读、实时语音通话、推送通知、离线聊天缓存、云中继授权码登录或模型密钥配置。模型密钥应在 Studio 网页端配置。本客户端没有收费模型调用的演示凭据。
 
 ## 界面预览
 
-以下图片由当前源码的真实 Flutter 组件重新渲染（测试数据，不是真机截图），展示输入框内模型/思考选择、紧凑任务列表、悬浮阅读入口、多服务器和全屏图片预览。生成步骤、全部场景及验证边界见 [截图说明](docs/screenshots/README.md)。
+以下图片由当前源码的真实 Flutter 组件重新渲染（测试数据，不是真机截图），展示输入框内模型/思考选择、紧凑任务列表、悬浮阅读入口、多服务器、全屏图片预览、动态图标 Agent 选择和 Agent 任务计划。生成步骤、全部场景及验证边界见 [截图说明](docs/screenshots/README.md)。
 
 <p>
+  <img src="docs/screenshots/task-plan.png" width="230" alt="轻量折叠任务计划" />
+  <img src="docs/screenshots/task-plan-expanded.png" width="230" alt="展开查看步骤与完成进度" />
   <img src="docs/screenshots/servers.png" width="230" alt="多服务器配置与切换" />
   <img src="docs/screenshots/image-preview.png" width="230" alt="无标题全屏图片预览" />
   <img src="docs/screenshots/login.png" width="230" alt="登录页" />
   <img src="docs/screenshots/home.png" width="230" alt="新建对话" />
+  <img src="docs/screenshots/agents.png" width="230" alt="服务端已安装 Agent 图标选择列表" />
   <img src="docs/screenshots/chat.png" width="230" alt="对话页" />
   <img src="docs/screenshots/reasoning.png" width="230" alt="思考深度选择" />
   <img src="docs/screenshots/history-tasks.png" width="230" alt="紧凑历史列表和任务状态" />
@@ -81,7 +85,7 @@ flutter run
 
 **语音注意：** TTS 是语音合成，不能替代 STT。请在 Studio 当前 Profile 配置并激活服务端 STT；`browser` 识别不用于移动端。麦克风按钮在配置缺失时会说明原因，点击时重新检测配置。
 
-**Codex 注意：** 需在服务端安装并配置 Codex；客户端只负责选择和协议接入，不会在手机执行 CLI。工作流/群聊/全局 Agent 会话仍只读。
+**Agent 注意：** 外部 Agent 需在服务端安装并配置；已安装不代表模型凭据或运行环境一定可用。客户端只负责选择和协议接入，不会在手机执行 CLI；未知协议的 Agent 不会被错误路由为其他 Agent。工作流/群聊/全局 Agent 会话仍只读。
 
 详见 [服务配置](docs/server-setup.md)。
 

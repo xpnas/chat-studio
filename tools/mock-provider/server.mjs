@@ -34,6 +34,34 @@ const server = http.createServer(async (req, res) => {
   const longResume = last.includes('LONG_FOREGROUND');
   const answer = longResume ? Array.from({length: 100}, (_, i) => `[${String(i).padStart(3, '0')}]`).join('') : '你好！这是本地协议自测回复。流式连接正常。';
   const base = {id:'chatcmpl-local-test',created:Math.floor(Date.now()/1000),model:'chatstudio-test'};
+  // Exercise Studio's real update_plan tool and persistence, not fabricated
+  // socket events. Only this sentinel activates tool calls in the fixture.
+  if (last.includes('TASK_PLAN_CONTRACT')) {
+    const start = body.messages.findLastIndex(m => m.role === 'user');
+    const updates = body.messages.slice(start + 1).filter(m => m.role === 'tool').length;
+    if (updates < 2) {
+      const call = {id:`plan-fixture-${updates}`,type:'function',function:{name:'update_plan',arguments:JSON.stringify({
+        explanation:'Local task-plan contract verification',
+        plan:[
+          {id:'inspect',step:'Inspect the contract',status:'completed'},
+          {id:'verify',step:'Verify reconnect and persistence',status:updates === 0 ? 'in_progress' : 'completed'},
+        ],
+      })}};
+      // Give the mobile test time to disconnect after the first committed plan.
+      if (updates === 1) await new Promise(resolve => setTimeout(resolve, 2500));
+      if (!body.stream) {
+        res.setHeader('Content-Type','application/json');
+        res.end(JSON.stringify({...base,object:'chat.completion',choices:[{index:0,message:{role:'assistant',content:null,tool_calls:[call]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:20,total_tokens:30}}));
+      } else {
+        res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache'});
+        for (const [delta,finish_reason] of [[{role:'assistant',tool_calls:[{index:0,...call}]},null],[{},'tool_calls']]) {
+          res.write(`data: ${JSON.stringify({...base,object:'chat.completion.chunk',choices:[{index:0,delta,finish_reason}]})}\n\n`);
+        }
+        res.end('data: [DONE]\n\n');
+      }
+      return;
+    }
+  }
   if (!body.stream) {
     res.setHeader('Content-Type','application/json');
     res.end(JSON.stringify({...base,object:'chat.completion',choices:[{index:0,message:{role:'assistant',content:answer},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:20,total_tokens:30}}));return;

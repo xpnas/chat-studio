@@ -1,4 +1,5 @@
-import 'studio_protocol.dart';
+import 'agent_catalog.dart';
+import 'task_plan.dart';
 import 'package:mime/mime.dart';
 import 'dart:convert';
 
@@ -116,9 +117,7 @@ class Conversation {
   final int updatedAt;
   bool get canContinue =>
       (agent.isEmpty ||
-          agent == 'hermes' ||
-          agent == StudioProtocol.builtInAgentId ||
-          agent == 'codex') &&
+          AgentChoice.supportedIds.contains(AgentChoice.canonicalId(agent))) &&
       !['workflow', 'group_chat', 'global_agent'].contains(source);
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
     id: text(json['id']),
@@ -232,6 +231,8 @@ class ChatMessage {
     this.runMarker = '',
     this.finishReason,
     this.hasFinishReason = false,
+    this.timestamp = 0,
+    this.taskPlan,
   });
   final String id, role, content, reasoning;
   final bool pending;
@@ -242,6 +243,8 @@ class ChatMessage {
   final String runMarker;
   final String? finishReason;
   final bool hasFinishReason;
+  final num timestamp;
+  final TaskPlan? taskPlan;
   String get renderKey => localKey ?? id;
   String get bodyText {
     var value = content;
@@ -255,13 +258,14 @@ class ChatMessage {
   }
 
   bool get visible =>
+      taskPlan != null ||
       (role == 'user' || role == 'assistant' || role == 'command') &&
-      (content.trim().isNotEmpty ||
-          reasoning.trim().isNotEmpty ||
-          attachments.isNotEmpty ||
-          tools.isNotEmpty ||
-          failure.isNotEmpty ||
-          delivery.isNotEmpty);
+          (content.trim().isNotEmpty ||
+              reasoning.trim().isNotEmpty ||
+              attachments.isNotEmpty ||
+              tools.isNotEmpty ||
+              failure.isNotEmpty ||
+              delivery.isNotEmpty);
   ChatMessage copyWith({
     String? id,
     String? content,
@@ -287,9 +291,12 @@ class ChatMessage {
     runMarker: runMarker ?? this.runMarker,
     finishReason: finishReason,
     hasFinishReason: hasFinishReason,
+    timestamp: timestamp,
+    taskPlan: taskPlan,
   );
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
     id: '${json['id'] ?? json['message_id'] ?? ''}',
+    timestamp: json['timestamp'] is num ? (json['timestamp'] as num) * 1000 : 0,
     role: text(json['display_role']).isNotEmpty
         ? text(json['display_role'])
         : text(json['role']),
@@ -316,7 +323,14 @@ class ChatMessage {
 }
 
 class MessagePage {
-  const MessagePage(this.messages, this.offset, this.total, this.hasMore);
+  const MessagePage(
+    this.messages,
+    this.offset,
+    this.total,
+    this.hasMore, {
+    this.taskPlans = const [],
+  });
+  final List<TaskPlan> taskPlans;
   final List<ChatMessage> messages;
   final int offset, total;
   final bool hasMore;

@@ -202,8 +202,11 @@ void main() {
     seed(h, count: 1);
     var requests = 0;
     h.override = (r) async {
-      requests++;
-      return page(1, more: false);
+      if (r.url.path.endsWith('/messages/paginated')) {
+        requests++;
+        return page(1, more: false);
+      }
+      return h.response(r);
     };
     h.transport.receive('disconnected', {});
     await tester.pumpWidget(

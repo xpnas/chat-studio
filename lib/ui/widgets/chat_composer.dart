@@ -285,7 +285,7 @@ class _ChatComposerState extends State<ChatComposer>
     final operation = ++_operation;
     setState(() => _phase = '准备录音');
     try {
-      await c.refreshCapabilities();
+      await c.refreshCapabilities(includeAgents: false);
       if (!_valid(operation)) return;
       if (c.sttProvider == null) throw StateError(c.voiceHint);
       await _media.startRecording();

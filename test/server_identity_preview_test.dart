@@ -263,13 +263,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AgentAvatar), findsNWidgets(2));
       expect(find.text('Codex'), findsOneWidget);
-      final images = tester.widgetList<Image>(find.byType(Image));
+      final iconRequests = h.requests
+          .where((r) => r.url.path.startsWith('/coding-agents/'))
+          .toList();
       expect(
-        images.every(
-          (i) => (i.image as NetworkImage).url.endsWith('codex-openai.png'),
-        ),
-        isTrue,
+        iconRequests,
+        hasLength(1),
+        reason: 'header and bubble share cached icon',
       );
+      expect(iconRequests.single.url.path, '/coding-agents/codex-openai.png');
+      expect(iconRequests.single.headers.containsKey('authorization'), false);
       expect(find.byType(MessageBubble), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

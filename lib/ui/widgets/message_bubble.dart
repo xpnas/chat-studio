@@ -1,3 +1,4 @@
+import 'task_plan_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../state/app_controller.dart';
@@ -83,6 +84,21 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!message.visible) return const SizedBox.shrink();
+    if (message.taskPlan != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: TaskPlanCard(
+              key: ValueKey(message.taskPlan!.key),
+              plan: message.taskPlan!,
+            ),
+          ),
+        ),
+      );
+    }
     final colors = Theme.of(context).colorScheme, user = message.role == 'user';
     return RepaintBoundary(
       child: Padding(

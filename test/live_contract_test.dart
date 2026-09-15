@@ -19,6 +19,162 @@ import 'package:chatstudio/data/audio_transcription.dart';
 void main() {
   final server = Platform.environment['CHATSTUDIO_TEST_SERVER'];
   test(
+    'real authenticated availability matches mobile selectable Agent catalog',
+    () async {
+      final c = AppController(
+        storage: _MultiDeviceStorage('agent-catalog-contract'),
+      );
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        final snapshot = await c.api!.request('/api/agents/availability');
+        final expected = asList(snapshot['agents'])
+            .map(asMap)
+            .where(
+              (a) => a['installed'] == true && a['source'] != 'not-installed',
+            )
+            .map((a) => a['id'])
+            .toSet();
+        expect(c.availableAgents.map((a) => a.id).toSet(), expected);
+        expect(c.agentsLoaded, true);
+        expect(c.agentsError, isNull);
+        expect(c.availableAgents, isNotEmpty);
+        await c.refreshAgents();
+        expect(c.availableAgents.map((a) => a.id).toSet(), expected);
+      } finally {
+        c.dispose();
+      }
+    },
+    skip: server == null,
+    timeout: const Timeout(Duration(minutes: 1)),
+  );
+  test(
+    'real task plan survives network loss, completion and fresh history',
+    () async {
+      final transport = _DisconnectableTransport();
+      final c = AppController(
+        storage: _MultiDeviceStorage('task-plan-contract'),
+        transport: transport,
+      );
+      AppController? reader;
+      String? sid;
+      Future<void> until(bool Function() condition) async {
+        final end = DateTime.now().add(const Duration(seconds: 40));
+        while (!condition()) {
+          if (DateTime.now().isAfter(end)) {
+            throw StateError(
+              'task plan timeout: ${c.error}, plans=${c.timeline.taskPlans.length}',
+            );
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      }
+
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        await until(() => c.canSend);
+        expect(c.send('TASK_PLAN_CONTRACT'), true);
+        sid = c.sessionId;
+        await until(() => c.timeline.taskPlans.isNotEmpty);
+        final first = c.timeline.taskPlans.single;
+        expect(first.completed, 1);
+        expect(first.currentStep, isNotNull);
+        c.onBackground();
+        final resumes = transport.resumes;
+        transport.cutNetwork();
+        await Future<void>.delayed(const Duration(seconds: 4));
+        expect(c.timeline.taskPlans.single.revision, first.revision);
+        c.onForeground();
+        await until(
+          () =>
+              transport.resumes > resumes &&
+              !c.syncing &&
+              !c.working &&
+              !c.loadingMessages,
+        );
+        final done = c.timeline.taskPlans.single;
+        expect(done.revision, greaterThan(first.revision));
+        expect(done.executionState, 'ended');
+        expect(done.isComplete, true);
+        expect(
+          c.timeline.displayMessages.where((m) => m.taskPlan != null).length,
+          1,
+        );
+        final body = c.timeline.messages
+            .where((m) => m.role == 'assistant')
+            .map((m) => m.content)
+            .join();
+        expect(body, '你好！这是本地协议自测回复。流式连接正常。');
+        final page = await c.api!.messages(sid!);
+        expect(page.taskPlans.single.revision, done.revision);
+        expect(page.taskPlans.single.isComplete, true);
+        reader = AppController(
+          storage: _MultiDeviceStorage('task-plan-history'),
+        );
+        await reader.initialize();
+        expect(
+          await reader.login(
+            server,
+            'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        await reader.openConversation(
+          Conversation(id: sid, title: 'Plan history'),
+        );
+        await until(
+          () =>
+              !reader!.syncing &&
+              !reader.loadingMessages &&
+              reader.timeline.taskPlans.isNotEmpty,
+        );
+        expect(reader.timeline.taskPlans.single.revision, done.revision);
+        expect(reader.timeline.taskPlans.single.isComplete, true);
+        for (var i = 0; i < 2; i++) {
+          final n = transport.resumes;
+          c.onBackground();
+          transport.cutNetwork();
+          c.onForeground();
+          await until(() => transport.resumes > n && !c.syncing);
+          expect(c.timeline.taskPlans.length, 1);
+          expect(
+            c.timeline.messages
+                .where((m) => m.role == 'assistant')
+                .map((m) => m.content)
+                .join(),
+            body,
+          );
+        }
+        expect(transport.runs, 1);
+      } finally {
+        reader?.dispose();
+        if (sid != null) await c.api?.delete(sid);
+        c.dispose();
+      }
+    },
+    skip: server == null,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+  test(
     'real foreground resume after server 200-event buffer truncation keeps full text',
     () async {
       final transport = _DisconnectableTransport();
@@ -243,10 +399,28 @@ void main() {
           isTrue,
         );
         await until(() => c.canSend);
-        c.chooseEngine('hermes');
-        expect(c.send('/usage'), isTrue);
-        final commandSession = c.sessionId!;
+        // The isolated server deliberately has no Hermes runtime installed.
+        // Seed an existing Hermes session via the real REST API: server-side
+        // slash commands still work, but the new-chat picker must NOT offer it.
+        final commandSession =
+            'command-contract-${DateTime.now().microsecondsSinceEpoch}';
+        await c.api!.request(
+          '/api/studio/sessions/$commandSession/workspace',
+          method: 'POST',
+          body: {'workspace': ''},
+        );
         sid = commandSession;
+        await c.openConversation(
+          Conversation(
+            id: commandSession,
+            title: '',
+            profile: c.profile,
+            agent: 'hermes',
+          ),
+        );
+        await until(() => c.canSend);
+        expect(c.engine, 'hermes');
+        expect(c.send('/usage'), isTrue);
         await until(
           () => c.timeline.messages.any(
             (m) => m.role == 'command' && m.content.startsWith('Usage:'),

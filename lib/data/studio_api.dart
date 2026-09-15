@@ -1,3 +1,4 @@
+import 'task_plan.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -17,6 +18,67 @@ class StudioApi {
   void Function()? onUnauthorized;
   final _images = <String, Uint8List>{};
   int _imageBytes = 0;
+
+  final _agentIcons = <String, Future<Uint8List?>>{};
+  final _failedAgentIcons = <String>{};
+  void retryAgentIcons() {
+    for (final file in _failedAgentIcons) {
+      _agentIcons.remove(file);
+    }
+    _failedAgentIcons.clear();
+  }
+
+  Future<Uint8List?> agentIcon(String file) => _agentIcons.putIfAbsent(
+    file,
+    () => _loadAgentIcon(file).then((bytes) {
+      if (bytes == null) _failedAgentIcons.add(file);
+      return bytes;
+    }),
+  );
+  Future<Uint8List?> _loadAgentIcon(String file) async {
+    // Static Agent Manager assets are public. Never attach credentials or follow
+    // redirects, and bound the response before decoding an icon.
+    if (!RegExp(r'^[a-z0-9_-]+\.(png|svg)$').hasMatch(file)) return null;
+    try {
+      final request = http.Request(
+        'GET',
+        address.uri.resolve('/coding-agents/$file'),
+      )..followRedirects = false;
+      final response = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        await response.stream.listen(null).cancel();
+        return null;
+      }
+      final bytes = BytesBuilder(copy: false);
+      await for (final part in response.stream.timeout(
+        const Duration(seconds: 10),
+      )) {
+        if (bytes.length + part.length > 512 * 1024) return null;
+        bytes.add(part);
+      }
+      final result = bytes.takeBytes();
+      if (result.isEmpty) return null;
+      if (file.endsWith('.svg') &&
+          !RegExp(
+            r'<svg(?:\s|>)',
+          ).hasMatch(utf8.decode(result, allowMalformed: false))) {
+        return null;
+      }
+      if (file.endsWith('.png') &&
+          (result.length < 8 ||
+              result[0] != 137 ||
+              result[1] != 80 ||
+              result[2] != 78 ||
+              result[3] != 71)) {
+        return null;
+      }
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<Map<String, dynamic>> request(
     String path, {
@@ -549,6 +611,7 @@ class StudioApi {
       integer(data['offset']) + rows.length,
       integer(data['total']),
       flag(data['hasMore']),
+      taskPlans: TaskPlan.parseList(data['taskPlans'], sessionId: id),
     );
   }
 

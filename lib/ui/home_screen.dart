@@ -1,4 +1,4 @@
-import '../data/studio_protocol.dart';
+import 'widgets/agent_picker.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
@@ -437,12 +437,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Stack(
                 key: _stage,
                 children: [
-                  if (c.timeline.messages.isEmpty &&
-                      !c.loadingMessages &&
-                      !c.hasMoreMessages)
+                  if (rows.isEmpty && !c.loadingMessages && !c.hasMoreMessages)
                     _welcome(context)
                   else if (c.loadingMessages &&
-                      c.timeline.messages.isEmpty &&
+                      rows.isEmpty &&
                       !c.hasMoreMessages)
                     const Center(child: CircularProgressIndicator.adaptive())
                   else
@@ -741,60 +739,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 26),
-            Wrap(
-              alignment: WrapAlignment.center,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  '引擎',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                DropdownButton<String>(
-                  value: c.engine,
-                  isExpanded: true,
-                  underline: const SizedBox.shrink(),
-                  isDense: true,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontSize: 13,
-                    color: colors.onSurface,
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                      value: StudioProtocol.builtInAgentId,
-                      child: Text(
-                        StudioProtocol.builtInAgentLabel,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const DropdownMenuItem(
-                      value: 'hermes',
-                      child: Text(
-                        'Hermes Agent',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'codex',
-                      child: Text(
-                        c.codexInstalled == false
-                            ? 'Codex · 服务端未安装'
-                            : 'Codex Agent',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                  onChanged: c.working
-                      ? null
-                      : (v) {
-                          if (v != null) c.chooseEngine(v);
-                        },
-                ),
-              ],
-            ),
+            Center(child: AgentPickerButton(controller: c)),
             if (c.models.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 16),

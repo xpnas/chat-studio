@@ -120,6 +120,14 @@ class TestHarness {
           {'name': 'work'},
         ],
       },
+      '/api/agents/availability' => {
+        'revision': 1,
+        'agents': [
+          {'id': 'ekko-agent', 'installed': true, 'source': 'built-in'},
+          {'id': 'hermes', 'installed': true, 'source': 'managed-runtime'},
+          {'id': 'codex', 'installed': true, 'source': 'user-cli'},
+        ],
+      },
       '/api/hermes/available-models' => {
         'default': 'model-a',
         'default_provider': 'test',

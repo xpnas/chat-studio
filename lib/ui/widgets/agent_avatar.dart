@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import '../../data/agent_catalog.dart';
 import '../../data/studio_protocol.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -10,35 +12,33 @@ class AgentIdentity {
   const AgentIdentity(this.name, this.file);
   final String name;
   final String? file;
-  static AgentIdentity resolve(String id) => switch (id.trim().toLowerCase()) {
-    '' ||
-    StudioProtocol.builtInAgentAlias ||
-    StudioProtocol.builtInAgentLegacyAlias ||
-    StudioProtocol.builtInAgentId => const AgentIdentity(
-      StudioProtocol.builtInAgentName,
-      StudioProtocol.builtInAgentIcon,
-    ),
-    'hermes' => const AgentIdentity('Hermes', 'hermes.png'),
-    'codex' => const AgentIdentity('Codex', 'codex-openai.png'),
-    'claude' ||
-    'claude-code' => const AgentIdentity('Claude', 'claude-code.svg'),
-    'pi' => const AgentIdentity('Pi', 'pi.svg'),
-    'grok' => const AgentIdentity('Grok', 'grok.svg'),
-    'opencode' => const AgentIdentity('OpenCode', 'opencode.png'),
-    _ => AgentIdentity(id.trim(), null),
-  };
+  static AgentIdentity resolve(String id) {
+    final meta = AgentChoice.metadata(
+      id.isEmpty ? StudioProtocol.builtInAgentId : id,
+    );
+    return AgentIdentity(meta.name, meta.icon);
+  }
+
   static AgentIdentity current(AppController? c) =>
       resolve(c?.current?.agent ?? c?.engine ?? '');
 }
 
 class AgentAvatar extends StatelessWidget {
-  const AgentAvatar({super.key, required this.controller, this.size = 22});
+  const AgentAvatar({
+    super.key,
+    required this.controller,
+    this.size = 22,
+    this.agentId,
+  });
   final AppController? controller;
   final double size;
+  final String? agentId;
   @override
   Widget build(BuildContext context) {
-    final identity = AgentIdentity.current(controller);
-    final origin = controller?.api?.address.uri;
+    final identity = agentId == null
+        ? AgentIdentity.current(controller)
+        : AgentIdentity.resolve(agentId!);
+
     final fallback = identity.name == StudioProtocol.builtInAgentName
         ? ChatStudioMark(size: size, label: StudioProtocol.builtInAgentName)
         : Container(
@@ -55,7 +55,8 @@ class AgentAvatar extends StatelessWidget {
               ),
             ),
           );
-    final url = origin?.resolve('/coding-agents/${identity.file}').toString();
+    final api = controller?.api;
+    final file = identity.file;
     return Semantics(
       label: '${identity.name} Agent',
       image: true,
@@ -65,26 +66,29 @@ class AgentAvatar extends StatelessWidget {
           dimension: size,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(size * .2),
-            child: identity.file == null || url == null
+            child: file == null || api == null
                 ? fallback
-                : identity.file!.endsWith('.svg')
-                ? SvgPicture.network(
-                    url,
-                    key: ValueKey(url),
-                    width: size,
-                    height: size,
-                    placeholderBuilder: (_) => fallback,
-                    errorBuilder: (_, _, _) => fallback,
-                  )
-                : Image.network(
-                    url,
-                    key: ValueKey(url),
-                    width: size,
-                    height: size,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => fallback,
-                    loadingBuilder: (_, child, loading) =>
-                        loading == null ? child : fallback,
+                : FutureBuilder<Uint8List?>(
+                    key: ValueKey('${api.address.value}:$file'),
+                    future: api.agentIcon(file),
+                    builder: (_, snapshot) {
+                      final bytes = snapshot.data;
+                      if (bytes == null) return fallback;
+                      return file.endsWith('.svg')
+                          ? SvgPicture.memory(
+                              bytes,
+                              width: size,
+                              height: size,
+                              errorBuilder: (_, _, _) => fallback,
+                            )
+                          : Image.memory(
+                              bytes,
+                              width: size,
+                              height: size,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => fallback,
+                            );
+                    },
                   ),
           ),
         ),

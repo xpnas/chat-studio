@@ -1,15 +1,17 @@
 # 验证记录与复现
 
-## 当前验证（2026-09-15，1.0.18）
+## 当前验证（2026-09-16，1.0.19）
 
-- `python scripts/verify-app-identity.py` 通过，检查 Dart / Android / iOS 标识、原生文件导出通道、存储键和客户端源码/路径命名；CI 已接入。
-- 客户端全量测试：**219 项通过，8 项按环境默认跳过**；新增 7 项命名回归，覆盖安全存储、文件导出通道及上游 Agent 身份保持不变。
-- 静态分析：`flutter analyze --fatal-infos` 无问题；格式门禁通过。
-- 隔离官方 Studio v1.0.3：**7 项真实 HTTP / Socket.IO 联调通过**，包括断线恢复、多会话、附件上传、STT / TTS 等；测试环境变量与模型夹具已统一为 `CHATSTUDIO_*` / `chatstudio-test`。
-- 截图测试：**1 项通过**，重新渲染 14 张实际 Flutter 组件预览，重命名不改变既有布局；[截图说明与复现](screenshots/README.md)。
-- Android 构建、签名和校验信息见 [本次重构记录](release-1.0.18.md)。
+- 客户端全量测试：**249 项通过，10 项按环境默认跳过**（9 项真实服务联调、1 项本地字体预览）；新增 16 项任务计划、14 项动态 Agent 目录/图标/路由单元与组件回归。
+- 任务计划覆盖严格契约解析、递增 revision、跨会话隔离、多计划排序、历史分页、断线快照/事件回放、迟到终态、未完成步骤保护、展开状态保持、320px / 1.8 倍字号和仅计划无正文场景。
+- 静态分析：`flutter analyze --fatal-infos` 无问题；Dart 格式、应用标识与命名门禁通过。
+- 隔离官方 Studio v1.0.3：**9 项真实 HTTP / Socket.IO 联调通过**。新增普通用户 Agent availability 目录一致性，以及真实 `update_plan` 工具调用、断网期间完成、恢复同步、REST 持久化、第二客户端重读历史与多次重连去重。模型响应由本地确定性 Provider 提供，计划工具、数据库和 Socket.IO 是真实上游实现。
+- 原有后台重复内容回归继续通过，包含超过服务端 200 事件缓冲的连续文本恢复；多会话、附件、STT / TTS 原有协议回归通过。
+- 截图测试：**1 项通过**，重新渲染 19 张实际 Flutter 组件预览，其中 4 张为任务计划、1 张为动态 Agent 选择；已检查浅深主题和展开布局。[截图说明与复现](screenshots/README.md)。
+- 修正两个因协议改进而过时的测试假设：历史分页测试只统计分页 HTTP，不把新增图标请求误计为分页；隔离环境没有安装 Hermes，命令回归改用真实 REST 创建既有 Hermes 会话，不绕过新建列表的安装检测。
+- Android 构建、签名和校验信息见 [本次交付记录](release-1.0.19.md)。
 
-原有后台重复内容回归继续通过，包括生成中实际断开并恢复 socket；桥接事件使用固定上游契约夹具，不代表运行了真实 Codex CLI / Hermes Python runtime。未做 Android 真机或模拟器端到端验收，也未本地编译 iOS；未推送远端或运行 GitHub Actions。
+任务计划联调确认内置 Agent 的真实协议，不代表已运行 Codex CLI / Hermes Python runtime 或它们一定输出同类计划事件。未做 Android 真机或模拟器端到端验收，也未本地编译 iOS；未推送远端或运行 GitHub Actions。
 
 Windows 可复现隔离联调（要求上游已安装 Node 依赖，脚本核对固定 SHA）：
 

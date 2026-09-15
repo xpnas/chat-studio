@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -86,6 +87,32 @@ void main() {
       h.controller.selectedModel = h.controller.models.first;
       await tester.pumpAndSettle();
       await capture('home');
+      h.override = (r) async => r.url.path == '/api/agents/availability'
+          ? http.Response(
+              jsonEncode({
+                'agents': [
+                  for (final id in [
+                    'ekko-agent',
+                    'hermes',
+                    'claude-code',
+                    'codex',
+                    'pi',
+                    'grok',
+                    'opencode',
+                  ])
+                    {'id': id, 'installed': true},
+                ],
+              }),
+              200,
+            )
+          : h.response(r);
+      await tester.tap(find.byKey(const ValueKey('agent-picker')));
+      await tester.pumpAndSettle();
+      await capture('agents');
+      h.override = null;
+      Navigator.of(tester.element(find.text('选择 Agent'))).pop();
+      await tester.pumpAndSettle();
+
       h.controller.sessionId = 'preview';
       h.controller.current = const Conversation(
         id: 'preview',
@@ -335,6 +362,75 @@ void main() {
         await tester.pump(const Duration(milliseconds: 350));
       }
       await capture('servers');
+
+      Navigator.of(tester.element(find.byType(Scaffold).first)).pop();
+      await tester.pumpAndSettle();
+      h.controller.timeline.clear();
+      h.controller.sessionId = 'preview';
+      h.controller.current = const Conversation(
+        id: 'preview',
+        title: '让任务进度一目了然',
+      );
+      h.controller.timeline.replace(const [
+        ChatMessage(
+          id: 'plan-user',
+          role: 'user',
+          content: '请分析服务端的任务计划协议，并在手机端实现进度展示。',
+        ),
+        ChatMessage(
+          id: 'plan-answer',
+          role: 'assistant',
+          runMarker: 'plan-preview',
+          content: '已经确认服务端提供结构化的任务计划。\n\n我会把步骤和进度放进轻量卡片中，默认折叠，聊天正文仍是阅读重点。',
+        ),
+      ]);
+      Map<String, dynamic> previewPlan(
+        int revision,
+        String state,
+        bool complete,
+      ) => {
+        'session_id': 'preview',
+        'run_id': 'plan-preview',
+        'plan_id': 'mobile-plan',
+        'revision': revision,
+        'execution_state': state,
+        'created_at': 2000,
+        'updated_at': 2000 + revision,
+        'explanation': '只依据服务端已确认的进度更新，不把运行结束当作全部完成。',
+        'plan': [
+          {'id': 'inspect', 'step': '梳理事件与历史记录协议', 'status': 'completed'},
+          {
+            'id': 'build',
+            'step': '实现移动端计划卡片与状态同步',
+            'status': complete ? 'completed' : 'in_progress',
+          },
+          {
+            'id': 'test',
+            'step': '验证断线恢复与历史记录',
+            'status': complete ? 'completed' : 'pending',
+          },
+        ],
+      };
+      h.controller.timeline.apply(
+        'plan.updated',
+        previewPlan(1, 'running', false),
+      );
+      h.controller.dismissError();
+      await tester.pumpAndSettle();
+      await capture('task-plan');
+      await tester.tap(find.text('任务计划'));
+      await tester.pumpAndSettle();
+      await capture('task-plan-expanded');
+      await h.controller.setTheme('dark');
+      await tester.pumpAndSettle();
+      await capture('task-plan-dark');
+      h.controller.timeline.apply(
+        'plan.updated',
+        previewPlan(2, 'ended', true),
+      );
+      await h.controller.setTheme('light');
+      await tester.pumpAndSettle();
+      await capture('task-plan-completed');
 
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
