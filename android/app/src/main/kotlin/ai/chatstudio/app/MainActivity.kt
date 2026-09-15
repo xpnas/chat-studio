@@ -1,4 +1,4 @@
-package ai.ekkolearn.ekko_app
+package ai.chatstudio.app
 
 import android.app.Activity
 import android.content.Intent
@@ -15,7 +15,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ai.ekkolearn.ekko_app/file_export")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ai.chatstudio.app/file_export")
             .setMethodCallHandler { call, result ->
                 if (call.method != "save") { result.notImplemented(); return@setMethodCallHandler }
                 if (pending != null) { result.error("busy", "已有文件正在保存", null); return@setMethodCallHandler }

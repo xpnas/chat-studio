@@ -1,3 +1,4 @@
+import '../data/studio_protocol.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
@@ -142,7 +143,7 @@ class AppController extends ChangeNotifier {
   String get reasoningEffort => _view.reasoningEffort;
   set reasoningEffort(String value) => _view.reasoningEffort = value;
   ModelChoice? _newChatModel;
-  String _newChatEngine = 'ekko-agent', _newChatReasoning = '';
+  String _newChatEngine = StudioProtocol.builtInAgentId, _newChatReasoning = '';
   String? workspaceNotice;
   bool readingHintSeen = true;
   String? get retryInput => _view.retryInput;
@@ -512,9 +513,13 @@ class AppController extends ChangeNotifier {
           ? ''
           : normalizeReasoningEffort(remembered?['reasoning_effort']);
       _newChatEngine =
-          ['ekko-agent', 'hermes', 'codex'].contains(remembered?['engine'])
+          [
+            StudioProtocol.builtInAgentId,
+            'hermes',
+            'codex',
+          ].contains(remembered?['engine'])
           ? remembered!['engine'] as String
-          : 'ekko-agent';
+          : StudioProtocol.builtInAgentId;
       workspaceNotice = remembered?['model'] != null && storedModel == null
           ? '上次使用的模型已不可用，新对话已改用服务端默认模型。'
           : null;
@@ -526,9 +531,10 @@ class AppController extends ChangeNotifier {
       await refreshCapabilities();
       if (!_valid(epoch)) return;
       if (_newChatEngine == 'codex' && codexInstalled == false) {
-        _newChatEngine = 'ekko-agent';
+        _newChatEngine = StudioProtocol.builtInAgentId;
         if (sessionId == null) engine = _newChatEngine;
-        workspaceNotice = '服务端 Codex 尚未安装，新对话已改用 Ekko Agent。';
+        workspaceNotice =
+            '服务端 Codex 尚未安装，新对话已改用 ${StudioProtocol.builtInAgentLabel}。';
       }
       await _persistSession();
       if (!_valid(epoch)) return;
@@ -725,7 +731,8 @@ class AppController extends ChangeNotifier {
     );
     _view = state;
     current = conversation;
-    engine = ['ekko-agent', 'codex'].contains(conversation.agent)
+    engine =
+        [StudioProtocol.builtInAgentId, 'codex'].contains(conversation.agent)
         ? conversation.agent
         : 'hermes';
     if (state.model == null) {
@@ -879,7 +886,7 @@ class AppController extends ChangeNotifier {
   void chooseEngine(String value) {
     if (sessionId == null &&
         !working &&
-        ['ekko-agent', 'hermes', 'codex'].contains(value)) {
+        [StudioProtocol.builtInAgentId, 'hermes', 'codex'].contains(value)) {
       engine = value;
       unawaited(_rememberChoice());
       _notify();
@@ -1636,7 +1643,7 @@ class AppController extends ChangeNotifier {
     profiles = [];
     models = [];
     _newChatModel = null;
-    _newChatEngine = 'ekko-agent';
+    _newChatEngine = StudioProtocol.builtInAgentId;
     _newChatReasoning = '';
     workspaceNotice = null;
     conversations = [];

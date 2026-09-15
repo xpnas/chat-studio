@@ -1,8 +1,8 @@
 // Only for a newly initialized, disposable local server. Does not log tokens.
-const origin = process.env.EKKO_TEST_SERVER;
+const origin = process.env.CHATSTUDIO_TEST_SERVER;
 if (origin !== 'http://127.0.0.1:18647') throw Error('Fixture bootstrap requires loopback port 18647');
-const password = process.env.EKKO_TEST_PASSWORD;
-if (!password || password.length < 16) throw Error('Set a random EKKO_TEST_PASSWORD (16+ chars)');
+const password = process.env.CHATSTUDIO_TEST_PASSWORD;
+if (!password || password.length < 16) throw Error('Set a random CHATSTUDIO_TEST_PASSWORD (16+ chars)');
 let login;
 for (let attempt = 0; attempt < 90; attempt++) {
   try {

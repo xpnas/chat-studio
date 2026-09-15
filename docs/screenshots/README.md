@@ -1,6 +1,6 @@
 # 界面截图与复现
 
-更新时间：2026-09-15。对应源码版本：`1.0.17+18`。
+更新时间：2026-09-15。对应源码版本：`1.0.18+19`。
 
 这些 PNG 由 `test/preview_test.dart` 直接渲染应用的真实 Flutter 组件，使用确定性测试数据。不是设计稿贴图，也不是真机截图。更新界面后应重新运行此测试，不能只替换 README 文案。
 
@@ -29,19 +29,19 @@
 PowerShell（Windows 示例）：
 
 ```powershell
-$env:EKKO_PREVIEW_FONT = 'C:\Windows\Fonts\msyh.ttc'
+$env:CHATSTUDIO_PREVIEW_FONT = 'C:\Windows\Fonts\msyh.ttc'
 flutter test test/preview_test.dart --reporter expanded
-Remove-Item Env:EKKO_PREVIEW_FONT
+Remove-Item Env:CHATSTUDIO_PREVIEW_FONT
 ```
 
 macOS / Linux：
 
 ```sh
-EKKO_PREVIEW_FONT=/absolute/path/to/local-cjk-font.ttf \
+CHATSTUDIO_PREVIEW_FONT=/absolute/path/to/local-cjk-font.ttf \
   flutter test test/preview_test.dart --reporter expanded
 ```
 
-测试加载本地字体与应用 Material Icons，覆盖本目录的 14 张 PNG。没有配置 `EKKO_PREVIEW_FONT` 时，此测试默认跳过，不影响普通单元测试。不同字体/Flutter 引擎可能带来字形或抗锯齿差异，不把跨机器像素完全一致作为验收条件。
+测试加载本地字体与应用 Material Icons，覆盖本目录的 14 张 PNG。没有配置 `CHATSTUDIO_PREVIEW_FONT` 时，此测试默认跳过，不影响普通单元测试。不同字体/Flutter 引擎可能带来字形或抗锯齿差异，不把跨机器像素完全一致作为验收条件。
 
 生成后检查中文是否完整、标题/模型是否合理、浅深主题对比度、弹层选中项、输入框和阅读入口是否被裁切。README 引用其中的主要场景，本目录保留完整浅深主题及错误状态预览。
 

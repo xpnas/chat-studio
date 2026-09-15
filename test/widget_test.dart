@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ekko_app/main.dart';
+import 'package:chatstudio/main.dart';
 import 'support.dart';
 
 void main() {
@@ -14,7 +14,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     expect(find.text('你的灵感，\n随时接续。'), findsOneWidget);
     expect(find.text('Chat Studio'), findsOneWidget);
@@ -34,7 +34,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pump();
       expect(find.text('今天，想聊些什么？'), findsOneWidget);
@@ -76,7 +76,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

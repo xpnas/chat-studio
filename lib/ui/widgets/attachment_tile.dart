@@ -276,7 +276,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
         result = await widget.saveFile!(name, bytes, widget.file.mimeType);
       } else {
         final root = await getTemporaryDirectory();
-        directory = await root.createTemp('ekko-download-');
+        directory = await root.createTemp('chatstudio-download-');
         final file = await _api!.downloadAttachment(
           widget.file,
           directory,

@@ -4,10 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/speech_playback.dart';
-import 'package:ekko_app/ui/widgets/attachment_tile.dart';
-import 'package:ekko_app/ui/widgets/message_bubble.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/speech_playback.dart';
+import 'package:chatstudio/ui/widgets/attachment_tile.dart';
+import 'package:chatstudio/ui/widgets/message_bubble.dart';
 import 'support.dart';
 
 class FileSpeaker implements SpeechOutput, FileSpeechOutput {
@@ -63,7 +63,9 @@ void main() {
   test(
     'existing audio uses download not TTS, file playback and stop cleanup',
     () async {
-      final root = await Directory.systemTemp.createTemp('ekko-audio-test-');
+      final root = await Directory.systemTemp.createTemp(
+        'chatstudio-audio-test-',
+      );
       final out = FileSpeaker();
       final speech = SpeechPlayback(
         outputFactory: () => out,

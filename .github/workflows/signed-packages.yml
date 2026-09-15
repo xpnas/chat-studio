@@ -38,6 +38,7 @@ jobs:
           flutter-version: '3.44.9'
           channel: stable
           cache: true
+      - run: python3 scripts/verify-app-identity.py
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze --fatal-infos && flutter test
       - name: Install Android signing material
@@ -66,7 +67,7 @@ jobs:
           if-no-files-found: error
       - name: Remove temporary signing material
         if: always()
-        run: rm -f android/key.properties "$RUNNER_TEMP/ekko-upload.jks"
+        run: rm -f android/key.properties "$RUNNER_TEMP/chatstudio-upload.jks"
   ios:
     needs: contract
     if: inputs.platform == 'ios' || inputs.platform == 'both'
@@ -80,6 +81,7 @@ jobs:
           flutter-version: '3.44.9'
           channel: stable
           cache: true
+      - run: python3 scripts/verify-app-identity.py
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze --fatal-infos && flutter test
       - name: Build signed archive and export IPA

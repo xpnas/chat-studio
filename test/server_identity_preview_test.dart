@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/ui/home_screen.dart';
-import 'package:ekko_app/ui/theme.dart';
-import 'package:ekko_app/ui/widgets/agent_avatar.dart';
-import 'package:ekko_app/ui/widgets/attachment_tile.dart';
-import 'package:ekko_app/ui/widgets/message_bubble.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/ui/home_screen.dart';
+import 'package:chatstudio/ui/theme.dart';
+import 'package:chatstudio/ui/widgets/agent_avatar.dart';
+import 'package:chatstudio/ui/widgets/attachment_tile.dart';
+import 'package:chatstudio/ui/widgets/message_bubble.dart';
 import 'support.dart';
 
 void main() {
@@ -256,7 +256,7 @@ void main() {
       ]);
       await tester.pumpWidget(
         MaterialApp(
-          theme: ekkoTheme(Brightness.light),
+          theme: chatstudioTheme(Brightness.light),
           home: HomeScreen(controller: h.controller),
         ),
       );

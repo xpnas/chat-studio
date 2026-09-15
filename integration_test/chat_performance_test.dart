@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/main.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/main.dart';
 import '../test/support.dart';
 
 // Run on physical hardware in profile mode. Model/network latency is deliberately
@@ -24,7 +24,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       await binding.watchPerformance(() async {

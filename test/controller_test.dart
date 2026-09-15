@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/models.dart';
+import 'package:chatstudio/data/models.dart';
 import 'support.dart';
 
 void main() {

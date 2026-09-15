@@ -1,3 +1,4 @@
+import 'studio_protocol.dart';
 import 'package:mime/mime.dart';
 import 'dart:convert';
 
@@ -116,7 +117,7 @@ class Conversation {
   bool get canContinue =>
       (agent.isEmpty ||
           agent == 'hermes' ||
-          agent == 'ekko-agent' ||
+          agent == StudioProtocol.builtInAgentId ||
           agent == 'codex') &&
       !['workflow', 'group_chat', 'global_agent'].contains(source);
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(

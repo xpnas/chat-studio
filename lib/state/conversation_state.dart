@@ -1,3 +1,4 @@
+import '../data/studio_protocol.dart';
 import '../data/mobile_media.dart';
 import '../data/models.dart';
 import 'chat_timeline.dart';
@@ -20,7 +21,7 @@ class ConversationState {
   final timeline = ChatTimeline();
   final draft = ConversationDraft();
   ModelChoice? model;
-  String engine = 'ekko-agent', reasoningEffort = '';
+  String engine = StudioProtocol.builtInAgentId, reasoningEffort = '';
   bool syncing = false, loading = false, hasMore = false;
   int offset = 0, revision = 0, loadRequest = 0;
   String? historyPageError;

@@ -5,16 +5,16 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:ekko_app/core/server_address.dart';
-import 'package:ekko_app/data/mobile_media.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/studio_api.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/state/chat_timeline.dart';
-import 'package:ekko_app/ui/widgets/chat_composer.dart';
-import 'package:ekko_app/ui/widgets/attachment_tile.dart';
-import 'package:ekko_app/ui/widgets/reading_handle.dart';
-import 'package:ekko_app/ui/widgets/stable_markdown.dart';
+import 'package:chatstudio/core/server_address.dart';
+import 'package:chatstudio/data/mobile_media.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/studio_api.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
+import 'package:chatstudio/ui/widgets/chat_composer.dart';
+import 'package:chatstudio/ui/widgets/attachment_tile.dart';
+import 'package:chatstudio/ui/widgets/reading_handle.dart';
+import 'package:chatstudio/ui/widgets/stable_markdown.dart';
 import 'support.dart';
 
 class MeterMedia implements MediaAccess, AudioLevelSource {
@@ -446,7 +446,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       h.controller.sessionId = 'anchor';
       h.controller.timeline.replace(
@@ -606,7 +606,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       h.controller.send(
         'original',
@@ -644,7 +644,7 @@ void main() {
     final h = TestHarness();
     await h.login();
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     h.controller.send('original');
     h.transport.receive('run.failed', {
@@ -708,7 +708,7 @@ void main() {
     final h = TestHarness();
     await h.login();
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     h.controller.sessionId = 'hint';
     h.controller.timeline.replace(

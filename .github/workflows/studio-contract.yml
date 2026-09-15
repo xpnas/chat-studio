@@ -29,6 +29,8 @@ jobs:
         working-directory: studio
       - run: npx vitest run tests/server/app-connections-auth.test.ts tests/server/user-auth.test.ts
         working-directory: studio
+      - run: python3 scripts/verify-app-identity.py
+        working-directory: mobile
       - run: flutter pub get --enforce-lockfile
         working-directory: mobile
       - name: Exercise real Studio with local model fixture

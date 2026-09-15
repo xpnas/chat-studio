@@ -31,8 +31,8 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EkkoFileExport")!
-    let channel = FlutterMethodChannel(name: "ai.ekkolearn.ekko_app/file_export", binaryMessenger: registrar.messenger())
+    let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ChatStudioFileExport")!
+    let channel = FlutterMethodChannel(name: "ai.chatstudio.app/file_export", binaryMessenger: registrar.messenger())
     channel.setMethodCallHandler { [weak self] call, result in
       guard let self = self else { return }
       guard call.method == "save" else { result(FlutterMethodNotImplemented); return }

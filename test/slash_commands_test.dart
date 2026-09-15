@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/slash_commands.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/state/chat_timeline.dart';
-import 'package:ekko_app/ui/widgets/chat_composer.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/slash_commands.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
+import 'package:chatstudio/ui/widgets/chat_composer.dart';
 import 'support.dart';
 
 void main() {
@@ -227,7 +227,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       expect(
@@ -337,7 +337,7 @@ void main() {
             )
           : h.response(r);
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('message-input')), '/skill');

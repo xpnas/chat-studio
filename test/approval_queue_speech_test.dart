@@ -4,8 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/data/speech_playback.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/data/speech_playback.dart';
 import 'support.dart';
 
 Map<String, dynamic> approval(String? sid, {bool permanent = true}) => {
@@ -69,7 +69,7 @@ void main() {
       h.controller.respondToInteraction('always');
       expect(h.transport.emitted.length, n);
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pump();
       expect(find.text('永久允许'), findsNothing);

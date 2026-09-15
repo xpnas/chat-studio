@@ -3,11 +3,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/mobile_media.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/state/conversation_state.dart';
-import 'package:ekko_app/ui/widgets/conversation_activity_mark.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/mobile_media.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/state/conversation_state.dart';
+import 'package:chatstudio/ui/widgets/conversation_activity_mark.dart';
 import 'support.dart';
 
 void main() {
@@ -418,7 +418,7 @@ void main() {
       final h = TestHarness();
       final a = await startA(h);
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pump();
       await tester.tap(find.byTooltip('对话记录'));
@@ -452,7 +452,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('reasoning-button')));
@@ -472,7 +472,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pump();
       await h.controller.openConversation(b);
@@ -617,7 +617,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       h.controller.sessionId = 'long';
       h.controller.current = const Conversation(
@@ -662,7 +662,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await h.controller.openConversation(b);
       resumed(h, 'B');

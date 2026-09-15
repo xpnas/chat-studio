@@ -87,7 +87,7 @@ class SpeechPlayback extends ChangeNotifier {
     try {
       final root = await _tempDirectory();
       if (_disposed || revision != _revision) throw const ApiException('已取消播放');
-      directory = await root.createTemp('ekko-audio-');
+      directory = await root.createTemp('chatstudio-audio-');
       final downloaded = await api.downloadAttachment(
         file,
         directory,

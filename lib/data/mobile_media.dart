@@ -82,10 +82,10 @@ class NativeMediaAccess implements MediaAccess, AudioLevelSource {
   Future<void> startRecording() => _serial(() async {
     final recorder = _recorder ??= AudioRecorder();
     if (!await recorder.hasPermission()) {
-      throw StateError('麦克风权限被拒绝，请在系统设置中允许 Ekko 使用麦克风');
+      throw StateError('麦克风权限被拒绝，请在系统设置中允许 Chat Studio 使用麦克风');
     }
     final temp = await getTemporaryDirectory();
-    _audioPath = '${temp.path}/ekko-voice-${const Uuid().v4()}.wav';
+    _audioPath = '${temp.path}/chatstudio-voice-${const Uuid().v4()}.wav';
     await recorder.start(
       const RecordConfig(
         encoder: AudioEncoder.wav,

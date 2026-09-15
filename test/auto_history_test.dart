@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/main.dart';
+import 'package:chatstudio/main.dart';
 import 'support.dart';
 
 void seed(TestHarness h, {int count = 30}) {
@@ -62,7 +62,7 @@ void main() {
         return pending.future;
       };
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       expect(requests, 0);
@@ -106,7 +106,7 @@ void main() {
             : page(1, more: false);
       };
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       expect(requests, 1);
@@ -149,7 +149,7 @@ void main() {
         return page(2, more: false);
       };
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       expect(offsets, ['1', '2']);
@@ -173,7 +173,7 @@ void main() {
         return page(1, empty: true);
       };
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       expect(requests, 1);
@@ -207,7 +207,7 @@ void main() {
     };
     h.transport.receive('disconnected', {});
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     await tester.pumpAndSettle();
     expect(requests, 0);

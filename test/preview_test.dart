@@ -5,16 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/data/models.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/data/models.dart';
 import 'support.dart';
-import 'package:ekko_app/ui/server_screen.dart';
-import 'package:ekko_app/ui/widgets/attachment_tile.dart';
+import 'package:chatstudio/ui/server_screen.dart';
+import 'package:chatstudio/ui/widgets/attachment_tile.dart';
 
 // Optional deterministic UI previews, not screenshots of a physical phone.
 // Load a user-supplied CJK font locally; never redistribute the font itself.
 void main() {
-  final font = Platform.environment['EKKO_PREVIEW_FONT'];
+  final font = Platform.environment['CHATSTUDIO_PREVIEW_FONT'];
   testWidgets('render localized design previews', (tester) async {
     final previousShadows = debugDisableShadows;
     debugDisableShadows = false;
@@ -38,7 +38,7 @@ void main() {
       await tester.pumpWidget(
         RepaintBoundary(
           key: key,
-          child: EkkoApp(controller: h.controller, initialize: false),
+          child: ChatStudioApp(controller: h.controller, initialize: false),
         ),
       );
       await tester.pumpAndSettle();

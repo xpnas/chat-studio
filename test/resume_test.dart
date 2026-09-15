@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ekko_app/state/chat_timeline.dart';
-import 'package:ekko_app/data/chat_transport.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
+import 'package:chatstudio/data/chat_transport.dart';
 
 void main() {
   test('Socket.IO recovery offset is not mistaken for the event payload', () {

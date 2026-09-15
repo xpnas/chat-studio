@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:ekko_app/core/server_address.dart';
-import 'package:ekko_app/data/mobile_media.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/studio_api.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/ui/theme.dart';
-import 'package:ekko_app/ui/widgets/chat_composer.dart';
-import 'package:ekko_app/ui/widgets/message_bubble.dart';
+import 'package:chatstudio/core/server_address.dart';
+import 'package:chatstudio/data/mobile_media.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/studio_api.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/ui/theme.dart';
+import 'package:chatstudio/ui/widgets/chat_composer.dart';
+import 'package:chatstudio/ui/widgets/message_bubble.dart';
 import 'support.dart';
 
 class FakeMedia implements MediaAccess {
@@ -143,7 +143,7 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(EkkoMark), findsNothing);
+    expect(find.byType(ChatStudioMark), findsNothing);
     expect(find.text('…'), findsNothing);
     expect(find.text('内部计划').hitTestable(), findsNothing);
     await tester.tap(find.text('思考过程'));
@@ -167,7 +167,7 @@ void main() {
     h.controller.models = models;
     h.controller.selectedModel = models.last;
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     await tester.pumpAndSettle();
     expect(find.text('AI 的回答可能有误，请核实重要信息。'), findsNothing);
@@ -202,7 +202,7 @@ void main() {
     late Directory dir;
     late LocalAttachment file;
     setUp(() async {
-      dir = await Directory.systemTemp.createTemp('ekko-test-');
+      dir = await Directory.systemTemp.createTemp('chatstudio-test-');
       final f = File('${dir.path}/test.txt');
       await f.writeAsString('hello attachment');
       file = await LocalAttachment.fromPath(f.path, '需求.txt');
@@ -437,7 +437,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           MaterialApp(
-            theme: ekkoTheme(brightness),
+            theme: chatstudioTheme(brightness),
             home: const Scaffold(
               body: Column(
                 children: [

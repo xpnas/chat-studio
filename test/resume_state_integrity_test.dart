@@ -1,5 +1,5 @@
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/state/chat_timeline.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, dynamic> event(String name, Map<String, dynamic> data) => {

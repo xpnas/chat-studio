@@ -23,7 +23,7 @@ $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
 $password = [Convert]::ToBase64String($bytes)
 $settings = @{
-  EKKO_TEST_MEDIA = '1'; EKKO_TEST_SERVER = 'http://127.0.0.1:18647'; EKKO_TEST_PASSWORD = $password
+  CHATSTUDIO_TEST_MEDIA = '1'; CHATSTUDIO_TEST_SERVER = 'http://127.0.0.1:18647'; CHATSTUDIO_TEST_PASSWORD = $password
   HERMES_HOME = (Join-Path $state 'hermes'); HERMES_WEB_UI_HOME = (Join-Path $state 'studio')
   HERMES_WEBUI_STATE_DIR = (Join-Path $state 'studio'); NODE_ENV = 'test'
   HERMES_WEB_UI_TEST_DB_DIR = (Join-Path $state 'database'); HERMES_RUNTIME_SOURCE = 'none'

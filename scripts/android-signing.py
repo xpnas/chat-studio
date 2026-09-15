@@ -7,7 +7,7 @@ required = ('KEYSTORE_BASE64', 'STORE_PASSWORD', 'KEY_PASSWORD', 'KEY_ALIAS', 'R
 for key in required:
     if not os.environ.get(key):
         raise SystemExit(f'Missing required secret/environment variable: {key}')
-keystore = Path(os.environ['RUNNER_TEMP']) / 'ekko-upload.jks'
+keystore = Path(os.environ['RUNNER_TEMP']) / 'chatstudio-upload.jks'
 keystore.write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64'], validate=True))
 keystore.chmod(0o600)
 

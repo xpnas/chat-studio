@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/mobile_media.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/ui/widgets/chat_composer.dart';
-import 'package:ekko_app/ui/widgets/reading_handle.dart';
+import 'package:chatstudio/data/mobile_media.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/ui/widgets/chat_composer.dart';
+import 'package:chatstudio/ui/widgets/reading_handle.dart';
 import 'support.dart';
 
 class ReadingMedia implements MediaAccess {
@@ -40,7 +40,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     h.controller.sessionId = 'reading';
     h.controller.timeline.replace(

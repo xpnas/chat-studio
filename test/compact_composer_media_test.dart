@@ -3,11 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/message_file_reference.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/ui/widgets/attachment_tile.dart';
-import 'package:ekko_app/ui/widgets/message_bubble.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/message_file_reference.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/ui/widgets/attachment_tile.dart';
+import 'package:chatstudio/ui/widgets/message_bubble.dart';
 import 'support.dart';
 
 void main() {
@@ -21,7 +21,7 @@ void main() {
       final h = TestHarness();
       await h.login();
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       final controls = [

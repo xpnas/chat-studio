@@ -1,12 +1,12 @@
 import 'dart:convert';
-import 'package:ekko_app/data/speech_playback.dart';
-import 'package:ekko_app/data/audio_transcription.dart';
+import 'package:chatstudio/data/speech_playback.dart';
+import 'package:chatstudio/data/audio_transcription.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:ekko_app/data/app_storage.dart';
-import 'package:ekko_app/data/chat_transport.dart';
-import 'package:ekko_app/data/studio_api.dart';
-import 'package:ekko_app/state/app_controller.dart';
+import 'package:chatstudio/data/app_storage.dart';
+import 'package:chatstudio/data/chat_transport.dart';
+import 'package:chatstudio/data/studio_api.dart';
+import 'package:chatstudio/state/app_controller.dart';
 
 class MemoryStorage implements AppStorage {
   Map<String, dynamic>? session;

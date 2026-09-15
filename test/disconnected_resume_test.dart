@@ -1,4 +1,4 @@
-import 'package:ekko_app/state/chat_timeline.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support.dart';
 

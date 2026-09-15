@@ -6,7 +6,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/health') { res.end('ok'); return; }
   if (req.url === '/v1/models') {
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({object: 'list', data: [{id:'ekko-test',object:'model',owned_by:'local'}]})); return;
+    res.end(JSON.stringify({object: 'list', data: [{id:'chatstudio-test',object:'model',owned_by:'local'}]})); return;
   }
   if (req.method === 'POST' && req.url === '/v1/audio/speech') {
     for await (const _ of req) { /* consume isolated fixture request */ }
@@ -33,7 +33,7 @@ const server = http.createServer(async (req, res) => {
   const slow = last.includes('SLOW');
   const longResume = last.includes('LONG_FOREGROUND');
   const answer = longResume ? Array.from({length: 100}, (_, i) => `[${String(i).padStart(3, '0')}]`).join('') : '你好！这是本地协议自测回复。流式连接正常。';
-  const base = {id:'chatcmpl-local-test',created:Math.floor(Date.now()/1000),model:'ekko-test'};
+  const base = {id:'chatcmpl-local-test',created:Math.floor(Date.now()/1000),model:'chatstudio-test'};
   if (!body.stream) {
     res.setHeader('Content-Type','application/json');
     res.end(JSON.stringify({...base,object:'chat.completion',choices:[{index:0,message:{role:'assistant',content:answer},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:20,total_tokens:30}}));return;

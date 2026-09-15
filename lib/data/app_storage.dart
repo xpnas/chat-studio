@@ -21,10 +21,10 @@ abstract class AppStorage {
 
 class SecureAppStorage implements AppStorage {
   final _secure = const FlutterSecureStorage();
-  static const _session = 'ekko.session.v1';
+  static const _session = 'chatstudio.session.v1';
   @override
   Future<List<Map<String, dynamic>>> readServers() async {
-    final raw = await _secure.read(key: 'ekko.servers.v1');
+    final raw = await _secure.read(key: 'chatstudio.servers.v1');
     if (raw == null) return [];
     try {
       return asList(
@@ -37,9 +37,9 @@ class SecureAppStorage implements AppStorage {
 
   @override
   Future<void> saveServers(List<Map<String, dynamic>> servers) =>
-      _secure.write(key: 'ekko.servers.v1', value: jsonEncode(servers));
+      _secure.write(key: 'chatstudio.servers.v1', value: jsonEncode(servers));
   String _choiceKey(String scope) =>
-      'ekko.choice.v1.${base64Url.encode(utf8.encode(scope))}';
+      'chatstudio.choice.v1.${base64Url.encode(utf8.encode(scope))}';
   @override
   Future<Map<String, dynamic>?> readChoice(String scope) async {
     final value = await _secure.read(key: _choiceKey(scope));
@@ -86,9 +86,9 @@ class SecureAppStorage implements AppStorage {
   @override
   Future<String> deviceId() async {
     // Stable installation UUID, not an IMEI, advertising ID or hardware identifier.
-    var value = await _secure.read(key: 'ekko.device.v1');
+    var value = await _secure.read(key: 'chatstudio.device.v1');
     value ??= const Uuid().v4();
-    await _secure.write(key: 'ekko.device.v1', value: value);
+    await _secure.write(key: 'chatstudio.device.v1', value: value);
     return value;
   }
 

@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/data/audio_transcription.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/ui/widgets/attachment_tile.dart';
+import 'package:chatstudio/data/audio_transcription.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/ui/widgets/attachment_tile.dart';
 import 'support.dart';
 
 const audio = MessageAttachment(
@@ -24,7 +24,7 @@ void main() {
       const ChatMessage(id: 'm', role: 'assistant', content: '这是普通文字回复。'),
     ];
     await tester.pumpWidget(
-      EkkoApp(controller: h.controller, initialize: false),
+      ChatStudioApp(controller: h.controller, initialize: false),
     );
     await tester.pumpAndSettle();
     expect(find.text('语音回复'), findsNothing);
@@ -37,7 +37,7 @@ void main() {
     'existing audio sends correct MIME/name to STT, no TTS, caches result and cleans temporary file',
     () async {
       final dir = await Directory.systemTemp.createTemp(
-        'ekko-transcription-test-',
+        'chatstudio-transcription-test-',
       );
       final service = AudioTranscription(tempDirectory: () async => dir);
       final h = TestHarness(transcription: service);

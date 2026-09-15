@@ -82,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   const Row(
                     children: [
-                      EkkoMark(size: 46),
+                      ChatStudioMark(size: 46),
                       SizedBox(width: 14),
                       Flexible(
                         child: FittedBox(

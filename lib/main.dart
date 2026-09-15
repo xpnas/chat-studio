@@ -9,18 +9,23 @@ import 'ui/theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(EkkoApp(controller: AppController(storage: SecureAppStorage())));
+  runApp(ChatStudioApp(controller: AppController(storage: SecureAppStorage())));
 }
 
-class EkkoApp extends StatefulWidget {
-  const EkkoApp({super.key, required this.controller, this.initialize = true});
+class ChatStudioApp extends StatefulWidget {
+  const ChatStudioApp({
+    super.key,
+    required this.controller,
+    this.initialize = true,
+  });
   final AppController controller;
   final bool initialize;
   @override
-  State<EkkoApp> createState() => _EkkoAppState();
+  State<ChatStudioApp> createState() => _ChatStudioAppState();
 }
 
-class _EkkoAppState extends State<EkkoApp> with WidgetsBindingObserver {
+class _ChatStudioAppState extends State<ChatStudioApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -67,8 +72,8 @@ class _EkkoAppState extends State<EkkoApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Chat Studio',
     debugShowCheckedModeBanner: false,
-    theme: ekkoTheme(Brightness.light),
-    darkTheme: ekkoTheme(Brightness.dark),
+    theme: chatstudioTheme(Brightness.light),
+    darkTheme: chatstudioTheme(Brightness.dark),
     themeMode: switch (widget.controller.theme) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -78,7 +83,7 @@ class _EkkoAppState extends State<EkkoApp> with WidgetsBindingObserver {
     supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     home: widget.controller.booting
-        ? const Scaffold(body: Center(child: EkkoMark(size: 64)))
+        ? const Scaffold(body: Center(child: ChatStudioMark(size: 64)))
         : widget.controller.authenticated
         ? HomeScreen(controller: widget.controller)
         : LoginScreen(controller: widget.controller),

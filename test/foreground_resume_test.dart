@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ekko_app/state/chat_timeline.dart';
-import 'package:ekko_app/state/resume_text.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
+import 'package:chatstudio/state/resume_text.dart';
 import 'support.dart';
 
 Map<String, dynamic> tailSnapshot(

@@ -1,14 +1,15 @@
 # 验证记录与复现
 
-## 当前验证（2026-09-15，1.0.16）
+## 当前验证（2026-09-15，1.0.18）
 
-- 客户端全量测试：**202 项通过，8 项按环境默认跳过**；新增 13 项断线恢复回归。
+- `python scripts/verify-app-identity.py` 通过，检查 Dart / Android / iOS 标识、原生文件导出通道、存储键和客户端源码/路径命名；CI 已接入。
+- 客户端全量测试：**219 项通过，8 项按环境默认跳过**；新增 7 项命名回归，覆盖安全存储、文件导出通道及上游 Agent 身份保持不变。
 - 静态分析：`flutter analyze --fatal-infos` 无问题；格式门禁通过。
-- 隔离官方 Studio v1.0.3：**7 项真实 HTTP / Socket.IO 联调通过**。生成中连续 3 次实际关闭 WebSocket，后台等待后重新连接，检查每次 `resumed` / `message.delta` 的正文，不仅检查最终回复。
-- 截图测试：**1 项通过**，重新生成 12 张实际 Flutter 组件预览；[截图说明与复现](screenshots/README.md)。
-- Android 构建、签名和校验信息见 [本次修复记录](release-1.0.16.md)。
+- 隔离官方 Studio v1.0.3：**7 项真实 HTTP / Socket.IO 联调通过**，包括断线恢复、多会话、附件上传、STT / TTS 等；测试环境变量与模型夹具已统一为 `CHATSTUDIO_*` / `chatstudio-test`。
+- 截图测试：**1 项通过**，重新渲染 14 张实际 Flutter 组件预览，重命名不改变既有布局；[截图说明与复现](screenshots/README.md)。
+- Android 构建、签名和校验信息见 [本次重构记录](release-1.0.18.md)。
 
-旧测试仅调用前后台生命周期，没有真正断开 socket，未覆盖本次用户描述的路径。桥接 run 标记差异及三方文本合并均已补充失败复现；桥接回归使用固定上游源码契约的夹具，并非声称运行了真实 Codex CLI。没有真机后台断网/系统杀进程或 iOS 验证；未推送远端或运行 GitHub Actions。
+原有后台重复内容回归继续通过，包括生成中实际断开并恢复 socket；桥接事件使用固定上游契约夹具，不代表运行了真实 Codex CLI / Hermes Python runtime。未做 Android 真机或模拟器端到端验收，也未本地编译 iOS；未推送远端或运行 GitHub Actions。
 
 Windows 可复现隔离联调（要求上游已安装 Node 依赖，脚本核对固定 SHA）：
 
@@ -33,7 +34,7 @@ Windows 可复现隔离联调（要求上游已安装 Node 依赖，脚本核对
 | Android Release AAB | 实际编译成功，bundletool 1.18.3 validate 通过 |
 | 自动化脚本 | actionlint 1.7.12 检查 3 个 workflow 通过；Bash / Python / plist 语法检查通过 |
 
-本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.5`，versionCode `6`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
+当时 APK 元信息（旧应用标识，非当前包）：versionName `1.0.5`，versionCode `6`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
 
 ## 没有完成、不能混同为已验证
 
@@ -72,8 +73,8 @@ flutter build appbundle --release
 
 ```powershell
 # 在上游目录执行，示例路径均替换为本次新建的测试目录。
-$env:HERMES_HOME='D:/temporary-ekko-contract/hermes'
-$env:HERMES_WEB_UI_HOME='D:/temporary-ekko-contract/studio'
+$env:HERMES_HOME='D:/temporary-chatstudio-contract/hermes'
+$env:HERMES_WEB_UI_HOME='D:/temporary-chatstudio-contract/studio'
 $env:HERMES_WEBUI_STATE_DIR=$env:HERMES_WEB_UI_HOME
 $env:HERMES_RUNTIME_SOURCE='none'
 $env:PORT='18647'
@@ -88,9 +89,9 @@ TS_NODE_COMPILER_OPTIONS 用于处理该 checkout 的 TypeScript 6 rootDir 推�
 5. 在移动端目录的另一终端设置随机测试密码，执行仅适用于新初始化账号的 bootstrap，再运行测试：
 
 ```powershell
-$env:EKKO_TEST_SERVER='http://127.0.0.1:18647'
+$env:CHATSTUDIO_TEST_SERVER='http://127.0.0.1:18647'
 # 用密码管理器/随机生成器提供 16 位以上随机值，不提交真实凭据。
-$env:EKKO_TEST_PASSWORD='<random-test-password>'
+$env:CHATSTUDIO_TEST_PASSWORD='<random-test-password>'
 node tools/mock-provider/bootstrap.mjs
 flutter test test/live_contract_test.dart --reporter expanded
 ```
@@ -107,7 +108,7 @@ bootstrap 会等待启动，用一次性的默认凭据登入，然后立即改�
 ## UI 预览
 
 ```powershell
-$env:EKKO_PREVIEW_FONT='C:/Windows/Fonts/msyh.ttc'
+$env:CHATSTUDIO_PREVIEW_FONT='C:/Windows/Fonts/msyh.ttc'
 flutter test test/preview_test.dart
 ```
 
@@ -125,7 +126,7 @@ flutter test test/preview_test.dart
 ## 1.0.1 新增验收
 
 - `test/mobile_refinements_test.dart` 新增 15 项：Codex 路由/历史、STT 配置、空白与思考行、父子模型树与搜索、multipart 认证与错误、附件选择/移除、录音拒权/取消/过期识别结果、浅深主题消息圆角底。
-- 真实媒体测试额外设置 `EKKO_TEST_MEDIA=1`；必须是无已有 STT 设置的隔离 Profile。CI 已配置此开关。
+- 真实媒体测试额外设置 `CHATSTUDIO_TEST_MEDIA=1`；必须是无已有 STT 设置的隔离 Profile。CI 已配置此开关。
 - Android Release 已验证仅新增 `RECORD_AUDIO`，没有广泛存储/媒体读取权限；原生系统文件/相册选择由插件处理。
 - 真机重点补验：麦克风首次授权/拒绝后重试、60 秒自动结束、来电/后台取消、中文文件名、相册 HEIC、弱网上传取消、附件-only 发送、原签名覆盖安装。
 
@@ -182,7 +183,7 @@ export HERMES_WEB_UI_TEST_DB_DIR=/absolute/disposable/database
 bash scripts/studio-contract.sh /absolute/path/to/pinned-studio
 ```
 
-脚本核对上游 SHA、检查固定端口未占用，生成随机测试密码，隔离 HOME/Profile/数据库、禁用 LAN discovery/gateway autostart/MCP 注入，使用 BIND_HOST=127.0.0.1，结束后清理服务进程组和临时状态。仅设置 EKKO_KEEP_CONTRACT_STATE=1 时保留私有诊断文件，不能上传这些文件。
+脚本核对上游 SHA、检查固定端口未占用，生成随机测试密码，隔离 HOME/Profile/数据库、禁用 LAN discovery/gateway autostart/MCP 注入，使用 BIND_HOST=127.0.0.1，结束后清理服务进程组和临时状态。仅设置 CHATSTUDIO_KEEP_CONTRACT_STATE=1 时保留私有诊断文件，不能上传这些文件。
 
 流畅性结构测试检查 1000 条历史按需构建、输入及 120 次 token 更新不会重新创建 MaterialApp/Theme。真机 profile 测试脚本与限制见 docs/release-1.0.6.md；当前没有已连接设备，未声称实际帧率或能耗合格。未触发远端 GitHub Actions，iOS/Xcode 仍需 macOS 环境实跑。
 

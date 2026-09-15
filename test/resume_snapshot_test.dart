@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ekko_app/state/chat_timeline.dart';
-import 'package:ekko_app/data/models.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
+import 'package:chatstudio/data/models.dart';
 
 Map<String, dynamic> snapshot({
   String text = '明白，我会修复。',

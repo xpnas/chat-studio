@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-const ekkoGreen = Color(0xFF285B4B);
-ThemeData ekkoTheme(Brightness brightness) {
+const chatstudioGreen = Color(0xFF285B4B);
+ThemeData chatstudioTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(
-    seedColor: ekkoGreen,
+    seedColor: chatstudioGreen,
     brightness: brightness,
     surface: dark ? const Color(0xFF141B18) : const Color(0xFFFAFAF6),
   );
@@ -59,8 +59,8 @@ ThemeData ekkoTheme(Brightness brightness) {
   );
 }
 
-class EkkoMark extends StatelessWidget {
-  const EkkoMark({super.key, this.size = 56, this.label = 'Chat Studio'});
+class ChatStudioMark extends StatelessWidget {
+  const ChatStudioMark({super.key, this.size = 56, this.label = 'Chat Studio'});
   final String label;
   final double size;
   @override

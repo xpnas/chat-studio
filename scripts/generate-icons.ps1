@@ -1,4 +1,4 @@
-# Regenerate the original, code-drawn Ekko mark (Windows PowerShell / pwsh).
+# Regenerate the original, code-drawn Chat Studio mark (Windows PowerShell / pwsh).
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $root = Split-Path $PSScriptRoot -Parent

@@ -1,3 +1,4 @@
+import '../data/studio_protocol.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
@@ -698,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const EkkoMark(size: 68),
+            const ChatStudioMark(size: 68),
             const SizedBox(height: 24),
             const Text(
               '今天，想聊些什么？',
@@ -763,9 +764,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   items: [
                     const DropdownMenuItem(
-                      value: 'ekko-agent',
+                      value: StudioProtocol.builtInAgentId,
                       child: Text(
-                        'Ekko Agent',
+                        StudioProtocol.builtInAgentLabel,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -842,7 +843,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: EdgeInsets.fromLTRB(24, 20, 24, 20),
               child: Row(
                 children: [
-                  EkkoMark(size: 34),
+                  ChatStudioMark(size: 34),
                   SizedBox(width: 12),
                   Flexible(
                     child: FittedBox(

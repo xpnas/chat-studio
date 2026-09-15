@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/main.dart';
-import 'package:ekko_app/ui/widgets/stable_markdown.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/main.dart';
+import 'package:chatstudio/ui/widgets/stable_markdown.dart';
 import 'support.dart';
 
 // Structural performance gates, not a replacement for profile-mode device timing.
@@ -21,7 +21,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        EkkoApp(controller: h.controller, initialize: false),
+        ChatStudioApp(controller: h.controller, initialize: false),
       );
       await tester.pumpAndSettle();
       final shell = tester.widget<MaterialApp>(find.byType(MaterialApp));

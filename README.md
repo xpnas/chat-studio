@@ -1,8 +1,10 @@
 # Chat Studio
 
-Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3** 的真实协议实现，Flutter 独立 UI，**不是 WebView 套壳**。
+Android / iOS 上的轻量 Hermes Studio 客户端。面向 **hermes-studio v1.0.3** 的真实协议实现，Flutter 独立 UI，**不是 WebView 套壳**。
 
 > 当前交付：双端源码、Android 已签名 Release APK、GitHub 双端构建及可选签名流程。Windows 本机已完成 Android 编译和真实服务协议联调；iOS 尚需 GitHub macOS Runner / Xcode 验证，不把未签名 `.app` 称为可安装 IPA。
+
+> 应用包标识统一为 `ai.chatstudio.app`，Dart 包名为 `chatstudio`。这是新的应用身份，需单独安装并重新添加服务器、登录；服务端历史不受影响。构建与签名要求见 [打包文档](docs/build-release.md)，名称与协议边界见 [命名规范](docs/naming.md)。
 
 ## 功能
 

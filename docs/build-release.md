@@ -8,13 +8,21 @@
 
 工作流目前使用主版本固定的官方 actions / subosito action，以及固定 Flutter 版本；若需供应链强化，可审计后进一步将 action 引用固定到 commit SHA。未配置从不可信 PR 自动发布的逻辑。
 
+## 应用标识与安装
+
+- Dart 包名：`chatstudio`；Android applicationId / namespace、iOS Bundle ID：`ai.chatstudio.app`。
+- Android 启动类：`ai.chatstudio.app.MainActivity`；两端文件导出通道：`ai.chatstudio.app/file_export`。
+- **这是新的应用身份，不能覆盖旧包安装，也不能读取旧包私有存储。** 安装后重新添加服务器并登录，服务端聊天历史不受影响；草稿、偏好和服务器列表不会自动跨应用迁移。确认新应用可用后再自行卸载旧应用。
+- 签名证书沿用已有材料；无需因为重命名而改密钥/alias。iOS 需要为新 Bundle ID 配置匹配的 App ID / provisioning profile，旧 profile 不能直接使用。
+- 本地和 CI 都运行 `python scripts/verify-app-identity.py`，防止包名、原生通道或旧客户端命名回归。
+
 ## Android
 
 ### 本地签名
 
 1.0.6 本地 Linux 环境没有找到旧版签名，已新生成专用 RSA 3072 Release 密钥。**它不保证与先前 Windows 版本同签名；不同签名不能覆盖安装。** 材料仅存放在：
 
-- `.local/signing/ekko-upload.jks`
+- `.local/signing/chatstudio-upload.jks`
 - `.local/signing/credentials.json`
 - `android/key.properties`
 
@@ -47,7 +55,7 @@ flutter build apk --release --target-platform android-arm64
 | `ANDROID_KEYSTORE_BASE64` | JKS 文件完整 Base64，无换行 |
 | `ANDROID_STORE_PASSWORD` | store password |
 | `ANDROID_KEY_PASSWORD` | key password |
-| `ANDROID_KEY_ALIAS` | alias；1.0.6 本次本地密钥为 `ekko-local-release` |
+| `ANDROID_KEY_ALIAS` | 现有 keystore 中的真实 alias；更改应用包名不要求更换签名密钥或 alias |
 
 运行 Actions → Signed packages → Run workflow → android。脚本只在 runner 临时目录解码密钥；缺项直接失败，不降级签名。结束时清除文件，上传 APK/AAB，不上传密钥。
 
@@ -66,7 +74,7 @@ flutter build apk --release --target-platform android-arm64
 
 ### IPA
 
-当前 Bundle ID：`ai.ekkolearn.ekkoApp`。Android appId 为 `ai.ekkolearn.ekko_app`。正式发布前应换成你控制的标识，并生成匹配的 Apple App ID / profile。
+当前 Bundle ID：`ai.chatstudio.app`。Android appId 为 `ai.chatstudio.app`。正式发布前应换成你控制的标识，并生成匹配的 Apple App ID / profile。
 
 `release` Environment Secrets：
 

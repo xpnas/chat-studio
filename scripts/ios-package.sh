@@ -6,7 +6,7 @@ set -euo pipefail
 : "${IOS_PROFILE_BASE64:?Missing IOS_PROFILE_BASE64}"
 : "${IOS_TEAM_ID:?Missing IOS_TEAM_ID}"
 : "${RUNNER_TEMP:?Must run on an ephemeral GitHub runner}"
-export SIGNING_DIR="$RUNNER_TEMP/ekko-ios-signing"
+export SIGNING_DIR="$RUNNER_TEMP/chatstudio-ios-signing"
 mkdir -p "$SIGNING_DIR"
 KEYCHAIN="$SIGNING_DIR/build.keychain-db"
 PROFILE_DEST=""

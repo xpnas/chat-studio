@@ -7,6 +7,14 @@ SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 TOOLS="$(find "$SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
 "$TOOLS/apksigner" verify --verbose --print-certs "$APK"
 INFO="$("$TOOLS/aapt" dump badging "$APK")"
+if ! grep -q "^package: name='ai.chatstudio.app' " <<< "$INFO"; then
+  echo 'Refusing APK with unexpected applicationId (expected ai.chatstudio.app)' >&2
+  exit 1
+fi
+if ! grep -q "^launchable-activity: name='ai.chatstudio.app.MainActivity'" <<< "$INFO"; then
+  echo 'Release launcher does not match the Chat Studio Kotlin namespace' >&2
+  exit 1
+fi
 if grep -q '^application-debuggable' <<< "$INFO"; then
   echo 'Refusing debuggable package as Release' >&2
   exit 1

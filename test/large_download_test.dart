@@ -3,9 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ekko_app/core/server_address.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/studio_api.dart';
+import 'package:chatstudio/core/server_address.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/studio_api.dart';
 
 class StreamClient extends http.BaseClient {
   StreamClient(this.handle);
@@ -25,7 +25,7 @@ void main() {
     '64 MB APK streams to disk beyond preview limit with credentials and progress',
     () async {
       final directory = await Directory.systemTemp.createTemp(
-        'ekko-large-test-',
+        'chatstudio-large-test-',
       );
       addTearDown(() => directory.delete(recursive: true));
       const size = 64 * 1024 * 1024;
@@ -73,7 +73,9 @@ void main() {
     },
   );
   test('unknown length streams; cancellation removes partial file', () async {
-    final dir = await Directory.systemTemp.createTemp('ekko-cancel-test-');
+    final dir = await Directory.systemTemp.createTemp(
+      'chatstudio-cancel-test-',
+    );
     addTearDown(() => dir.delete(recursive: true));
     final cancel = Completer<void>();
     Stream<List<int>> chunks() async* {
@@ -94,7 +96,7 @@ void main() {
     expect(await dir.list().toList(), isEmpty);
   });
   test('profile changes reject response and clean partial file', () async {
-    final dir = await Directory.systemTemp.createTemp('ekko-scope-test-');
+    final dir = await Directory.systemTemp.createTemp('chatstudio-scope-test-');
     addTearDown(() => dir.delete(recursive: true));
     late StudioApi api;
     Stream<List<int>> chunks() async* {
@@ -116,7 +118,9 @@ void main() {
   });
   for (final status in [401, 403, 404, 302]) {
     test('download rejects $status without exporting', () async {
-      final dir = await Directory.systemTemp.createTemp('ekko-http-test-');
+      final dir = await Directory.systemTemp.createTemp(
+        'chatstudio-http-test-',
+      );
       addTearDown(() => dir.delete(recursive: true));
       final api = StudioApi(
         ServerAddress.parse('https://example.com'),
@@ -133,7 +137,7 @@ void main() {
     });
   }
   test('truncated download cannot be reported as successful', () async {
-    final dir = await Directory.systemTemp.createTemp('ekko-short-test-');
+    final dir = await Directory.systemTemp.createTemp('chatstudio-short-test-');
     addTearDown(() => dir.delete(recursive: true));
     final api = StudioApi(
       ServerAddress.parse('https://example.com'),

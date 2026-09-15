@@ -76,7 +76,7 @@ class AudioTranscription extends ChangeNotifier {
       }
       final root = await _tempDirectory();
       if (!valid()) return;
-      directory = await root.createTemp('ekko-transcribe-');
+      directory = await root.createTemp('chatstudio-transcribe-');
       phase = '读取语音';
       notifyListeners();
       final audio = await api.downloadAttachment(

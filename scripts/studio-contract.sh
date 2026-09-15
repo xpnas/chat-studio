@@ -17,7 +17,7 @@ for (const port of [18647, 18648]) {
 }
 JS
 umask 077
-STATE="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ekko-contract.XXXXXXXX")"
+STATE="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/chatstudio-contract.XXXXXXXX")"
 STUDIO_PID='' FIXTURE_PID=''
 cleanup() {
   local code=$?
@@ -34,7 +34,7 @@ cleanup() {
   for pid in "$STUDIO_PID" "$FIXTURE_PID"; do
     if [[ -n "$pid" ]]; then wait "$pid" 2>/dev/null || true; fi
   done
-  if [[ "${EKKO_KEEP_CONTRACT_STATE:-0}" == 1 ]]; then
+  if [[ "${CHATSTUDIO_KEEP_CONTRACT_STATE:-0}" == 1 ]]; then
     printf 'Private diagnostic state retained at %s (do not upload)\n' "$STATE"
   else
     rm -rf -- "$STATE"
@@ -44,10 +44,10 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-export EKKO_TEST_MEDIA=1 EKKO_TEST_SERVER=http://127.0.0.1:18647
-export EKKO_TEST_PASSWORD
-EKKO_TEST_PASSWORD="$(openssl rand -hex 24)"
-if [[ "${GITHUB_ACTIONS:-}" == true ]]; then echo "::add-mask::$EKKO_TEST_PASSWORD"; fi
+export CHATSTUDIO_TEST_MEDIA=1 CHATSTUDIO_TEST_SERVER=http://127.0.0.1:18647
+export CHATSTUDIO_TEST_PASSWORD
+CHATSTUDIO_TEST_PASSWORD="$(openssl rand -hex 24)"
+if [[ "${GITHUB_ACTIONS:-}" == true ]]; then echo "::add-mask::$CHATSTUDIO_TEST_PASSWORD"; fi
 export HERMES_HOME="$STATE/hermes" HERMES_WEB_UI_HOME="$STATE/studio"
 export HERMES_WEBUI_STATE_DIR="$HERMES_WEB_UI_HOME"
 export NODE_ENV=test HERMES_WEB_UI_TEST_DB_DIR="$STATE/database"

@@ -1,3 +1,4 @@
+import '../../data/studio_protocol.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../state/app_controller.dart';
@@ -11,9 +12,12 @@ class AgentIdentity {
   final String? file;
   static AgentIdentity resolve(String id) => switch (id.trim().toLowerCase()) {
     '' ||
-    'ekko' ||
-    'ekko_agent' ||
-    'ekko-agent' => const AgentIdentity('Ekko', 'ekko-agent.png'),
+    StudioProtocol.builtInAgentAlias ||
+    StudioProtocol.builtInAgentLegacyAlias ||
+    StudioProtocol.builtInAgentId => const AgentIdentity(
+      StudioProtocol.builtInAgentName,
+      StudioProtocol.builtInAgentIcon,
+    ),
     'hermes' => const AgentIdentity('Hermes', 'hermes.png'),
     'codex' => const AgentIdentity('Codex', 'codex-openai.png'),
     'claude' ||
@@ -35,8 +39,8 @@ class AgentAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final identity = AgentIdentity.current(controller);
     final origin = controller?.api?.address.uri;
-    final fallback = identity.name == 'Ekko'
-        ? EkkoMark(size: size, label: 'Ekko')
+    final fallback = identity.name == StudioProtocol.builtInAgentName
+        ? ChatStudioMark(size: size, label: StudioProtocol.builtInAgentName)
         : Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(

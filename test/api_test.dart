@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:ekko_app/core/server_address.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/studio_api.dart';
+import 'package:chatstudio/core/server_address.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/studio_api.dart';
 
 void main() {
   test('requests never forward bearer credentials through redirects', () async {

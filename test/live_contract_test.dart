@@ -2,22 +2,22 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:ekko_app/data/mobile_media.dart';
+import 'package:chatstudio/data/mobile_media.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
-import 'package:ekko_app/core/server_address.dart';
-import 'package:ekko_app/data/chat_transport.dart';
-import 'package:ekko_app/data/models.dart';
-import 'package:ekko_app/data/studio_api.dart';
-import 'package:ekko_app/state/app_controller.dart';
-import 'package:ekko_app/state/conversation_state.dart';
+import 'package:chatstudio/core/server_address.dart';
+import 'package:chatstudio/data/chat_transport.dart';
+import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/studio_api.dart';
+import 'package:chatstudio/state/app_controller.dart';
+import 'package:chatstudio/state/conversation_state.dart';
 import 'support.dart';
-import 'package:ekko_app/data/audio_transcription.dart';
+import 'package:chatstudio/data/audio_transcription.dart';
 
 // Opt-in destructive contract test: only use an isolated disposable Studio.
 // Never point this at your production workspace.
 void main() {
-  final server = Platform.environment['EKKO_TEST_SERVER'];
+  final server = Platform.environment['CHATSTUDIO_TEST_SERVER'];
   test(
     'real foreground resume after server 200-event buffer truncation keeps full text',
     () async {
@@ -58,7 +58,7 @@ void main() {
           await c.login(
             server!,
             'admin',
-            Platform.environment['EKKO_TEST_PASSWORD']!,
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
             true,
           ),
           true,
@@ -136,7 +136,7 @@ void main() {
           await c.login(
             server!,
             'admin',
-            Platform.environment['EKKO_TEST_PASSWORD']!,
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
             true,
           ),
           true,
@@ -218,7 +218,7 @@ void main() {
     'real Hermes command receipts, title, display clear and history clear',
     () async {
       final c = AppController(
-        storage: _MultiDeviceStorage('ekko-command-contract'),
+        storage: _MultiDeviceStorage('chatstudio-command-contract'),
       );
       String? sid;
       Future<void> until(bool Function() condition) async {
@@ -236,8 +236,8 @@ void main() {
         expect(
           await c.login(
             server!,
-            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
-            Platform.environment['EKKO_TEST_PASSWORD']!,
+            Platform.environment['CHATSTUDIO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
             true,
           ),
           isTrue,
@@ -297,9 +297,11 @@ void main() {
   test(
     'real simultaneous sessions, activity snapshot and reasoning persistence',
     () async {
-      final c = AppController(storage: _MultiDeviceStorage('ekko-multi-main'));
+      final c = AppController(
+        storage: _MultiDeviceStorage('chatstudio-multi-main'),
+      );
       final observer = AppController(
-        storage: _MultiDeviceStorage('ekko-multi-observer'),
+        storage: _MultiDeviceStorage('chatstudio-multi-observer'),
       );
       final ids = <String>[];
       Future<void> until(bool Function() condition) async {
@@ -319,8 +321,8 @@ void main() {
         expect(
           await c.login(
             server!,
-            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
-            Platform.environment['EKKO_TEST_PASSWORD']!,
+            Platform.environment['CHATSTUDIO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
             true,
           ),
           true,
@@ -341,8 +343,8 @@ void main() {
         expect(
           await observer.login(
             server,
-            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
-            Platform.environment['EKKO_TEST_PASSWORD']!,
+            Platform.environment['CHATSTUDIO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
             true,
           ),
           true,
@@ -405,7 +407,9 @@ void main() {
     'real upload references round-trip and server STT transcription',
     () async {
       final c = AppController(storage: MemoryStorage());
-      final dir = await Directory.systemTemp.createTemp('ekko-live-media-');
+      final dir = await Directory.systemTemp.createTemp(
+        'chatstudio-live-media-',
+      );
       String? sid;
       var configured = false;
       try {
@@ -413,8 +417,8 @@ void main() {
         expect(
           await c.login(
             server!,
-            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
-            Platform.environment['EKKO_TEST_PASSWORD']!,
+            Platform.environment['CHATSTUDIO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
             true,
           ),
           true,
@@ -534,7 +538,8 @@ void main() {
         await dir.delete(recursive: true);
       }
     },
-    skip: server == null || Platform.environment['EKKO_TEST_MEDIA'] != '1',
+    skip:
+        server == null || Platform.environment['CHATSTUDIO_TEST_MEDIA'] != '1',
     timeout: const Timeout(Duration(minutes: 3)),
   );
   test(
@@ -558,7 +563,7 @@ void main() {
           await c.login(
             server!,
             'admin',
-            Platform.environment['EKKO_TEST_PASSWORD']!,
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
             true,
           ),
           true,
@@ -619,9 +624,9 @@ void main() {
           });
       try {
         final login = await api.login(
-          Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
-          Platform.environment['EKKO_TEST_PASSWORD']!,
-          'ekko-dart-contract-test',
+          Platform.environment['CHATSTUDIO_TEST_USERNAME'] ?? 'admin',
+          Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
+          'chatstudio-dart-contract-test',
         );
         api.token = text(login['token']);
         expect(api.token, isNotEmpty);
@@ -702,7 +707,7 @@ void main() {
       }
     },
     skip: server == null
-        ? 'Set EKKO_TEST_SERVER and EKKO_TEST_PASSWORD for isolated live test'
+        ? 'Set CHATSTUDIO_TEST_SERVER and CHATSTUDIO_TEST_PASSWORD for isolated live test'
         : false,
     timeout: const Timeout(Duration(minutes: 3)),
   );

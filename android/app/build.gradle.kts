@@ -8,7 +8,7 @@ val signingProperties = Properties().apply {
     if (signingFile.exists()) signingFile.inputStream().use { load(it) }
 }
 android {
-    namespace = "ai.ekkolearn.ekko_app"
+    namespace = "ai.chatstudio.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
     compileOptions {
@@ -16,7 +16,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     defaultConfig {
-        applicationId = "ai.ekkolearn.ekko_app"
+        applicationId = "ai.chatstudio.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
