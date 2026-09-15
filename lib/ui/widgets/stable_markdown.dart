@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 
 /// Split only at safe block boundaries. Fenced code and multiline lists remain
 /// intact. The trailing block alone is parsed repeatedly while it is streaming.
@@ -53,8 +54,12 @@ class StableMarkdown extends StatefulWidget {
     required this.data,
     this.onTapLink,
     this.anchorKey,
+    this.imageBuilder,
+    this.audioLinkBuilder,
   });
   final String data;
+  final Widget? Function(String href, String label)? audioLinkBuilder;
+  final Widget Function(Uri, String?, String?)? imageBuilder;
   final void Function(String?, String?, String?)? onTapLink;
   final Key Function(int)? anchorKey;
   @override
@@ -63,6 +68,9 @@ class StableMarkdown extends StatefulWidget {
 
 class _StableMarkdownState extends State<StableMarkdown> {
   final _cache = <int, (String, Widget)>{};
+  String? _segmentedSource;
+  List<String> _segments = const [];
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -72,7 +80,11 @@ class _StableMarkdownState extends State<StableMarkdown> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context), colors = Theme.of(context).colorScheme;
-    final blocks = markdownSegments(widget.data);
+    if (_segmentedSource != widget.data) {
+      _segmentedSource = widget.data;
+      _segments = markdownSegments(widget.data);
+    }
+    final blocks = _segments;
     _cache.removeWhere((index, _) => index >= blocks.length);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,11 +101,23 @@ class _StableMarkdownState extends State<StableMarkdown> {
                       data: blocks[i],
                       selectable: true,
                       softLineBreak: true,
-                      onTapLink: widget.onTapLink,
-                      imageBuilder: (_, _, _) => Text(
-                        '[外部图片未自动加载]',
-                        style: TextStyle(color: colors.onSurfaceVariant),
-                      ),
+                      builders: {
+                        'a': _AudioLinkBuilder(
+                          (href, label) =>
+                              widget.audioLinkBuilder?.call(href, label),
+                          (label, href, title) =>
+                              widget.onTapLink?.call(label, href, title),
+                        ),
+                      },
+                      // Cached blocks dispatch through the current callback.
+                      onTapLink: (label, href, title) =>
+                          widget.onTapLink?.call(label, href, title),
+                      imageBuilder: (uri, title, alt) =>
+                          widget.imageBuilder?.call(uri, title, alt) ??
+                          Text(
+                            '[外部图片未自动加载]',
+                            style: TextStyle(color: colors.onSurfaceVariant),
+                          ),
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
                         p: TextStyle(
                           fontSize: 16,
@@ -117,6 +141,38 @@ class _StableMarkdownState extends State<StableMarkdown> {
                   )).$2,
           ),
       ],
+    );
+  }
+}
+
+class _AudioLinkBuilder extends MarkdownElementBuilder {
+  _AudioLinkBuilder(this.build, this.onTap);
+  final Widget? Function(String, String) build;
+  final void Function(String, String, String?) onTap;
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final child = build(element.attributes['href'] ?? '', element.textContent);
+    if (child != null) return SizedBox(width: 250, child: child);
+    return Semantics(
+      link: true,
+      child: InkWell(
+        onTap: () => onTap(
+          element.textContent,
+          element.attributes['href'] ?? '',
+          element.attributes['title'],
+        ),
+        child: Text(
+          element.textContent,
+          style:
+              preferredStyle ??
+              TextStyle(color: Theme.of(context).colorScheme.primary),
+        ),
+      ),
     );
   }
 }

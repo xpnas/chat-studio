@@ -5,6 +5,7 @@ import 'stable_markdown.dart';
 import 'attachment_tile.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/models.dart';
+import '../../data/message_file_reference.dart';
 import '../theme.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -20,6 +21,21 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onRetry;
   final ChatMessage message;
   Future<void> _openLink(BuildContext context, String? href) async {
+    final file = messageFileReference(
+      href ?? '',
+      server: controller?.api?.address.uri,
+    );
+    if (file != null && controller?.api != null) {
+      if (file.isAudio) {
+        controller!.playAudioAttachment(file);
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AttachmentViewer(file: file, controller: controller!),
+      );
+      return;
+    }
     final uri = Uri.tryParse(href ?? '');
     if (uri == null ||
         !['https', 'http'].contains(uri.scheme) ||
@@ -79,14 +95,17 @@ class MessageBubble extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (!user && message.bodyText.isNotEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(bottom: 4),
                     child: Row(
                       children: [
-                        EkkoMark(size: 20),
-                        SizedBox(width: 9),
+                        if (message.role == 'command')
+                          const Icon(Icons.terminal_rounded, size: 20)
+                        else
+                          const EkkoMark(size: 20),
+                        const SizedBox(width: 9),
                         Text(
-                          'Ekko',
+                          message.role == 'command' ? '命令' : 'Ekko',
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ],
@@ -181,6 +200,48 @@ class MessageBubble extends StatelessWidget {
                           StableMarkdown(
                             data: message.bodyText,
                             anchorKey: anchorKey,
+                            audioLinkBuilder: (href, label) {
+                              final file = messageFileReference(
+                                href,
+                                server: controller?.api?.address.uri,
+                                label: label,
+                              );
+                              if (file?.isAudio != true ||
+                                  controller?.api == null) {
+                                return null;
+                              }
+                              return AttachmentTile(
+                                key: ValueKey(
+                                  'audio-link:${controller!.profile}:${file!.path}',
+                                ),
+                                file: file,
+                                controller: controller!,
+                              );
+                            },
+                            imageBuilder: (uri, title, alt) {
+                              final file = messageFileReference(
+                                uri.toString(),
+                                server: controller?.api?.address.uri,
+                                label: alt,
+                              );
+                              if (file != null && controller?.api != null) {
+                                return AttachmentTile(
+                                  key: ValueKey(
+                                    '${controller!.profile}:${file.path}',
+                                  ),
+                                  file: file,
+                                  controller: controller!,
+                                );
+                              }
+                              return TextButton.icon(
+                                onPressed: () =>
+                                    _openLink(context, uri.toString()),
+                                icon: const Icon(Icons.image_outlined),
+                                label: Text(
+                                  '${alt?.isNotEmpty == true ? alt : '外部图片'} · 点击打开',
+                                ),
+                              );
+                            },
                             onTapLink: (_, href, _) => _openLink(context, href),
                           ),
                       if (controller != null)

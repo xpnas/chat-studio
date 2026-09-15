@@ -7,6 +7,8 @@ import '../../data/models.dart';
 import '../../state/app_controller.dart';
 import '../../state/conversation_state.dart';
 import 'reading_handle.dart';
+import 'model_sheet.dart';
+import 'slash_command_picker.dart';
 import 'package:flutter/foundation.dart';
 
 typedef ComposerLayoutBuilder =
@@ -159,6 +161,21 @@ class _ChatComposerState extends State<ChatComposer>
     _levels?.cancel();
     unawaited(_media.dispose().catchError((Object _) {}));
     super.dispose();
+  }
+
+  Future<void> _models() async {
+    final draft = c.draft;
+    final selected = await showModalBottomSheet<ModelChoice>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) =>
+          ModelSheet(models: c.models, selected: c.selectedModel),
+    );
+    if (mounted && identical(draft, c.draft) && selected != null) {
+      await c.chooseModel(selected);
+    }
   }
 
   Future<void> _reasoning() async {
@@ -351,7 +368,13 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   Future<void> _send() async {
-    if (_busy || !c.canSend) return;
+    if (_busy || !c.canSubmit(widget.input.text)) return;
+    if (c.working &&
+        c.isBridgeCommand(widget.input.text) &&
+        (_attachments.isNotEmpty || _remoteAttachments.isNotEmpty)) {
+      _error('运行中发送命令不能携带附件，请先移除附件');
+      return;
+    }
     final operation = ++_operation, client = c.api;
     final input = widget.input.text;
     _inlineError = null;
@@ -461,294 +484,375 @@ class _ChatComposerState extends State<ChatComposer>
     final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: colors.outlineVariant),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_inlineError != null)
-                Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Text(
-                          '$_inlineError · 草稿已保留',
-                          style: TextStyle(fontSize: 12, color: colors.error),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '关闭输入提示',
-                      onPressed: () => setState(() => _inlineError = null),
-                      icon: const Icon(Icons.close, size: 16),
-                    ),
-                  ],
-                ),
-              if (_remoteAttachments.isNotEmpty)
-                Wrap(
-                  children: [
-                    for (final file in _remoteAttachments)
-                      InputChip(
-                        label: Text(file.name),
-                        onDeleted: _busy
-                            ? null
-                            : () => setState(
-                                () => _remoteAttachments.remove(file),
-                              ),
-                      ),
-                  ],
-                ),
-              if (_attachments.isNotEmpty)
-                SizedBox(
-                  height: 70,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _attachments.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 6),
-                    itemBuilder: (context, index) {
-                      final file = _attachments[index];
-                      return InputChip(
-                        avatar: file.isImage
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: Image.file(
-                                  File(file.path),
-                                  width: 32,
-                                  height: 32,
-                                  cacheWidth: 128,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) =>
-                                      const Icon(Icons.image_outlined),
-                                ),
-                              )
-                            : const Icon(
-                                Icons.insert_drive_file_outlined,
-                                size: 20,
-                              ),
-                        label: SizedBox(
-                          width: 112,
+      child: SlashCommandPicker(
+        controller: c,
+        input: widget.input,
+        focus: _focus,
+        enabled: !_busy,
+        child: DecoratedBox(
+          key: const Key('composer-surface'),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_inlineError != null)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
                           child: Text(
-                            file.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            '$_inlineError · 草稿已保留',
+                            style: TextStyle(fontSize: 12, color: colors.error),
                           ),
                         ),
-                        onPressed: file.isImage
-                            ? () => showDialog<void>(
-                                context: context,
-                                builder: (context) => Dialog(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: InteractiveViewer(
-                                          child: Image.file(
-                                            File(file.path),
-                                            cacheWidth: 1600,
-                                            errorBuilder: (_, _, _) =>
-                                                const Padding(
-                                                  padding: EdgeInsets.all(24),
-                                                  child: Text('此图片格式暂不支持预览'),
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text('关闭预览'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : null,
-                        onDeleted: _busy
-                            ? null
-                            : () =>
-                                  setState(() => _attachments.removeAt(index)),
-                        deleteButtonTooltipMessage: '移除 ${file.name}',
-                      );
-                    },
-                  ),
-                ),
-              if (_phase == '录音中' && _media is AudioLevelSource)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Column(
-                    children: [
-                      LinearProgressIndicator(
-                        key: const Key('voice-level'),
-                        value: _level,
-                        minHeight: 3,
-                        borderRadius: BorderRadius.circular(3),
                       ),
-                      if (_seconds - _lastAudibleSecond >= 5)
-                        const Text(
-                          '暂未检测到声音，请靠近麦克风或检查权限',
-                          style: TextStyle(fontSize: 11),
+                      IconButton(
+                        tooltip: '关闭输入提示',
+                        onPressed: () => setState(() => _inlineError = null),
+                        icon: const Icon(Icons.close, size: 16),
+                      ),
+                    ],
+                  ),
+                if (_remoteAttachments.isNotEmpty)
+                  Wrap(
+                    children: [
+                      for (final file in _remoteAttachments)
+                        InputChip(
+                          label: Text(file.name),
+                          onDeleted: _busy
+                              ? null
+                              : () => setState(
+                                  () => _remoteAttachments.remove(file),
+                                ),
                         ),
                     ],
                   ),
-                ),
-              if (_phase == '上传中' && _attachments.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Column(
+                if (_attachments.isNotEmpty)
+                  SizedBox(
+                    height: 70,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _attachments.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 6),
+                      itemBuilder: (context, index) {
+                        final file = _attachments[index];
+                        return InputChip(
+                          avatar: file.isImage
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Image.file(
+                                    File(file.path),
+                                    width: 32,
+                                    height: 32,
+                                    cacheWidth: 128,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) =>
+                                        const Icon(Icons.image_outlined),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.insert_drive_file_outlined,
+                                  size: 20,
+                                ),
+                          label: SizedBox(
+                            width: 112,
+                            child: Text(
+                              file.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          onPressed: file.isImage
+                              ? () => showDialog<void>(
+                                  context: context,
+                                  builder: (context) => Dialog(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Flexible(
+                                          child: InteractiveViewer(
+                                            child: Image.file(
+                                              File(file.path),
+                                              cacheWidth: 1600,
+                                              errorBuilder: (_, _, _) =>
+                                                  const Padding(
+                                                    padding: EdgeInsets.all(24),
+                                                    child: Text('此图片格式暂不支持预览'),
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                          child: const Text('关闭预览'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : null,
+                          onDeleted: _busy
+                              ? null
+                              : () => setState(
+                                  () => _attachments.removeAt(index),
+                                ),
+                          deleteButtonTooltipMessage: '移除 ${file.name}',
+                        );
+                      },
+                    ),
+                  ),
+                if (_phase == '录音中' && _media is AudioLevelSource)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Column(
+                      children: [
+                        LinearProgressIndicator(
+                          key: const Key('voice-level'),
+                          value: _level,
+                          minHeight: 3,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        if (_seconds - _lastAudibleSecond >= 5)
+                          const Text(
+                            '暂未检测到声音，请靠近麦克风或检查权限',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (_phase == '上传中' && _attachments.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Column(
+                      children: [
+                        LinearProgressIndicator(
+                          key: const Key('upload-progress'),
+                          value: _uploadProgress,
+                          minHeight: 2,
+                        ),
+                        Text(
+                          _uploadProgress >= 1
+                              ? '上传数据已发送 · 等待服务器保存'
+                              : '上传 ${(100 * _uploadProgress).floor()}%',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_busy)
+                  Row(
                     children: [
-                      LinearProgressIndicator(
-                        key: const Key('upload-progress'),
-                        value: _uploadProgress,
-                        minHeight: 2,
+                      if (_phase != '录音中' && _phase != '选择附件')
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 1.5),
+                        ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _phase == '录音中'
+                              ? '录音 $_seconds / 60 秒 · 完成后可编辑'
+                              : _phase,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
                       ),
-                      Text(
-                        _uploadProgress >= 1
-                            ? '上传数据已发送 · 等待服务器保存'
-                            : '上传 ${(100 * _uploadProgress).floor()}%',
-                        style: const TextStyle(fontSize: 11),
+                      if (_phase == '录音中')
+                        TextButton(
+                          onPressed: _finishVoice,
+                          child: const Text('完成'),
+                        ),
+                      IconButton(
+                        tooltip: '取消当前操作',
+                        onPressed: _abort,
+                        icon: const Icon(Icons.close_rounded, size: 18),
                       ),
                     ],
                   ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: TextField(
+                    key: const Key('message-input'),
+                    focusNode: _focus,
+                    controller: widget.input,
+                    readOnly: _busy,
+                    minLines: 1,
+                    maxLines: 5,
+                    maxLength: 64000,
+                    textCapitalization: TextCapitalization.sentences,
+                    keyboardType: TextInputType.multiline,
+                    decoration: const InputDecoration(
+                      hintText: '发消息，输入 / 使用命令',
+                      counterText: '',
+                      filled: false,
+                      contentPadding: EdgeInsets.symmetric(vertical: 8),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                    ),
+                    style: const TextStyle(fontSize: 16, height: 1.4),
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
+                  ),
                 ),
-              if (_busy)
                 Row(
+                  key: const Key('composer-toolbar'),
                   children: [
-                    if (_phase != '录音中' && _phase != '选择附件')
-                      const SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 1.5),
+                    SizedBox(
+                      width: 44,
+                      child: IconButton(
+                        key: const Key('attachment-button'),
+                        tooltip: '添加文件或图片',
+                        onPressed: !_busy && (c.canSend || c.canQueue)
+                            ? _pick
+                            : null,
+                        icon: const Icon(Icons.add_rounded, size: 22),
                       ),
-                    const SizedBox(width: 8),
+                    ),
                     Expanded(
-                      child: Text(
-                        _phase == '录音中'
-                            ? '录音 $_seconds / 60 秒 · 完成后可编辑'
-                            : _phase,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.onSurfaceVariant,
+                      child: Tooltip(
+                        message:
+                            '选择模型 · ${c.selectedModel?.label ?? '服务端默认模型'}',
+                        child: TextButton(
+                          key: const Key('model-button'),
+                          onPressed: !_busy && c.canConfigure ? _models : null,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            minimumSize: const Size(0, 44),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  c.selectedModel?.label ?? '默认模型',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              const Icon(Icons.expand_more_rounded, size: 16),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                    if (_phase == '录音中')
-                      TextButton(
-                        onPressed: _finishVoice,
-                        child: const Text('完成'),
+                    Tooltip(
+                      message:
+                          '思考深度 · ${reasoningEffortLabels[c.reasoningEffort] ?? '默认'}',
+                      child: SizedBox(
+                        width: 64,
+                        child: TextButton(
+                          key: const Key('reasoning-button'),
+                          onPressed: !_busy && c.canConfigure
+                              ? _reasoning
+                              : null,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            minimumSize: const Size(0, 44),
+                          ),
+                          child: Text(
+                            '思考 · ${reasoningEffortLabels[c.reasoningEffort] ?? '默认'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ),
                       ),
-                    IconButton(
-                      tooltip: '取消当前操作',
-                      onPressed: _abort,
-                      icon: const Icon(Icons.close_rounded, size: 18),
+                    ),
+                    SizedBox(
+                      width: 44,
+                      child: IconButton(
+                        key: const Key('voice-button'),
+                        tooltip: c.sttProvider == null ? '配置语音输入' : '语音输入',
+                        onPressed: !_busy && (c.canSend || c.canQueue)
+                            ? _voice
+                            : null,
+                        icon: Icon(
+                          Icons.mic_none_rounded,
+                          size: 22,
+                          color: c.sttProvider == null
+                              ? colors.onSurfaceVariant
+                              : colors.primary,
+                        ),
+                      ),
+                    ),
+                    ValueListenableBuilder(
+                      valueListenable: widget.input,
+                      builder: (context, value, _) =>
+                          c.working && value.text.trim().isNotEmpty
+                          ? SizedBox(
+                              width: 40,
+                              child: IconButton(
+                                tooltip: '停止生成',
+                                onPressed: c.connected
+                                    ? () => c.stop(expectedSession: owner)
+                                    : null,
+                                icon: const Icon(Icons.stop_rounded),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    ValueListenableBuilder(
+                      valueListenable: widget.input,
+                      builder: (context, value, _) => IconButton.filled(
+                        key: Key(
+                          c.working &&
+                                  widget.input.text.trim().isEmpty &&
+                                  _attachments.isEmpty &&
+                                  _remoteAttachments.isEmpty
+                              ? 'stop-button'
+                              : 'send-button',
+                        ),
+                        tooltip:
+                            c.working &&
+                                value.text.trim().isEmpty &&
+                                _attachments.isEmpty &&
+                                _remoteAttachments.isEmpty
+                            ? '停止生成'
+                            : c.working && !c.isBridgeCommand(value.text)
+                            ? '加入队列'
+                            : '发送消息',
+                        onPressed:
+                            c.working &&
+                                value.text.trim().isEmpty &&
+                                _attachments.isEmpty &&
+                                _remoteAttachments.isEmpty
+                            ? (c.connected && c.current?.canContinue != false
+                                  ? () => c.stop(expectedSession: owner)
+                                  : null)
+                            : (!_busy &&
+                                      c.canSubmit(value.text) &&
+                                      (value.text.trim().isNotEmpty ||
+                                          _attachments.isNotEmpty ||
+                                          _remoteAttachments.isNotEmpty)
+                                  ? _send
+                                  : null),
+                        icon: Icon(
+                          c.working &&
+                                  value.text.trim().isEmpty &&
+                                  _attachments.isEmpty &&
+                                  _remoteAttachments.isEmpty
+                              ? Icons.stop_rounded
+                              : Icons.arrow_upward_rounded,
+                          size: 23,
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: TextField(
-                  key: const Key('message-input'),
-                  focusNode: _focus,
-                  controller: widget.input,
-                  readOnly: _busy,
-                  minLines: 1,
-                  maxLines: 5,
-                  maxLength: 64000,
-                  textCapitalization: TextCapitalization.sentences,
-                  keyboardType: TextInputType.multiline,
-                  decoration: const InputDecoration(
-                    hintText: '发消息给 Ekko',
-                    counterText: '',
-                    filled: false,
-                    contentPadding: EdgeInsets.symmetric(vertical: 8),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                  style: const TextStyle(fontSize: 16, height: 1.4),
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                ),
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    key: const Key('attachment-button'),
-                    tooltip: '添加文件或图片',
-                    onPressed: !_busy && c.canSend ? _pick : null,
-                    icon: const Icon(Icons.add_rounded),
-                  ),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        key: const Key('reasoning-button'),
-                        onPressed: !_busy && c.canConfigure ? _reasoning : null,
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          minimumSize: const Size(0, 44),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.psychology_alt_outlined, size: 17),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                '思考 · ${reasoningEffortLabels[c.reasoningEffort] ?? '默认'}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    key: const Key('voice-button'),
-                    tooltip: c.sttProvider == null ? '配置语音输入' : '语音输入',
-                    onPressed: !_busy && c.canSend ? _voice : null,
-                    icon: Icon(
-                      Icons.mic_none_rounded,
-                      color: c.sttProvider == null
-                          ? colors.onSurfaceVariant
-                          : colors.primary,
-                    ),
-                  ),
-                  ValueListenableBuilder(
-                    valueListenable: widget.input,
-                    builder: (context, value, _) => IconButton.filled(
-                      key: Key(c.working ? 'stop-button' : 'send-button'),
-                      tooltip: c.working ? '停止生成' : '发送消息',
-                      onPressed: c.working
-                          ? (c.connected && c.current?.canContinue != false
-                                ? () => c.stop(expectedSession: owner)
-                                : null)
-                          : (!_busy &&
-                                    c.canSend &&
-                                    (value.text.trim().isNotEmpty ||
-                                        _attachments.isNotEmpty ||
-                                        _remoteAttachments.isNotEmpty)
-                                ? _send
-                                : null),
-                      icon: Icon(
-                        c.working
-                            ? Icons.stop_rounded
-                            : Icons.arrow_upward_rounded,
-                        size: 23,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

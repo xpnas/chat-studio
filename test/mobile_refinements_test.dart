@@ -501,6 +501,9 @@ class VoiceFixtureApi extends StudioApi {
     String path,
     String provider, {
     Future<void>? cancel,
+    String fileName = 'voice.wav',
+    String mimeType = 'audio/wav',
+    int maxBytes = 4 * 1024 * 1024,
   }) {
     calls++;
     return result.future;

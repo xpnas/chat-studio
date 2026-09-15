@@ -2,9 +2,9 @@
 
 ## 工具链
 
-固定 Flutter 3.44.9（Dart 3.12.2），提交 pubspec.lock。Android 使用 JDK 17、SDK 36，Flutter 插件按项目配置自动安装所需 NDK。iOS 使用 macOS-15 runner 与项目默认 Swift Package Manager 集成，不需要手写 Podfile。
+固定 Flutter 3.44.9（Dart 3.12.2），提交 pubspec.lock。当前版本为 1.0.6+7；本地 Gradle 堆上限 3 GB、metaspace 1 GB、worker 上限 2，避免低内存构建机过度并行。Android 使用 JDK 17、SDK 36，Flutter 插件按项目配置自动安装所需 NDK。iOS 使用 macOS-15 runner 与项目默认 Swift Package Manager 集成，不需要手写 Podfile。
 
-`Mobile CI` 在 Linux 检查格式、静态分析、单元/组件测试，然后分别构建 Android 和 iOS。Actions 会安装工具链、解析锁定依赖，无需提交本地 SDK 和生成目录。
+`Mobile CI` 在 Linux 检查格式、静态分析、单元/组件测试，再自动架设固定上游 SHA 的一次性 Studio 做真实契约测试，全部通过后分别构建 Android 和 iOS。Android 同时上传 Debug APK、arm64 Profile APK（debug 签名，性能验收用）以及未签名 Release APK/AAB（编译验收用）。正式分发使用 Signed packages。Actions 会安装工具链、解析锁定依赖，无需提交本地 SDK 和生成目录。
 
 工作流目前使用主版本固定的官方 actions / subosito action，以及固定 Flutter 版本；若需供应链强化，可审计后进一步将 action 引用固定到 commit SHA。未配置从不可信 PR 自动发布的逻辑。
 
@@ -12,7 +12,7 @@
 
 ### 本地签名
 
-本次已生成专用本地 RSA 3072 签名密钥，并验证 APK 的 v2 签名。材料仅存放在：
+1.0.6 本地 Linux 环境没有找到旧版签名，已新生成专用 RSA 3072 Release 密钥。**它不保证与先前 Windows 版本同签名；不同签名不能覆盖安装。** 材料仅存放在：
 
 - `.local/signing/ekko-upload.jks`
 - `.local/signing/credentials.json`
@@ -47,7 +47,7 @@ flutter build apk --release --target-platform android-arm64
 | `ANDROID_KEYSTORE_BASE64` | JKS 文件完整 Base64，无换行 |
 | `ANDROID_STORE_PASSWORD` | store password |
 | `ANDROID_KEY_PASSWORD` | key password |
-| `ANDROID_KEY_ALIAS` | alias；本次本地密钥为 `ekko` |
+| `ANDROID_KEY_ALIAS` | alias；1.0.6 本次本地密钥为 `ekko-local-release` |
 
 运行 Actions → Signed packages → Run workflow → android。脚本只在 runner 临时目录解码密钥；缺项直接失败，不降级签名。结束时清除文件，上传 APK/AAB，不上传密钥。
 
@@ -97,3 +97,14 @@ flutter build apk --release --target-platform android-arm64
 版本号 `1.0.1+2`，沿用 1.0.0 的签名密钥以便覆盖安装。新增 Android 麦克风权限与 iOS 麦克风/相册用途说明，原生插件版本锁定在 `pubspec.lock`。不得把本地 `.local/signing`、`android/key.properties` 提交到 Git。
 
 在同一工作目录内串行执行 `flutter test` 与 `flutter build`：它们会重新生成插件注册表，并发执行可能让 release 编译错误引用仅测试使用的 integration_test 插件。CI 原有分 Job 隔离不受影响。
+
+
+### 测试后 Release 构建的插件注册表
+
+Flutter 3.44.9 在运行测试后可能留下含 integration_test 的 GeneratedPluginRegistrant；Release 构建会排除该 dev 插件。测试之后不要使用 `flutter build ... --no-pub` 跳过插件刷新：先 `flutter pub get --enforce-lockfile`，再正常执行 `flutter build apk --release`。不要把手工编辑生成的注册表当成修复。测试与构建保持串行。
+
+签名 Release APK 可用以下脚本检查签名、非 debuggable、Dart AOT 与 SHA-256：
+
+```sh
+bash scripts/verify-android-release.sh build/app/outputs/flutter-apk/app-release.apk
+```

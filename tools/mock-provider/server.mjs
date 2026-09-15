@@ -8,6 +8,16 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({object: 'list', data: [{id:'ekko-test',object:'model',owned_by:'local'}]})); return;
   }
+  if (req.method === 'POST' && req.url === '/v1/audio/speech') {
+    for await (const _ of req) { /* consume isolated fixture request */ }
+    const audio = Buffer.alloc(32044);
+    audio.write('RIFF', 0); audio.writeUInt32LE(32036, 4); audio.write('WAVEfmt ', 8);
+    audio.writeUInt32LE(16, 16); audio.writeUInt16LE(1, 20); audio.writeUInt16LE(1, 22);
+    audio.writeUInt32LE(16000, 24); audio.writeUInt32LE(32000, 28);
+    audio.writeUInt16LE(2, 32); audio.writeUInt16LE(16, 34);
+    audio.write('data', 36); audio.writeUInt32LE(32000, 40);
+    res.writeHead(200, {'Content-Type': 'audio/wav'}); res.end(audio); return;
+  }
   if (req.method === 'POST' && req.url === '/v1/audio/transcriptions') {
     let size = 0;
     for await (const chunk of req) { size += chunk.length; if (size > 4_000_000) { res.writeHead(413); res.end(); return; } }

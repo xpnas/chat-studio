@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import '../../data/file_export.dart';
+import 'audio_attachment_control.dart';
 import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../data/studio_api.dart';
@@ -11,9 +14,12 @@ class AttachmentTile extends StatefulWidget {
     super.key,
     required this.file,
     required this.controller,
+    this.saveFile,
   });
   final MessageAttachment file;
   final AppController controller;
+  final Future<String?> Function(String name, Uint8List bytes, String mimeType)?
+  saveFile;
   @override
   State<AttachmentTile> createState() => _AttachmentTileState();
 }
@@ -59,13 +65,16 @@ class _AttachmentTileState extends State<AttachmentTile> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => AttachmentViewer(
-            file: widget.file,
-            controller: widget.controller,
-          ),
-        ),
+        onTap: widget.file.isAudio
+            ? () => widget.controller.playAudioAttachment(widget.file)
+            : () => showDialog<void>(
+                context: context,
+                builder: (_) => AttachmentViewer(
+                  file: widget.file,
+                  controller: widget.controller,
+                  saveFile: widget.saveFile,
+                ),
+              ),
         child: Container(
           width: 250,
           padding: const EdgeInsets.all(8),
@@ -114,12 +123,19 @@ class _AttachmentTileState extends State<AttachmentTile> {
                           ),
                   ),
                 ),
+              if (widget.file.isAudio)
+                AudioAttachmentControl(
+                  file: widget.file,
+                  controller: widget.controller,
+                ),
               const SizedBox(height: 4),
               Row(
                 children: [
                   Icon(
                     widget.file.isImage
                         ? Icons.image_outlined
+                        : widget.file.isAudio
+                        ? Icons.audiotrack_rounded
                         : Icons.insert_drive_file_outlined,
                     size: 18,
                   ),
@@ -131,6 +147,20 @@ class _AttachmentTileState extends State<AttachmentTile> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 13),
                     ),
+                  ),
+                  IconButton(
+                    key: ValueKey('download:${widget.file.path}'),
+                    tooltip: '下载文件',
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => AttachmentViewer(
+                        file: widget.file,
+                        controller: widget.controller,
+                        saveFile: widget.saveFile,
+                        downloadOnOpen: true,
+                      ),
+                    ),
+                    icon: const Icon(Icons.download_rounded, size: 20),
                   ),
                 ],
               ),
@@ -151,9 +181,14 @@ class AttachmentViewer extends StatefulWidget {
     super.key,
     required this.file,
     required this.controller,
+    this.saveFile,
+    this.downloadOnOpen = false,
   });
   final MessageAttachment file;
+  final bool downloadOnOpen;
   final AppController controller;
+  final Future<String?> Function(String name, Uint8List bytes, String mimeType)?
+  saveFile;
   @override
   State<AttachmentViewer> createState() => _AttachmentViewerState();
 }
@@ -163,6 +198,10 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
   late final String _profile = widget.controller.profile;
   final _cancel = Completer<void>();
   Uint8List? _bytes;
+  Completer<void>? _downloadCancel;
+  int _received = 0;
+  int? _total;
+  bool _exporting = false;
   String? _error;
   bool _loading = false, _saving = false, _leaving = false;
   bool get _valid =>
@@ -173,13 +212,20 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
   void initState() {
     super.initState();
     widget.controller.addListener(_changed);
-    if (widget.file.isImage) _load();
+    if (widget.downloadOnOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_valid) _save();
+      });
+    } else if (widget.file.isImage) {
+      _load();
+    }
   }
 
   void _changed() {
     if (!_valid && mounted && !_leaving) {
       _leaving = true;
       if (!_cancel.isCompleted) _cancel.complete();
+      if (_downloadCancel?.isCompleted == false) _downloadCancel!.complete();
       setState(() => _bytes = null);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.of(context).pop();
@@ -208,25 +254,64 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
 
   Future<void> _save() async {
     if (_saving || !_valid) return;
-    setState(() => _saving = true);
+    final cancel = Completer<void>();
+    _downloadCancel = cancel;
+    setState(() {
+      _saving = true;
+      _error = null;
+      _received = 0;
+      _total = null;
+    });
+    Directory? directory;
     try {
-      if (_bytes == null) await _load();
-      if (!_valid || _bytes == null) return;
+      // The byte-based callback remains only as a small-fixture test seam.
       final name = widget.file.name.replaceAll(RegExp(r'[/\\\x00-\x1f]'), '_');
-      final result = await FilePicker.saveFile(
-        fileName: name,
-        bytes: _bytes!,
-        mimeType: widget.file.mimeType,
-      );
+      String? result;
+      if (widget.saveFile != null) {
+        final bytes = await _api!.attachmentBytes(
+          widget.file,
+          cancel: cancel.future,
+        );
+        if (!_valid || cancel.isCompleted) return;
+        result = await widget.saveFile!(name, bytes, widget.file.mimeType);
+      } else {
+        final root = await getTemporaryDirectory();
+        directory = await root.createTemp('ekko-download-');
+        final file = await _api!.downloadAttachment(
+          widget.file,
+          directory,
+          cancel: cancel.future,
+          onProgress: (received, total) {
+            if (_valid) {
+              setState(() {
+                _received = received;
+                _total = total;
+              });
+            }
+          },
+        );
+        if (!_valid || cancel.isCompleted) return;
+        setState(() => _exporting = true);
+        result = await FileExport.save(file, name, widget.file.mimeType);
+      }
       if (mounted && _valid && result != null) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('附件已保存至你选择的位置')));
       }
     } catch (e) {
-      if (_valid) setState(() => _error = '保存失败，请重试');
+      if (_valid) setState(() => _error = '$e');
     } finally {
-      if (_valid) setState(() => _saving = false);
+      if (directory != null && await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+      if (_valid) {
+        setState(() {
+          _saving = false;
+          _exporting = false;
+        });
+      }
+      if (identical(_downloadCancel, cancel)) _downloadCancel = null;
     }
   }
 
@@ -234,6 +319,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
   void dispose() {
     widget.controller.removeListener(_changed);
     if (!_cancel.isCompleted) _cancel.complete();
+    if (_downloadCancel?.isCompleted == false) _downloadCancel!.complete();
     _bytes = null;
     super.dispose();
   }
@@ -246,6 +332,28 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (_saving) ...[
+            LinearProgressIndicator(
+              value: _total != null && _total! > 0
+                  ? (_received / _total!).clamp(0, 1)
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _exporting
+                  ? '请选择保存位置'
+                  : '已下载 ${(_received / 1024 / 1024).toStringAsFixed(1)} MB${_total == null ? '' : ' / ${(_total! / 1024 / 1024).toStringAsFixed(1)} MB'}',
+            ),
+            if (!_exporting)
+              TextButton(
+                onPressed: () {
+                  if (_downloadCancel?.isCompleted == false) {
+                    _downloadCancel!.complete();
+                  }
+                },
+                child: const Text('取消下载'),
+              ),
+          ],
           if (_loading)
             const Padding(
               padding: EdgeInsets.all(20),
@@ -260,6 +368,11 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                   errorBuilder: (_, _, _) => const Text('此格式暂不支持预览，可保存原文件'),
                 ),
               ),
+            ),
+          if (widget.file.isAudio)
+            AudioAttachmentControl(
+              file: widget.file,
+              controller: widget.controller,
             ),
           if (!widget.file.isImage)
             Text(
@@ -285,7 +398,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
         ),
       FilledButton(
         onPressed: _loading || _saving ? null : _save,
-        child: Text(_saving ? '保存中' : '保存附件'),
+        child: Text(_saving ? '下载保存中' : '下载 / 保存附件'),
       ),
     ],
   );

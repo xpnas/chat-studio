@@ -1,3 +1,4 @@
+import 'package:mime/mime.dart';
 import 'dart:convert';
 
 Map<String, dynamic> asMap(dynamic value) =>
@@ -31,7 +32,9 @@ String messageText(dynamic value) {
           if (data['type'] == 'image' || data['type'] == 'image_url') {
             return '[图片：${text(data['name']).isEmpty ? '附件' : text(data['name'])}]';
           }
-          if (data['type'] == 'file') return '[文件：${text(data['name'])}]';
+          if (data['type'] == 'file' || data['type'] == 'audio') {
+            return '[文件：${text(data['name'])}]';
+          }
           return '';
         })
         .where((part) => part.isNotEmpty)
@@ -140,6 +143,15 @@ class MessageAttachment {
   final String name, path, mimeType;
   final int size;
   bool get isImage => mimeType.startsWith('image/');
+  String get audioMime =>
+      mimeType.toLowerCase().startsWith('audio/') && mimeType != 'audio/*'
+      ? mimeType
+      : lookupMimeType(path) ?? lookupMimeType(name) ?? mimeType;
+  bool get isAudio =>
+      mimeType.toLowerCase().startsWith('audio/') ||
+      ((mimeType.isEmpty || mimeType == 'application/octet-stream') &&
+          audioMime.startsWith('audio/'));
+
   String get sizeLabel => size <= 0
       ? '大小未知'
       : size < 1024 * 1024
@@ -164,7 +176,7 @@ class MessageAttachment {
         .map(asMap)
         .where(
           (b) =>
-              ['image', 'file'].contains(b['type']) &&
+              ['image', 'file', 'audio'].contains(b['type']) &&
               text(b['path']).isNotEmpty,
         )
         .map(
@@ -174,6 +186,8 @@ class MessageAttachment {
             mimeType: text(b['media_type']).isEmpty
                 ? (b['type'] == 'image'
                       ? 'image/*'
+                      : b['type'] == 'audio'
+                      ? (lookupMimeType(text(b['path'])) ?? 'audio/*')
                       : 'application/octet-stream')
                 : text(b['media_type']),
             size: integer(b['size']),
@@ -214,6 +228,9 @@ class ChatMessage {
     this.delivery = '',
     this.failure = '',
     this.localKey,
+    this.runMarker = '',
+    this.finishReason,
+    this.hasFinishReason = false,
   });
   final String id, role, content, reasoning;
   final bool pending;
@@ -221,6 +238,9 @@ class ChatMessage {
   final List<ToolActivity> tools;
   final String delivery, failure;
   final String? localKey;
+  final String runMarker;
+  final String? finishReason;
+  final bool hasFinishReason;
   String get renderKey => localKey ?? id;
   String get bodyText {
     var value = content;
@@ -234,7 +254,7 @@ class ChatMessage {
   }
 
   bool get visible =>
-      (role == 'user' || role == 'assistant') &&
+      (role == 'user' || role == 'assistant' || role == 'command') &&
       (content.trim().isNotEmpty ||
           reasoning.trim().isNotEmpty ||
           attachments.isNotEmpty ||
@@ -251,6 +271,7 @@ class ChatMessage {
     String? delivery,
     String? failure,
     String? localKey,
+    String? runMarker,
   }) => ChatMessage(
     id: id ?? this.id,
     role: role,
@@ -262,12 +283,19 @@ class ChatMessage {
     delivery: delivery ?? this.delivery,
     failure: failure ?? this.failure,
     localKey: localKey ?? this.localKey ?? this.id,
+    runMarker: runMarker ?? this.runMarker,
+    finishReason: finishReason,
+    hasFinishReason: hasFinishReason,
   );
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
     id: '${json['id'] ?? json['message_id'] ?? ''}',
     role: text(json['display_role']).isNotEmpty
         ? text(json['display_role'])
         : text(json['role']),
+    runMarker: text(json['runMarker'] ?? json['run_marker'] ?? json['run_id']),
+    finishReason: (json['finish_reason'] ?? json['finishReason'])?.toString(),
+    hasFinishReason:
+        json.containsKey('finish_reason') || json.containsKey('finishReason'),
     content: messageText(json['display_content'] ?? json['content']),
     reasoning: messageText(json['reasoning_content'] ?? json['reasoning']),
     attachments: MessageAttachment.parse(

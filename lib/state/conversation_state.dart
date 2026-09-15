@@ -25,10 +25,16 @@ class ConversationState {
   int offset = 0, revision = 0, loadRequest = 0;
   String? submittedInput, retryInput;
   List<Map<String, dynamic>> submittedAttachments = [], retryAttachments = [];
-  Timer? runTimer, syncTimer;
+  DateTime? submittedAt;
+  bool awaitingStart = false;
+  Timer? runTimer, syncTimer, interactionTimer, responseTimer, queueTimer;
+
   void cancelTimers() {
     runTimer?.cancel();
     syncTimer?.cancel();
+    interactionTimer?.cancel();
+    responseTimer?.cancel();
+    queueTimer?.cancel();
   }
 }
 

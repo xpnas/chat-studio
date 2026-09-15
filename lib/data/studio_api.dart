@@ -187,6 +187,9 @@ class StudioApi {
     String path,
     String provider, {
     Future<void>? cancel,
+    String fileName = 'voice.wav',
+    String mimeType = 'audio/wav',
+    int maxBytes = 4 * 1024 * 1024,
   }) async {
     final scope = profile, credential = token;
     var canceled = false;
@@ -194,10 +197,10 @@ class StudioApi {
     final audio = await http.MultipartFile.fromPath(
       'audio',
       path,
-      filename: 'voice.wav',
-      contentType: http.MediaType('audio', 'wav'),
+      filename: fileName,
+      contentType: http.MediaType.parse(mimeType),
     );
-    if (audio.length > 4 * 1024 * 1024) throw const ApiException('录音过长，请分段输入');
+    if (audio.length > maxBytes) throw const ApiException('音频超出转文字大小限制，请先分段');
     if (canceled || scope != profile || credential != token) {
       throw const ApiException('已取消：会话或 Profile 已变化');
     }
@@ -207,9 +210,123 @@ class StudioApi {
       fields: {'provider': provider},
       cancel: cancel,
     );
+    if (canceled || scope != profile || credential != token) {
+      throw const ApiException('已取消：会话或 Profile 已变化');
+    }
     final result = text(data['text']).trim();
     if (result.isEmpty) throw const ApiException('未识别到语音，请重试');
     return result;
+  }
+
+  /// Download to a unique temporary file, with bounded memory and backpressure.
+  /// The caller owns cleanup after export; never writes to a server-supplied path.
+  Future<File> downloadAttachment(
+    MessageAttachment file,
+    Directory directory, {
+    Future<void>? cancel,
+    void Function(int received, int? total)? onProgress,
+    int? maxBytes,
+  }) async {
+    final scope = profile, credential = token;
+    final abort = Completer<void>();
+    void stop() {
+      if (!abort.isCompleted) abort.complete();
+    }
+
+    cancel?.then((_) => stop());
+    final target = File('${directory.path}/download.part');
+    final req =
+        http.AbortableRequest(
+            'GET',
+            address.uri.replace(
+              path: '/api/studio/files/download',
+              queryParameters: {'path': file.path, 'name': file.name},
+            ),
+            abortTrigger: abort.future,
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            'Authorization': 'Bearer $credential',
+            'X-Hermes-Profile': scope,
+          });
+    RandomAccessFile? output;
+    final timer = Timer(const Duration(minutes: 30), stop);
+    var success = false;
+    void check() {
+      if (abort.isCompleted || scope != profile || credential != token) {
+        stop();
+        throw const ApiException('下载已取消或登录状态已变化');
+      }
+    }
+
+    try {
+      check();
+      final response = await _client
+          .send(req)
+          .timeout(const Duration(seconds: 45));
+      if (response.statusCode == 401) onUnauthorized?.call();
+      if (response.statusCode != 200) {
+        stop();
+        throw ApiException(
+          response.statusCode == 403
+              ? '没有权限下载此文件'
+              : response.statusCode == 404
+              ? '文件已失效或被删除'
+              : '下载失败（${response.statusCode}）',
+          response.statusCode,
+        );
+      }
+      final total = response.contentLength;
+      if (maxBytes != null && total != null && total > maxBytes) {
+        throw const ApiException('音频过大，转文字最多支持 49 MB，请先分段');
+      }
+      output = await target.open(mode: FileMode.writeOnly);
+      var received = 0;
+      final clock = Stopwatch()..start();
+      onProgress?.call(0, total);
+      await for (final chunk in response.stream.timeout(
+        const Duration(seconds: 60),
+      )) {
+        check();
+        if (maxBytes != null && received + chunk.length > maxBytes) {
+          throw const ApiException('音频过大，转文字最多支持 49 MB，请先分段');
+        }
+        await output.writeFrom(chunk);
+        received += chunk.length;
+        if (total != null && received > total) {
+          throw const ApiException('下载大小与服务端声明不一致');
+        }
+        if (clock.elapsedMilliseconds >= 100) {
+          onProgress?.call(received, total);
+          clock.reset();
+        }
+      }
+      check();
+      if (total != null && received != total) {
+        throw const ApiException('下载不完整，请重试');
+      }
+      await output.close();
+      output = null;
+      onProgress?.call(received, total);
+      success = true;
+      return target;
+    } on TimeoutException {
+      stop();
+      throw const ApiException('下载超时，请检查网络后重试');
+    } on http.RequestAbortedException {
+      throw const ApiException('下载已取消');
+    } on http.ClientException {
+      throw const ApiException('下载连接中断，请重试');
+    } on SocketException {
+      throw const ApiException('无法连接下载服务器');
+    } on FileSystemException {
+      throw const ApiException('无法写入文件，请检查剩余存储空间');
+    } finally {
+      timer.cancel();
+      stop();
+      await output?.close();
+      if (!success && await target.exists()) await target.delete();
+    }
   }
 
   Future<Uint8List> attachmentBytes(
@@ -307,6 +424,82 @@ class StudioApi {
     }
   }
 
+  /// Official profile/user configured TTS. No provider credentials in the App.
+  Future<(Uint8List, String)> synthesizeSpeech(
+    String text, {
+    Future<void>? cancel,
+  }) async {
+    if (text.trim().isEmpty || text.length > 12000) {
+      throw const ApiException('语音回复需为 1–12000 字符，请选择较短回复');
+    }
+    final scope = profile, credential = token;
+    final abort = Completer<void>();
+    void stop() {
+      if (!abort.isCompleted) abort.complete();
+    }
+
+    cancel?.then((_) => stop());
+    final req =
+        http.AbortableRequest(
+            'POST',
+            address.uri.replace(path: '/api/studio/tts/synthesize'),
+            abortTrigger: abort.future,
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            'Authorization': 'Bearer $credential',
+            'X-Hermes-Profile': scope,
+            'Content-Type': 'application/json',
+            'Accept': 'audio/*, application/json',
+          })
+          ..body = jsonEncode({'text': text});
+    try {
+      return await (() async {
+        final response = await _client.send(req);
+        if (response.statusCode == 401) onUnauthorized?.call();
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          stop();
+          throw ApiException(
+            '语音合成失败（${response.statusCode}），请在 Web 配置 TTS 服务',
+            response.statusCode,
+          );
+        }
+        const limit = 20 * 1024 * 1024;
+        final mime = (response.headers['content-type'] ?? '').split(';').first;
+        if (!mime.startsWith('audio/') ||
+            (response.contentLength ?? 0) > limit) {
+          stop();
+          throw const ApiException('语音响应格式无效或文件过大');
+        }
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response.stream) {
+          if (bytes.length + chunk.length > limit) {
+            stop();
+            throw const ApiException('语音文件超过 20 MB');
+          }
+          bytes.add(chunk);
+        }
+        if (scope != profile || credential != token || abort.isCompleted) {
+          throw const ApiException('已取消语音回复');
+        }
+        if (bytes.isEmpty) throw const ApiException('服务端未返回音频');
+        return (bytes.takeBytes(), mime);
+      })().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          stop();
+          throw const ApiException('语音合成超时');
+        },
+      );
+    } on http.RequestAbortedException {
+      throw const ApiException('已取消语音回复');
+    } on http.ClientException {
+      throw const ApiException('语音服务连接失败');
+    } on SocketException {
+      throw const ApiException('语音服务连接失败');
+    }
+  }
+
   Future<Map<String, dynamic>> login(
     String username,
     String password,
@@ -357,6 +550,49 @@ class StudioApi {
       integer(data['total']),
       flag(data['hasMore']),
     );
+  }
+
+  // Contracts verified against official v1.0.3 api/hermes/{skills,skill-bundles}.ts.
+  Future<List<Map<String, dynamic>>> commandSkills() async {
+    final data = await request(
+      '/api/hermes/skills',
+      query: {'profile': profile},
+    );
+    final unique = <String, Map<String, dynamic>>{};
+    for (final category in asList(data['categories'])) {
+      for (final item in asList(asMap(category)['skills'])) {
+        final skill = asMap(item);
+        if (skill['enabled'] != false && text(skill['name']).isNotEmpty) {
+          unique.putIfAbsent(text(skill['name']), () => skill);
+        }
+      }
+    }
+    return unique.values.toList();
+  }
+
+  Future<List<Map<String, dynamic>>> commandBundles() async => asList(
+    (await request(
+      '/api/hermes/bundles',
+      query: {'profile': profile},
+    ))['bundles'],
+  ).map(asMap).toList();
+
+  Future<Map<String, dynamic>> createCommandBundle(
+    String name,
+    String description,
+    List<String> skills,
+  ) async {
+    final data = await request(
+      '/api/hermes/bundles',
+      method: 'POST',
+      query: {'profile': profile},
+      body: {'name': name, 'description': description, 'skills': skills},
+    );
+    final bundle = asMap(data['bundle']);
+    if (text(bundle['commandName']).isEmpty) {
+      throw const ApiException('服务端未返回 Bundle 命令名称');
+    }
+    return bundle;
   }
 
   Future<void> rename(String id, String title) async {

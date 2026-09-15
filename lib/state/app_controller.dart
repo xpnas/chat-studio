@@ -5,6 +5,10 @@ import '../core/server_address.dart';
 import '../data/app_storage.dart';
 import '../data/chat_transport.dart';
 import '../data/models.dart';
+import '../data/slash_commands.dart';
+import '../data/queued_message.dart';
+import '../data/speech_playback.dart';
+import '../data/audio_transcription.dart';
 import '../data/studio_api.dart';
 import 'chat_timeline.dart';
 import 'conversation_state.dart';
@@ -16,8 +20,43 @@ class AppController extends ChangeNotifier {
     required this.storage,
     ChatTransport? transport,
     ApiFactory? apiFactory,
-  }) : transport = transport ?? SocketChatTransport(),
+    SpeechPlayback? speech,
+    AudioTranscription? transcription,
+  }) : transcription = transcription ?? AudioTranscription(),
+       speech = speech ?? SpeechPlayback(),
+       transport = transport ?? SocketChatTransport(),
        _apiFactory = apiFactory ?? ((address) => StudioApi(address));
+  final SpeechPlayback speech;
+  final AudioTranscription transcription;
+  bool foreground = true;
+  void onBackground() {
+    foreground = false;
+    transcription.cancel();
+    unawaited(speech.stop());
+  }
+
+  String audioAttachmentId(MessageAttachment file) =>
+      'audio:$profile:$sessionId:${file.path}';
+  void playAudioAttachment(MessageAttachment file) {
+    if (!authenticated || api == null || !foreground || !file.isAudio) return;
+    final id = audioAttachmentId(file);
+    if (speech.activeId == id) {
+      unawaited(speech.stop());
+      return;
+    }
+    unawaited(speech.playAttachment(api!, id, file));
+  }
+
+  void transcribeAudioAttachment(MessageAttachment file) {
+    if (!authenticated || api == null || !foreground || !file.isAudio) return;
+    final id = audioAttachmentId(file);
+    if (transcription.activeId == id) {
+      transcription.cancel();
+      return;
+    }
+    unawaited(transcription.transcribe(api!, id, file));
+  }
+
   final AppStorage storage;
   final ChatTransport transport;
   final ApiFactory _apiFactory;
@@ -83,6 +122,8 @@ class AppController extends ChangeNotifier {
   bool get canConfigure =>
       authenticated && !busy && !working && !syncing && !loadingMessages;
   void _disposeStates() {
+    transcription.clear();
+    unawaited(speech.stop());
     for (final state in {..._states.values, _view}) {
       state.cancelTimers();
     }
@@ -535,6 +576,10 @@ class AppController extends ChangeNotifier {
           .map((s) => s.conversation!);
       final merged = [if (more) ...conversations, ...local, ...rows];
       conversations = {for (final s in merged) s.id: s}.values.toList();
+      for (final row in rows) {
+        final state = _findState(row.id);
+        if (state != null) state.conversation = row;
+      }
       hasMoreSessions = search.isEmpty && flag(data['hasMore']);
     } catch (e) {
       if (_valid(epoch) && searchEpoch == _searchEpoch) reportError(e);
@@ -547,6 +592,8 @@ class AppController extends ChangeNotifier {
   }
 
   void _resetChat({bool preserve = true}) {
+    transcription.cancel();
+    unawaited(speech.stop());
     if (preserve) _cacheView();
     _chatEpoch++;
     _navigationRevision++;
@@ -565,6 +612,8 @@ class AppController extends ChangeNotifier {
 
   Future<void> openConversation(Conversation conversation) async {
     if (busy) return;
+    transcription.cancel();
+    unawaited(speech.stop());
     if (conversation.profile != profile) {
       await switchProfile(conversation.profile);
       if (!authenticated || conversation.profile != profile) return;
@@ -601,7 +650,13 @@ class AppController extends ChangeNotifier {
     }
     error = null;
     _notify();
-    if (state.timeline.messages.isEmpty) await _loadHistoryState(state);
+    // An active conversation must be hydrated by a single snapshot + replay,
+    // not first painted from a partial DB page then immediately replaced.
+    final active =
+        state.timeline.working || (_tasks[_key(state)]?.active ?? false);
+    if (state.timeline.messages.isEmpty && !(connected && active)) {
+      await _loadHistoryState(state);
+    }
     if (_view != state || !authenticated || state.profile != profile) return;
     if (connected) _resumeState(state);
   }
@@ -617,7 +672,8 @@ class AppController extends ChangeNotifier {
     if (sid == null ||
         state.loading ||
         client == null ||
-        state.profile != profile) {
+        state.profile != profile ||
+        (!more && state.syncing)) {
       return;
     }
     final epoch = _epoch,
@@ -645,7 +701,10 @@ class AppController extends ChangeNotifier {
         state.hasMore = page.hasMore;
       }
     } catch (e) {
-      if (_valid(epoch) && state == _view && state.revision == revision) {
+      if (_valid(epoch) &&
+          state == _view &&
+          state.revision == revision &&
+          state.loadRequest == requestId) {
         reportError(e);
       }
     } finally {
@@ -708,13 +767,48 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  bool isBridgeCommand(String input) =>
+      engine == 'hermes' && readCommandName(input) != null;
+
+  bool get canQueue =>
+      authenticated &&
+      profiles.isNotEmpty &&
+      connected &&
+      !syncing &&
+      !loadingMessages &&
+      !busy &&
+      current?.canContinue != false &&
+      working &&
+      !_view.awaitingStart;
+
+  bool canSubmit(String input) =>
+      canSend ||
+      canQueue ||
+      (isBridgeCommand(input) &&
+          authenticated &&
+          profiles.isNotEmpty &&
+          connected &&
+          !syncing &&
+          !loadingMessages &&
+          !busy &&
+          current?.canContinue != false &&
+          working);
+
   bool send(String input, {List<Map<String, dynamic>> attachments = const []}) {
     input = input.trim();
-    if ((input.isEmpty && attachments.isEmpty) || !canSend) return false;
+    if ((input.isEmpty && attachments.isEmpty) || !canSubmit(input)) {
+      return false;
+    }
     if (input.length > 64000) {
       reportError('消息过长，请拆分后发送（最多 64000 字符）');
       return false;
     }
+    final queued = working && !isBridgeCommand(input);
+    if (queued && !canQueue) return false;
+    if (working && isBridgeCommand(input) && attachments.isNotEmpty) {
+      return false;
+    }
+    final command = isBridgeCommand(input) && attachments.isEmpty;
     final sid = sessionId ?? const Uuid().v4();
     final queueId = const Uuid().v4();
     try {
@@ -739,17 +833,49 @@ class AppController extends ChangeNotifier {
       });
       _chatEpoch++;
       _view.revision++;
-      _lastSubmittedInput = input;
-      _lastSubmittedAttachments = List.of(attachments);
+      if (queued) {
+        timeline.queue = [
+          ...timeline.queue,
+          QueuedMessage(
+            queueId,
+            input,
+            status: 'sending',
+            attachments: MessageAttachment.parse(attachments),
+          ),
+        ];
+        final state = _view;
+        state.queueTimer?.cancel();
+        state.queueTimer = Timer(const Duration(seconds: 15), () {
+          if (_disposed || state.profile != profile) return;
+          state.timeline.queue = state.timeline.queue
+              .map((q) => q.status == 'sending' ? q.withStatus('uncertain') : q)
+              .toList();
+          if (connected) _resumeState(state);
+          _notify();
+        });
+        _notify();
+        return true;
+      }
+      if (!command) {
+        _lastSubmittedInput = input;
+        _lastSubmittedAttachments = List.of(attachments);
+      }
       sessionId = sid;
-      timeline.begin(
-        [
-          input,
-          if (attachments.isNotEmpty) messageText(attachments),
-        ].where((s) => s.isNotEmpty).join('\n'),
-        'local:$queueId',
-        attachments: MessageAttachment.parse(attachments),
-      );
+      if (command) {
+        timeline.messages = [
+          ...timeline.messages,
+          ChatMessage(id: 'local:$queueId', role: 'command', content: input),
+        ];
+      } else {
+        timeline.begin(
+          [
+            input,
+            if (attachments.isNotEmpty) messageText(attachments),
+          ].where((s) => s.isNotEmpty).join('\n'),
+          'local:$queueId',
+          attachments: MessageAttachment.parse(attachments),
+        );
+      }
       final state = _view;
       state.conversation ??= Conversation(
         id: sid,
@@ -766,17 +892,24 @@ class AppController extends ChangeNotifier {
       if (!conversations.any((c) => c.id == sid)) {
         conversations = [state.conversation!, ...conversations];
       }
-      _tasks[_key(state)] = ConversationTaskStatus.running;
+      _tasks[_key(state)] = timeline.working
+          ? ConversationTaskStatus.running
+          : ConversationTaskStatus.idle;
       error = null;
-      state.runTimer?.cancel();
-      final epoch = _epoch;
-      state.runTimer = Timer(const Duration(seconds: 25), () {
-        if (!_valid(epoch) || !state.timeline.working) return;
-        state.timeline.markUncertain();
-        _tasks[_key(state)] = ConversationTaskStatus.checking;
-        if (connected && state.profile == profile) _resumeState(state);
-        _notify();
-      });
+      if (!command) {
+        state.awaitingStart = true;
+        state.submittedAt = DateTime.now();
+        state.runTimer?.cancel();
+        final epoch = _epoch;
+        state.runTimer = Timer(const Duration(seconds: 25), () {
+          if (!_valid(epoch) || !state.timeline.working) return;
+          state.awaitingStart = false;
+          state.timeline.markUncertain();
+          _tasks[_key(state)] = ConversationTaskStatus.checking;
+          if (connected && state.profile == profile) _resumeState(state);
+          _notify();
+        });
+      }
       _notify();
       return true;
     } catch (e) {
@@ -805,10 +938,13 @@ class AppController extends ChangeNotifier {
     if (state.id == null ||
         !connected ||
         state.profile != profile ||
-        state.syncing) {
+        state.syncing ||
+        state.awaitingStart) {
       return;
     }
     state.syncing = true;
+    state.loadRequest++;
+    state.loading = false;
     state.timeline.markUncertain();
     state.syncTimer?.cancel();
     final epoch = _epoch;
@@ -844,6 +980,7 @@ class AppController extends ChangeNotifier {
   }
 
   void onForeground() {
+    foreground = true;
     if (!authenticated) return;
     if (connected) {
       _recoverSessions();
@@ -878,6 +1015,10 @@ class AppController extends ChangeNotifier {
       connected = false;
       for (final state in {..._states.values, _view}) {
         state.timeline.markUncertain();
+        state.awaitingStart = false;
+        state.timeline.queue = state.timeline.queue
+            .map((q) => q.status == 'sending' ? q.withStatus('uncertain') : q)
+            .toList();
         state.cancelTimers();
         state.syncing = false;
       }
@@ -908,7 +1049,11 @@ class AppController extends ChangeNotifier {
       for (final state in _states.values.toList()) {
         if (state.profile != profile ||
             state.id == null ||
-            running.contains(state.id)) {
+            running.contains(state.id) ||
+            state.awaitingStart ||
+            (state.submittedAt != null &&
+                timestamp > 0 &&
+                timestamp < state.submittedAt!.millisecondsSinceEpoch)) {
           continue;
         }
         if (state.timeline.working || (_tasks[_key(state)]?.active ?? false)) {
@@ -936,8 +1081,13 @@ class AppController extends ChangeNotifier {
       if (stamp > 0 && stamp < (_activityTimes[_stateKey(profile, sid)] ?? 0)) {
         return;
       }
-      _activity(sid, status, timestamp: stamp);
       final state = _findState(sid);
+      if (state?.submittedAt != null &&
+          stamp > 0 &&
+          stamp < state!.submittedAt!.millisecondsSinceEpoch) {
+        return;
+      }
+      _activity(sid, status, timestamp: stamp);
       if (state != null &&
           !state.syncing &&
           ((status == ConversationTaskStatus.running &&
@@ -966,7 +1116,71 @@ class AppController extends ChangeNotifier {
       }
       return;
     }
+    if (event == 'session.command') {
+      state.awaitingStart = false;
+      state.timeline.apply(event, data);
+      state.revision++;
+      state.runTimer?.cancel();
+      _activity(
+        sid,
+        state.timeline.working
+            ? ConversationTaskStatus.running
+            : data['ok'] == false
+            ? ConversationTaskStatus.failed
+            : ConversationTaskStatus.idle,
+      );
+      if (data['ok'] != false &&
+          data['action'] == 'title' &&
+          data['title'] is String) {
+        final old = state.conversation;
+        if (old != null) {
+          final renamed = Conversation(
+            id: old.id,
+            title: text(data['title']),
+            profile: old.profile,
+            agent: old.agent,
+            source: old.source,
+            model: old.model,
+            provider: old.provider,
+            reasoningEffort: old.reasoningEffort,
+          );
+          state.conversation = renamed;
+          conversations = conversations
+              .map((c) => c.id == sid ? renamed : c)
+              .toList();
+        }
+      }
+      if (data['ok'] != false && data['action'] == 'clear') {
+        state.loadRequest++;
+        state.loading = false;
+        if (flag(data['clearHistory'])) {
+          state.offset = 0;
+          state.hasMore = false;
+        }
+      }
+      if (data['ok'] != false && data['action'] == 'branch') {
+        final branch = asMap(data['branchSession']);
+        final id = text(data['newSessionId'] ?? branch['id']);
+        if (id.isNotEmpty) {
+          final conversation = Conversation.fromJson({
+            ...branch,
+            'id': id,
+            'profile': state.profile,
+            'title': data['newSessionTitle'] ?? branch['title'] ?? 'Branch',
+          });
+          conversations = [
+            conversation,
+            ...conversations.where((c) => c.id != id),
+          ];
+          // A late response must not hijack a different conversation.
+          if (state == _view) unawaited(openConversation(conversation));
+        }
+      }
+      _notify();
+      return;
+    }
     if (event == 'resumed') {
+      state.awaitingStart = false;
       state.syncTimer?.cancel();
       state.runTimer?.cancel();
       state.syncing = false;
@@ -974,7 +1188,9 @@ class AppController extends ChangeNotifier {
       state.revision++;
       state.loadRequest++;
       if (state == _view) _chatEpoch++;
+      state.queueTimer?.cancel();
       state.timeline.resume(data);
+      _armInteraction(state);
       final loaded = integer(data['messageLoadedCount']);
       state.offset = loaded == 0 ? asList(data['messages']).length : loaded;
       state.hasMore = flag(data['hasMoreBefore']);
@@ -1027,26 +1243,52 @@ class AppController extends ChangeNotifier {
       _notify();
       return;
     }
+    final failedQueued =
+        event == 'run.failed' &&
+        state.timeline.queue.any((q) => q.id == text(data['queue_id']));
     if (!state.timeline.apply(event, data)) return;
+    if (failedQueued) {
+      _notify();
+      return;
+    }
+    if (event == 'run.queued') {
+      state.queueTimer?.cancel();
+      _notify();
+      return;
+    }
     if (event == 'run.started' || event == 'message.delta') {
+      state.awaitingStart = false;
       state.revision++;
       state.runTimer?.cancel();
       _activity(sid, ConversationTaskStatus.running);
     }
     if (['approval.requested', 'clarify.requested'].contains(event) &&
         state.timeline.interaction != null) {
+      state.awaitingStart = false;
+      state.runTimer?.cancel();
+      _armInteraction(state);
       _activity(sid, ConversationTaskStatus.waiting);
     }
     if (['approval.resolved', 'clarify.resolved'].contains(event)) {
-      _activity(sid, ConversationTaskStatus.running);
+      state.responseTimer?.cancel();
+      _armInteraction(state);
+      _activity(
+        sid,
+        state.timeline.interaction != null
+            ? ConversationTaskStatus.waiting
+            : ConversationTaskStatus.running,
+      );
     }
     if (['run.completed', 'run.failed', 'abort.completed'].contains(event)) {
+      state.awaitingStart = false;
       state.runTimer?.cancel();
       state.syncing = false;
       state.syncTimer?.cancel();
       state.revision++;
       final queued =
-          integer(data['queue_remaining'] ?? data['queue_length']) > 0;
+          integer(data['queue_remaining'] ?? data['queue_length']) > 0 ||
+          state.timeline.queue.isNotEmpty;
+      if (queued) state.timeline.working = true;
       _activity(
         sid,
         queued
@@ -1055,7 +1297,10 @@ class AppController extends ChangeNotifier {
             ? ConversationTaskStatus.failed
             : ConversationTaskStatus.completed,
       );
-      if (state == _view && event != 'run.failed') {
+      if (state == _view &&
+          event != 'run.failed' &&
+          !queued &&
+          state.timeline.queue.isEmpty) {
         unawaited(_loadHistoryState(state));
       }
       unawaited(refreshSessions());
@@ -1076,6 +1321,7 @@ class AppController extends ChangeNotifier {
     if (pending == null ||
         !connected ||
         syncing ||
+        !timeline.canApprove(response) ||
         current?.canContinue == false ||
         (expectedSession != null && expectedSession != sessionId)) {
       return;
@@ -1093,10 +1339,71 @@ class AppController extends ChangeNotifier {
         if (!approval) 'clarify_id': pending['clarify_id'],
         approval ? 'choice' : 'response': response,
       });
-      // Keep the prompt until server resolution, not optimistic authorization.
+      // Keep prompt locked until authoritative success/failure; do not double-submit.
+      timeline.interactionSubmitting = true;
+      timeline.interactionError = null;
+      final state = _view;
+      state.responseTimer?.cancel();
+      state.responseTimer = Timer(const Duration(seconds: 15), () {
+        if (_disposed || state.timeline.interaction != pending) return;
+        // Outcome unknown: stay locked until authoritative resume/result.
+        state.timeline.interactionSubmitting = true;
+        state.timeline.interactionError = '审批响应超时，请同步状态后重试；不会自动重发';
+        _notify();
+      });
       timeline.activity = '等待服务器确认';
       _notify();
     } catch (e) {
+      reportError(e);
+    }
+  }
+
+  void _armInteraction(ConversationState state) {
+    state.interactionTimer?.cancel();
+    final deadline = state.timeline.interactionDeadline;
+    if (state.timeline.interaction == null || deadline == null) return;
+    final duration = deadline.difference(DateTime.now());
+    state.interactionTimer = Timer(
+      duration.isNegative ? Duration.zero : duration,
+      () {
+        if (_disposed || state.timeline.interaction == null) return;
+        state.timeline.interactionSubmitting = false;
+        state.timeline.interactionError = '审批已过期，请同步会话';
+        _notify();
+      },
+    );
+  }
+
+  void syncCurrentConversation() => _resumeState(_view);
+
+  void cancelQueued(String id, {required String expectedSession}) {
+    if (!connected ||
+        syncing ||
+        expectedSession != sessionId ||
+        current?.canContinue == false) {
+      return;
+    }
+    if (!timeline.queue.any((q) => q.id == id && q.status == 'queued')) return;
+    try {
+      timeline.queue = timeline.queue
+          .map((q) => q.id == id ? q.withStatus('canceling') : q)
+          .toList();
+      _notify();
+      transport.emit('cancel_queued_run', {
+        'session_id': sessionId,
+        'queue_id': id,
+      });
+      final state = _view;
+      state.queueTimer?.cancel();
+      state.queueTimer = Timer(const Duration(seconds: 15), () {
+        if (!_disposed && state.profile == profile && connected) {
+          _resumeState(state);
+        }
+      });
+    } catch (e) {
+      timeline.queue = timeline.queue
+          .map((q) => q.id == id ? q.withStatus('queued') : q)
+          .toList();
       reportError(e);
     }
   }
@@ -1221,6 +1528,8 @@ class AppController extends ChangeNotifier {
     _disposeStates();
     transport.dispose();
     api?.close();
+    transcription.dispose();
+    speech.dispose();
     super.dispose();
   }
 }

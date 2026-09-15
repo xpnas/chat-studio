@@ -310,7 +310,7 @@ void main() {
       h.transport.receive('session.activity.snapshot', {
         'profile': 'default',
         'sessions': [],
-        'timestamp': 10,
+        'timestamp': DateTime.now().millisecondsSinceEpoch + 1,
       });
       expect(h.controller.taskStatus(a), ConversationTaskStatus.checking);
       expect(h.transport.emitted.last.$1, 'resume');

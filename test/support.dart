@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:ekko_app/data/speech_playback.dart';
+import 'package:ekko_app/data/audio_transcription.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:ekko_app/data/app_storage.dart';
@@ -70,12 +72,17 @@ class FakeTransport implements ChatTransport {
 }
 
 class TestHarness {
+  TestHarness({this.speech, this.transcription});
+  final AudioTranscription? transcription;
+  final SpeechPlayback? speech;
   final storage = MemoryStorage();
   final transport = FakeTransport();
   final requests = <http.Request>[];
   Future<http.Response> Function(http.Request)? override;
   late final controller = AppController(
     storage: storage,
+    speech: speech,
+    transcription: transcription,
     transport: transport,
     apiFactory: (address) => StudioApi(
       address,

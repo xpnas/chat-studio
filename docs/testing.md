@@ -65,7 +65,7 @@ $env:TS_NODE_COMPILER_OPTIONS='{"rootDir":"../../"}'
 node -r ts-node/register packages/server/src/index.ts
 ```
 
-TS_NODE_COMPILER_OPTIONS 用于处理该 checkout 的 TypeScript 6 rootDir 推断变化。源码服务会监听 0.0.0.0，必须用隔离网络/防火墙保护；`HOST` 环境变量不能让这个版本只绑定 loopback。
+TS_NODE_COMPILER_OPTIONS 用于处理该 checkout 的 TypeScript 6 rootDir 推断变化。必须显式设置 `BIND_HOST=127.0.0.1` 使源码服务只监听回环地址；该版本使用的是 `BIND_HOST` 而非 `HOST`。新版 Linux/CI 脚本已自动设置。
 
 5. 在移动端目录的另一终端设置随机测试密码，执行仅适用于新初始化账号的 bootstrap，再运行测试：
 
@@ -151,3 +151,37 @@ export HERMES_WEB_UI_TEST_DB_DIR=/absolute/disposable/database
 新增真实测试使用两个不同 device_code 登录，一个客户端运行 A/B，另一个仅观察活动快照。对话 A 使用 SLOW 本地夹具保持工作，B 独立完成，切回 A 后停止不会影响 B；reasoning-effort 经 REST 保存后由重连快照读回。完整真实套件需新建隔离数据库再运行媒体测试，避免已有 STT 配置影响破坏性夹具。
 
 本轮保持 Android/iOS 共用 Flutter 状态层；未连接 Android 真机，未运行真实 Codex CLI；Xcode/iOS 编译与真机权限/性能仍待外部设备环境验证。多会话并行使用本地确定性模型，不表示所有供应商的并发限制已验证。
+
+
+## 1.0.6 Linux 本地与自动化补验
+
+- 完整本地测试：132 项通过，6 项默认跳过（5 项隔离服务测试及 1 项字体预览）。
+- 隔离官方 Studio v1.0.3：5 项真实 HTTP/Socket.IO 测试通过，新增 `/usage`、`/context`、`/title`、`/clear`、`/clear --history` 与技能/Bundle 目录读取。
+- 上游认证：2 个文件，57 项通过。模型与语音仍为本地确定性夹具，不代表完整 Hermes/Codex runtime 命令全覆盖。
+- 脚本复现（Linux，Flutter/Node/JDK 已安装，上游已执行 npm ci）：
+
+```sh
+bash scripts/studio-contract.sh /absolute/path/to/pinned-studio
+```
+
+脚本核对上游 SHA、检查固定端口未占用，生成随机测试密码，隔离 HOME/Profile/数据库、禁用 LAN discovery/gateway autostart/MCP 注入，使用 BIND_HOST=127.0.0.1，结束后清理服务进程组和临时状态。仅设置 EKKO_KEEP_CONTRACT_STATE=1 时保留私有诊断文件，不能上传这些文件。
+
+流畅性结构测试检查 1000 条历史按需构建、输入及 120 次 token 更新不会重新创建 MaterialApp/Theme。真机 profile 测试脚本与限制见 docs/release-1.0.6.md；当前没有已连接设备，未声称实际帧率或能耗合格。未触发远端 GitHub Actions，iOS/Xcode 仍需 macOS 环境实跑。
+
+## 1.0.8
+
+新增审批回归覆盖失败不清卡、stale 清卡、审批 ID 隔离、重复提交拦截、永久授权条件与二次确认、过期不提交；队列覆盖启动前禁排队、服务器确认/取消/出队及用户消息去重；TTS 覆盖同 Profile 鉴权、重定向禁止、非音频拒绝、停止播放和合成前取消竞态。
+
+隔离服务测试新增真实 queue + TTS 一项，完整 6 项通过。TTS 使用本地静音 WAV，仅验证协议，不宣称声音质量或原生扬声器/蓝牙端到端通过。首次发送修复有明确时序回归用例，仍需手机弱网环境验证偶发问题是否完全消失。
+
+## 1.0.9 大文件下载
+
+151 项本地测试通过，新增 64 MB 流式写盘回归及取消/权限失败/截断清理。下载不再调用聚合字节的预览接口。Android 文件导出新增 path-only MethodChannel + 系统文档保存；iOS 路径导出代码需 Xcode/真机验证。聊天恢复重复/闪动未在此版修复。
+
+## 1.0.10 音频文件播放
+
+155 项本地测试通过，7 项按环境默认跳过。现成音频文件走鉴权流式下载和原生 DeviceFileSource，不请求 TTS；单独验证停止清理、取消竞态、Markdown 音频链接直接播放及 audio 内容块保留。不把 mock 播放器测试说成真机实听验收。
+
+## 1.0.11
+
+159 项本地测试通过、7 项默认跳过；6 项隔离服务真实测试通过。新增转文字服务的 MIME/文件名/鉴权/缓存/取消与未配置错误测试；真实媒体测试新增“上传音频附件 → 鉴权流式下载 → STT 转文字”。普通文本 TTS 界面与自动执行已移除。既有底层 TTS 协议测试仅作为兼容契约检查，不是 App 普通文本语音功能。

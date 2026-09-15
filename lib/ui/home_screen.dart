@@ -123,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _changed() {
     if (!mounted) return;
+    setState(() {});
     final session = c.sessionId, gesture = _gestureRevision;
     if (session == _lastSession &&
         !_userScrolling &&
@@ -201,18 +202,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _hintSerial++;
     _searchTimer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _models() async {
-    final selected = await showModalBottomSheet<ModelChoice>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) =>
-          _ModelSheet(models: c.models, selected: c.selectedModel),
-    );
-    if (selected != null) await c.chooseModel(selected);
   }
 
   Future<void> _manage(Conversation conversation) async {
@@ -308,31 +297,12 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.menu_rounded),
           onPressed: () => _scaffold.currentState!.openDrawer(),
         ),
-        title: TextButton(
-          onPressed: c.canConfigure ? _models : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  c.selectedModel?.label ?? '服务端默认模型',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.onSurface,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(
-                Icons.expand_more_rounded,
-                color: colors.onSurfaceVariant,
-                size: 20,
-              ),
-            ],
-          ),
+        title: Text(
+          c.title,
+          key: const Key('chat-title'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         actions: [
           IconButton(
@@ -411,6 +381,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _readingLayout(Widget editor, Widget? handle, Widget? stop) {
     final colors = Theme.of(context).colorScheme;
     final rows = c.timeline.displayMessages;
+    final indices = <Key, int>{
+      for (var i = 0; i < rows.length; i++)
+        ValueKey(rows[i].renderKey): rows.length - i - 1,
+    };
     _anchors.prune(rows.map((m) => m.renderKey).toSet());
     return Column(
       children: [
@@ -436,12 +410,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.only(bottom: 8, top: 8),
                         itemCount: rows.length + (c.hasMoreMessages ? 1 : 0),
-                        findChildIndexCallback: (key) {
-                          final index = rows.indexWhere(
-                            (m) => ValueKey(m.renderKey) == key,
-                          );
-                          return index < 0 ? null : rows.length - index - 1;
-                        },
+                        findChildIndexCallback: (key) => indices[key],
                         itemBuilder: (context, index) {
                           if (index == rows.length) {
                             return Center(
@@ -536,6 +505,74 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+        ListenableBuilder(
+          listenable: c.speech,
+          builder: (context, _) => c.speech.activeId != null
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.audiotrack_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(c.speech.loading ? '正在加载语音…' : '正在播放语音'),
+                      ),
+                      TextButton(
+                        onPressed: () => c.speech.stop(),
+                        child: Text(c.speech.loading ? '取消' : '停止播放'),
+                      ),
+                    ],
+                  ),
+                )
+              : c.speech.error == null
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    c.speech.error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+        ),
+        if (c.timeline.queue.isNotEmpty)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 130),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final q in c.timeline.queue)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.playlist_play),
+                    title: Text(
+                      q.content,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(switch (q.status) {
+                      'sending' => '正在加入队列',
+                      'canceling' => '正在取消排队',
+                      'uncertain' => '状态待同步',
+                      'failed' => '排队失败，消息已保留',
+                      _ => '排队中',
+                    }),
+                    trailing: IconButton(
+                      tooltip: '取消排队',
+                      icon: const Icon(Icons.close),
+                      onPressed:
+                          !c.connected || c.syncing || q.status != 'queued'
+                          ? null
+                          : () => c.cancelQueued(
+                              q.id,
+                              expectedSession: c.sessionId!,
+                            ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         if (c.timeline.interaction != null)
           _InteractionCard(
             key: ValueKey(
@@ -962,158 +999,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _ModelSheet extends StatefulWidget {
-  const _ModelSheet({required this.models, this.selected});
-  final List<ModelChoice> models;
-  final ModelChoice? selected;
-  @override
-  State<_ModelSheet> createState() => _ModelSheetState();
-}
-
-class _ModelSheetState extends State<_ModelSheet> {
-  String query = '';
-  late final Set<String> expanded = {
-    if (widget.selected != null) widget.selected!.provider,
-  };
-  @override
-  Widget build(BuildContext context) {
-    final ordered = [
-      if (widget.selected != null) widget.selected!,
-      ...widget.models.where((m) => m.key != widget.selected?.key),
-    ];
-    final groups = <String, List<ModelChoice>>{};
-    final search = query.trim().toLowerCase();
-    for (final model in ordered) {
-      if ('${model.label} ${model.id} ${model.providerLabel} ${model.provider}'
-          .toLowerCase()
-          .contains(search)) {
-        groups.putIfAbsent(model.provider, () => []).add(model);
-      }
-    }
-    final rows = <({String provider, ModelChoice? model})>[];
-    for (final entry in groups.entries) {
-      rows.add((provider: entry.key, model: null));
-      if (search.isNotEmpty || expanded.contains(entry.key)) {
-        rows.addAll(entry.value.map((m) => (provider: entry.key, model: m)));
-      }
-    }
-    final colors = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * .78,
-      child: Column(
-        children: [
-          const Text(
-            '选择模型',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '按提供商分组 · 当前模型优先',
-            style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: '搜索模型或提供商',
-                prefixIcon: Icon(Icons.search_rounded),
-              ),
-              onChanged: (v) => setState(() => query = v),
-            ),
-          ),
-          Expanded(
-            child: rows.isEmpty
-                ? Center(
-                    child: Text(
-                      search.isEmpty ? '没有可用模型，请在 Studio 中配置' : '没有匹配的提供商或模型',
-                    ),
-                  )
-                : ListView.builder(
-                    key: ValueKey(search),
-                    itemCount: rows.length,
-                    itemBuilder: (context, index) {
-                      final row = rows[index], model = row.model;
-                      if (model == null) {
-                        final first = groups[row.provider]!.first;
-                        final open =
-                            search.isNotEmpty ||
-                            expanded.contains(row.provider);
-                        return Semantics(
-                          expanded: open,
-                          child: ListTile(
-                            key: ValueKey('provider:${row.provider}'),
-                            leading: Icon(
-                              Icons.dns_outlined,
-                              size: 21,
-                              color: colors.primary,
-                            ),
-                            title: Text(
-                              first.providerLabel.isEmpty
-                                  ? row.provider
-                                  : first.providerLabel,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${row.provider} · ${groups[row.provider]!.length} 个模型',
-                            ),
-                            trailing: Icon(
-                              open
-                                  ? Icons.expand_less_rounded
-                                  : Icons.expand_more_rounded,
-                            ),
-                            onTap: search.isNotEmpty
-                                ? null
-                                : () => setState(() {
-                                    if (open) {
-                                      expanded.remove(row.provider);
-                                    } else {
-                                      expanded.add(row.provider);
-                                    }
-                                  }),
-                          ),
-                        );
-                      }
-                      final selected = widget.selected?.key == model.key;
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 38, right: 12),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(color: colors.outlineVariant),
-                            ),
-                          ),
-                          child: ListTile(
-                            key: ValueKey('model:${model.key}'),
-                            selected: selected,
-                            selectedTileColor: colors.primaryContainer
-                                .withValues(alpha: .35),
-                            title: Text(model.label),
-                            subtitle: Text(
-                              '${selected ? '当前使用 · ' : ''}${model.id}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: selected
-                                ? Icon(
-                                    Icons.check_circle_rounded,
-                                    color: colors.primary,
-                                  )
-                                : null,
-                            onTap: () => Navigator.pop(context, model),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _InteractionCard extends StatefulWidget {
   const _InteractionCard({super.key, required this.controller});
   final AppController controller;
@@ -1138,6 +1023,8 @@ class _InteractionCardState extends State<_InteractionCard> {
     final canRespond =
         widget.controller.connected &&
         !widget.controller.syncing &&
+        !widget.controller.timeline.interactionSubmitting &&
+        !widget.controller.timeline.interactionExpired &&
         widget.controller.current?.canContinue != false;
     void respond(String value) => widget.controller.respondToInteraction(
       value,
@@ -1179,11 +1066,25 @@ class _InteractionCardState extends State<_InteractionCard> {
                   ),
                 ),
               const SizedBox(height: 8),
+              if (widget.controller.timeline.interactionError != null)
+                Text(
+                  widget.controller.timeline.interactionError!,
+                  style: TextStyle(color: colors.error),
+                ),
+              if (widget.controller.timeline.interactionError != null)
+                TextButton(
+                  onPressed:
+                      !widget.controller.connected || widget.controller.syncing
+                      ? null
+                      : widget.controller.syncCurrentConversation,
+                  child: const Text('同步审批状态'),
+                ),
+              if (widget.controller.timeline.interactionSubmitting)
+                const Text('等待服务器确认…'),
               if (approval)
                 Wrap(
                   spacing: 8,
                   children: [
-                    // No permanent/session-wide approval in this lightweight client.
                     OutlinedButton(
                       onPressed: canRespond ? () => respond('deny') : null,
                       child: const Text('拒绝'),
@@ -1192,6 +1093,39 @@ class _InteractionCardState extends State<_InteractionCard> {
                       FilledButton(
                         onPressed: canRespond ? () => respond('once') : null,
                         child: const Text('仅允许本次'),
+                      ),
+                    if (choices.contains('always') &&
+                        data['allow_permanent'] == true)
+                      OutlinedButton(
+                        onPressed: !canRespond
+                            ? null
+                            : () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('确认永久授权？'),
+                                    content: Text(
+                                      '同类操作后续可能不再询问。授权范围与撤销方式由服务端控制。\n${text(data['permission_key'] ?? data['description'])}',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        child: const Text('取消'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
+                                        child: const Text('永久允许'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed == true && mounted) {
+                                  respond('always');
+                                }
+                              },
+                        child: const Text('永久允许'),
                       ),
                   ],
                 )

@@ -12,11 +12,194 @@ import 'package:ekko_app/data/studio_api.dart';
 import 'package:ekko_app/state/app_controller.dart';
 import 'package:ekko_app/state/conversation_state.dart';
 import 'support.dart';
+import 'package:ekko_app/data/audio_transcription.dart';
 
 // Opt-in destructive contract test: only use an isolated disposable Studio.
 // Never point this at your production workspace.
 void main() {
   final server = Platform.environment['EKKO_TEST_SERVER'];
+  test(
+    'real queue cancellation, sequential start and server TTS audio',
+    () async {
+      final c = AppController(
+        storage: _MultiDeviceStorage('queue-tts-contract'),
+      );
+      String? sid;
+      bool tts = false;
+      Future<void> until(bool Function() condition) async {
+        final end = DateTime.now().add(const Duration(seconds: 45));
+        while (!condition()) {
+          if (DateTime.now().isAfter(end)) {
+            throw StateError('queue/tts timeout: ${c.error}');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            'admin',
+            Platform.environment['EKKO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        await until(() => c.canSend);
+        c.send('SLOW queue first');
+        sid = c.sessionId;
+        await until(() => c.canQueue);
+        expect(c.send('cancel this queue'), true);
+        await until(() => c.timeline.queue.any((q) => q.status == 'queued'));
+        final qid = c.timeline.queue.single.id;
+        c.cancelQueued(qid, expectedSession: sid!);
+        await until(() => c.timeline.queue.isEmpty);
+        expect(c.send('queue second'), true);
+        await until(() => c.timeline.queue.any((q) => q.status == 'queued'));
+        c.stop();
+        await until(
+          () => c.timeline.messages.any(
+            (m) => m.role == 'user' && m.content == 'queue second',
+          ),
+        );
+        await until(() => !c.working && !c.loadingMessages);
+        expect(c.timeline.queue, isEmpty);
+        final history = await c.api!.messages(sid);
+        expect(
+          history.messages
+              .where((m) => m.role == 'user' && m.content == 'queue second')
+              .length,
+          1,
+        );
+        expect(
+          history.messages.where((m) => m.content == 'cancel this queue'),
+          isEmpty,
+        );
+        await c.api!.request(
+          '/api/studio/tts/settings/custom',
+          method: 'PUT',
+          body: {
+            'settings': {
+              'baseUrl': 'http://127.0.0.1:18648/v1',
+              'model': 'fixture-tts',
+              'voice': 'alloy',
+            },
+            'secrets': {'apiKey': 'local-fixture-not-a-real-key'},
+          },
+        );
+        tts = true;
+        await c.api!.request(
+          '/api/studio/tts/settings/active',
+          method: 'PUT',
+          body: {'provider': 'custom'},
+        );
+        final audio = await c.api!.synthesizeSpeech('测试语音回复');
+        expect(audio.$2, 'audio/wav');
+        expect(ascii.decode(audio.$1.take(4).toList()), 'RIFF');
+      } finally {
+        if (tts) {
+          await c.api?.request(
+            '/api/studio/tts/settings/active',
+            method: 'PUT',
+            body: {'provider': 'edge'},
+          );
+          await c.api?.request(
+            '/api/studio/tts/settings/custom',
+            method: 'DELETE',
+          );
+        }
+        if (sid != null) {
+          c.stop();
+          await c.api?.delete(sid);
+        }
+        c.dispose();
+      }
+    },
+    skip: server == null,
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+  test(
+    'real Hermes command receipts, title, display clear and history clear',
+    () async {
+      final c = AppController(
+        storage: _MultiDeviceStorage('ekko-command-contract'),
+      );
+      String? sid;
+      Future<void> until(bool Function() condition) async {
+        final end = DateTime.now().add(const Duration(seconds: 40));
+        while (!condition()) {
+          if (DateTime.now().isAfter(end)) {
+            throw StateError('Command receipt timeout: ${c.error ?? ""}');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        }
+      }
+
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['EKKO_TEST_PASSWORD']!,
+            true,
+          ),
+          isTrue,
+        );
+        await until(() => c.canSend);
+        c.chooseEngine('hermes');
+        expect(c.send('/usage'), isTrue);
+        final commandSession = c.sessionId!;
+        sid = commandSession;
+        await until(
+          () => c.timeline.messages.any(
+            (m) => m.role == 'command' && m.content.startsWith('Usage:'),
+          ),
+        );
+        expect(c.working, isFalse);
+        expect(c.send('/context'), isTrue);
+        await until(
+          () =>
+              c.timeline.messages.any((m) => m.content.startsWith('Context:')),
+        );
+        expect(c.send('/title mobile-command-contract'), isTrue);
+        await until(() => c.title == 'mobile-command-contract');
+        final listed = await c.api!.sessions(search: 'mobile-command-contract');
+        expect(
+          asList(listed['results']).map(asMap).any((r) => r['id'] == sid),
+          isTrue,
+        );
+        final before = await c.api!.messages(commandSession);
+        expect(before.messages.where((m) => m.role == 'command'), isNotEmpty);
+        expect(c.send('/clear'), isTrue);
+        await until(() => c.timeline.messages.isEmpty);
+        final after = await c.api!.messages(commandSession);
+        expect(after.total, greaterThanOrEqualTo(before.total));
+        expect(c.send('/clear --history'), isTrue);
+        await until(
+          () => c.timeline.messages.any(
+            (m) => m.content.contains('history messages from the database'),
+          ),
+        );
+        final cleared = await c.api!.messages(commandSession);
+        expect(
+          cleared.messages.any((m) => m.content.startsWith('Usage:')),
+          isFalse,
+        );
+        expect(c.canSend, isTrue);
+        // Catalog endpoints are real, not widget fixtures.
+        await c.api!.commandSkills();
+        await c.api!.commandBundles();
+      } finally {
+        if (sid != null) await c.api?.delete(sid);
+        c.dispose();
+      }
+    },
+    skip: server == null,
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
   test(
     'real simultaneous sessions, activity snapshot and reasoning persistence',
     () async {
@@ -186,6 +369,27 @@ void main() {
         final audio = File('${dir.path}/voice.wav');
         await audio.writeAsBytes(wav.buffer.asUint8List());
         expect(await api.transcribe(audio.path, 'custom'), '这是本地语音识别协议自测。');
+        final audioBlocks = await api.uploadAttachments([
+          LocalAttachment(
+            path: audio.path,
+            name: 'voice.wav',
+            size: 32044,
+            mimeType: 'audio/wav',
+          ),
+        ]);
+        final transcriber = AudioTranscription(tempDirectory: () async => dir);
+        try {
+          await transcriber.transcribe(
+            api,
+            'remote-audio',
+            MessageAttachment.parse(audioBlocks).single,
+          );
+          expect(transcriber.resultFor('remote-audio'), '这是本地语音识别协议自测。');
+          expect(transcriber.errorFor('remote-audio'), isNull);
+        } finally {
+          transcriber.dispose();
+        }
+
         final document = File('${dir.path}/fixture.txt');
         await document.writeAsString('A test attachment, not private data.');
         final image = File('${dir.path}/fixture.png');
