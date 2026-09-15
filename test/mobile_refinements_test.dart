@@ -360,14 +360,14 @@ void main() {
       await tester.tap(find.byKey(const Key('voice-button')));
       await tester.pumpAndSettle();
       expect(media.started, 0);
-      expect(h.controller.error, contains('STT'));
+      expect(find.textContaining('STT'), findsOneWidget);
       h.override = (r) async => r.url.path.endsWith('profile-status')
           ? http.Response('{"configured":true,"activeProvider":"custom"}', 200)
           : h.response(r);
       media.denied = true;
       await tester.tap(find.byKey(const Key('voice-button')));
       await tester.pumpAndSettle();
-      expect(h.controller.error, contains('麦克风权限被拒绝'));
+      expect(find.textContaining('麦克风权限被拒绝'), findsOneWidget);
     },
   );
   testWidgets('recording cancellation and navigation never send a message', (

@@ -6,8 +6,8 @@
 |---|---|
 | 格式检查 | `dart format`，格式与 CI 检查一致 |
 | 静态分析 | `flutter analyze --fatal-infos`：无问题 |
-| 客户端单元 / 组件测试 | **70 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
-| 真实 v1.0.3 服务协议测试（1.0.1 验证，本轮 UI 修订未重复） | **3 项通过**：实际 HTTP、Dart Socket.IO、AppController、文件/图片与 STT 链路，非 FakeTransport |
+| 客户端单元 / 组件测试 | **97 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
+| 真实 v1.0.3 服务协议测试（1.0.4 已重新运行） | **3 项通过**：实际 HTTP、Dart Socket.IO、AppController、文件/图片上传和鉴权下载/缩略图、STT 链路，非 FakeTransport |
 | Flutter 设计预览 | 单独运行 **1 项通过**，生成登录、首页、聊天、分组模型选择、历史阅读模式及深色预览 |
 | 上游认证回归（首轮交付已验证，本轮未重复运行） | `app-connections-auth.test.ts`、`user-auth.test.ts`：2 个文件 **57 项通过** |
 | CodeGraph | 实际运行 orient / explore，JSON 存于 docs/analysis |
@@ -15,7 +15,7 @@
 | Android Release AAB | 实际编译成功，bundletool 1.18.3 validate 通过 |
 | 自动化脚本 | actionlint 1.7.12 检查 3 个 workflow 通过；Bash / Python / plist 语法检查通过 |
 
-本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.3`，versionCode `4`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
+本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.4`，versionCode `5`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
 
 ## 没有完成、不能混同为已验证
 
@@ -120,3 +120,25 @@ flutter test test/preview_test.dart
 ## 1.0.3 悬浮双线
 
 `reading_mode_test.dart` 现有 11 项，通过真实组件布局验证折叠后列表延伸至底部、无文字 footer，双线点击区仍可恢复草稿；进度与加载范围一致，并覆盖浅深主题、空范围/越界、320px 屏幕底部手势区以及停止/回到最新按钮不重叠。浅深预览分别为 `docs/screenshots/reading.png`、`reading-dark.png`。
+
+
+## 1.0.4 完整聊天细节回归
+
+新增 `test/conversation_polish_test.dart` 27 项，覆盖：按服务器/账号/Profile 隔离偏好与模型失效提示、失败/待核对消息不自动重发、草稿和服务器附件恢复、保留已有新草稿、工具去重/单轮分组、历史替换保留本地身份及早期页、Markdown 分段复用与嵌套代码/宽表格、基于字节流的上传进度、鉴权附件下载/重定向拒绝/401/403/404/响应限额/Profile 切换、图片失效重试、实际音量样本/无声提示、阅读锚点/新内容提示、首次引导与淡化插值。
+
+真实联调新增上传后读取文本原文、`variant=app-image` 图片响应的端到端断言。此测试用本地确定性语音与文本模型夹具，不是收费模型或真机麦克风准确率测试。
+
+### 重要：数据库隔离
+
+上游开发模式的 SQLite 默认在 checkout 的 `packages/server/data`，仅设置 `HERMES_WEB_UI_HOME` 不足以隔离数据库。新版 Studio contract 与本地测试必须额外设置：
+
+```sh
+export NODE_ENV=test
+export HERMES_WEB_UI_TEST_DB_DIR=/absolute/disposable/database
+```
+
+同时设置独立 HERMES_HOME / HERMES_WEB_UI_HOME，并将模型请求指向环回夹具。不要对生产数据运行破坏性契约测试。本轮真实联调使用 `.local/polish-contract*` 独立状态，没有删除旧开发数据库。
+
+### 真机验收仍需设备
+
+本轮 `adb devices -l` 返回空列表，SDK 没有已安装模拟器；没有把组件测试说成 Android 真机验收。必须后续验证：原生录音权限/中断、相册与文件保存、系统返回手势、输入法遮挡、切网/后台、1.0.3 → 1.0.4 原签名覆盖更新及长对话帧率。Windows 无 Xcode，iOS 编译/签名/真机测试仍待执行。

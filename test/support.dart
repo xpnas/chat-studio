@@ -9,6 +9,23 @@ import 'package:ekko_app/state/app_controller.dart';
 class MemoryStorage implements AppStorage {
   Map<String, dynamic>? session;
   String theme = 'system';
+  final choices = <String, Map<String, dynamic>>{};
+  bool hintSeen = false;
+  @override
+  Future<Map<String, dynamic>?> readChoice(String scope) async =>
+      choices[scope];
+  @override
+  Future<void> saveChoice(String scope, Map<String, dynamic> choice) async {
+    choices[scope] = choice;
+  }
+
+  @override
+  Future<bool> readReadingHintSeen() async => hintSeen;
+  @override
+  Future<void> markReadingHintSeen() async {
+    hintSeen = true;
+  }
+
   @override
   Future<Map<String, dynamic>?> readSession() async => session;
   @override

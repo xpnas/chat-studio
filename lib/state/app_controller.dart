@@ -30,6 +30,63 @@ class AppController extends ChangeNotifier {
   Conversation? current;
   String? sessionId;
   String engine = 'ekko-agent';
+  ModelChoice? _newChatModel;
+  String _newChatEngine = 'ekko-agent';
+  String? workspaceNotice;
+  bool readingHintSeen = true;
+  String? retryInput;
+  List<Map<String, dynamic>> retryAttachments = [];
+  int retryRevision = 0;
+  String? _lastSubmittedInput;
+  List<Map<String, dynamic>> _lastSubmittedAttachments = [];
+  Future<void> _choiceWrite = Future.value();
+  String get _choiceScope => '${api!.address.value}|${account!.id}|$profile';
+
+  Future<void> _rememberChoice() async {
+    if (api == null || account == null) return;
+    _newChatModel = selectedModel;
+    _newChatEngine = engine;
+    final scope = _choiceScope;
+    final choice = {
+      'model': selectedModel?.id,
+      'provider': selectedModel?.provider,
+      'engine': engine,
+    };
+    _choiceWrite = _choiceWrite
+        .then((_) => storage.saveChoice(scope, choice))
+        .catchError((Object _) {});
+    await _choiceWrite;
+  }
+
+  Future<void> markReadingHintSeen() async {
+    readingHintSeen = true;
+    try {
+      await storage.markReadingHintSeen();
+    } catch (_) {
+      /* Optional hint. */
+    }
+  }
+
+  bool canRetryMessage(ChatMessage message) =>
+      canSend &&
+      _lastSubmittedInput != null &&
+      message.delivery == 'failed' &&
+      timeline.messages.where((m) => m.role == 'user').lastOrNull?.renderKey ==
+          message.renderKey;
+
+  void prepareRetry() {
+    if (!canSend ||
+        _lastSubmittedInput == null ||
+        timeline.messages.where((m) => m.role == 'user').lastOrNull?.delivery !=
+            'failed') {
+      return;
+    }
+    retryInput = _lastSubmittedInput;
+    retryAttachments = List.of(_lastSubmittedAttachments);
+    retryRevision++;
+    _notify();
+  }
+
   bool? codexInstalled;
   String? sttProvider;
   String voiceHint = '请在服务端配置语音识别（STT）；仅配置 TTS 不能语音输入';
@@ -195,7 +252,7 @@ class AppController extends ChangeNotifier {
       final catalog = await api!.models();
       if (!_valid(epoch)) return;
       models = ModelChoice.parseGroups(catalog['groups']);
-      selectedModel =
+      final fallback =
           models
               .where(
                 (m) =>
@@ -204,8 +261,36 @@ class AppController extends ChangeNotifier {
               )
               .firstOrNull ??
           models.firstOrNull;
+      final remembered = await storage.readChoice(_choiceScope);
+      if (!_valid(epoch)) return;
+      readingHintSeen = await storage.readReadingHintSeen();
+      if (!_valid(epoch)) return;
+      final storedModel = models
+          .where(
+            (m) =>
+                m.id == remembered?['model'] &&
+                m.provider == remembered?['provider'],
+          )
+          .firstOrNull;
+      _newChatModel = storedModel ?? fallback;
+      _newChatEngine =
+          ['ekko-agent', 'hermes', 'codex'].contains(remembered?['engine'])
+          ? remembered!['engine'] as String
+          : 'ekko-agent';
+      workspaceNotice = remembered?['model'] != null && storedModel == null
+          ? '上次使用的模型已不可用，新对话已改用服务端默认模型。'
+          : null;
+      if (sessionId == null) {
+        selectedModel = _newChatModel;
+        engine = _newChatEngine;
+      }
       await refreshCapabilities();
       if (!_valid(epoch)) return;
+      if (_newChatEngine == 'codex' && codexInstalled == false) {
+        _newChatEngine = 'ekko-agent';
+        if (sessionId == null) engine = _newChatEngine;
+        workspaceNotice = '服务端 Codex 尚未安装，新对话已改用 Ekko Agent。';
+      }
       await storage.saveSession(_saved());
       if (!_valid(epoch)) return;
       reconnect();
@@ -337,6 +422,10 @@ class AppController extends ChangeNotifier {
     sessionId = null;
     current = null;
     timeline.clear();
+    _lastSubmittedInput = null;
+    _lastSubmittedAttachments = [];
+    retryInput = null;
+    retryAttachments = [];
     hasMoreMessages = false;
     _historyOffset = 0;
     syncing = false;
@@ -346,6 +435,8 @@ class AppController extends ChangeNotifier {
   void newChat() {
     if (working || busy) return;
     _resetChat();
+    selectedModel = _newChatModel ?? selectedModel;
+    engine = _newChatEngine;
     error = null;
     _notify();
   }
@@ -392,10 +483,14 @@ class AppController extends ChangeNotifier {
       if (more) {
         timeline.prepend(page.messages);
       } else {
-        timeline.replace(page.messages);
+        timeline.replace(page.messages, keepOlder: page.hasMore);
       }
-      _historyOffset = page.offset;
-      hasMoreMessages = page.hasMore;
+      if (more ||
+          _historyOffset <= page.offset ||
+          timeline.messages.length <= page.messages.length) {
+        _historyOffset = page.offset;
+        hasMoreMessages = page.hasMore;
+      }
     } catch (e) {
       if (_valid(epoch) && chatEpoch == _chatEpoch) reportError(e);
     } finally {
@@ -413,7 +508,10 @@ class AppController extends ChangeNotifier {
     _notify();
     try {
       if (current != null) await api!.setModel(current!.id, model);
-      if (_valid(epoch) && chatEpoch == _chatEpoch) selectedModel = model;
+      if (_valid(epoch) && chatEpoch == _chatEpoch) {
+        selectedModel = model;
+        await _rememberChoice();
+      }
     } catch (e) {
       if (_valid(epoch)) reportError(e);
     } finally {
@@ -429,6 +527,7 @@ class AppController extends ChangeNotifier {
         !working &&
         ['ekko-agent', 'hermes', 'codex'].contains(value)) {
       engine = value;
+      unawaited(_rememberChoice());
       _notify();
     }
   }
@@ -462,6 +561,8 @@ class AppController extends ChangeNotifier {
           'api_mode': selectedModel!.apiMode,
       });
       _chatEpoch++;
+      _lastSubmittedInput = input;
+      _lastSubmittedAttachments = List.of(attachments);
       sessionId = sid;
       timeline.begin(
         [
@@ -469,12 +570,13 @@ class AppController extends ChangeNotifier {
           if (attachments.isNotEmpty) messageText(attachments),
         ].where((s) => s.isNotEmpty).join('\n'),
         'local:$queueId',
+        attachments: MessageAttachment.parse(attachments),
       );
       error = null;
       _runTimer?.cancel();
       _runTimer = Timer(const Duration(seconds: 25), () {
         if (working) {
-          error = '尚未收到服务器确认。不会自动重发，请重新连接以核对对话状态。';
+          timeline.markUncertain();
           _notify();
           if (connected) _resume();
         }
@@ -501,8 +603,10 @@ class AppController extends ChangeNotifier {
   void _resume() {
     if (sessionId == null || !connected) return;
     syncing = true;
+    timeline.markUncertain();
     _syncTimer?.cancel();
     _syncTimer = Timer(const Duration(seconds: 20), () {
+      timeline.markUncertain();
       error = '同步超时，请重新连接；消息不会自动重发。';
       _notify();
     });
@@ -537,6 +641,7 @@ class AppController extends ChangeNotifier {
     }
     if (event == 'disconnected' || event == 'connection.error') {
       connected = false;
+      timeline.markUncertain();
       if (event == 'connection.error') {
         final message = text(data['error']);
         if (message.toLowerCase().contains('auth')) {
@@ -568,11 +673,6 @@ class AppController extends ChangeNotifier {
     }
     if (!timeline.apply(event, data)) return;
     if (event == 'run.started' || event == 'message.delta') _runTimer?.cancel();
-    if (event == 'run.failed') {
-      error = text(data['error']).isEmpty
-          ? '生成失败，请检查服务端模型配置'
-          : text(data['error']);
-    }
     if (['run.completed', 'run.failed', 'abort.completed'].contains(event)) {
       _runTimer?.cancel();
       if (event != 'run.failed') unawaited(loadHistory());
@@ -683,6 +783,9 @@ class AppController extends ChangeNotifier {
     account = null;
     profiles = [];
     models = [];
+    _newChatModel = null;
+    _newChatEngine = 'ekko-agent';
+    workspaceNotice = null;
     conversations = [];
     selectedModel = null;
     sttProvider = null;

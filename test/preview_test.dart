@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -144,6 +145,73 @@ void main() {
       await h.controller.setTheme('dark');
       await tester.pumpAndSettle();
       await capture('reading-dark');
+      await h.controller.setTheme('light');
+      h.controller.newChat();
+      final imageBytes = await tester.runAsync(
+        () => File('docs/app-icon.png').readAsBytes(),
+      );
+      h.override = (request) async =>
+          request.url.path == '/api/studio/files/download'
+          ? http.Response.bytes(
+              imageBytes!,
+              200,
+              headers: {'content-type': 'image/png'},
+            )
+          : h.response(request);
+      h.controller.sessionId = 'attachment-preview';
+      h.controller.timeline.replace(const [
+        ChatMessage(
+          id: 'attachment-user',
+          role: 'user',
+          content: '帮我看一下这个图标和需求。',
+          attachments: [
+            MessageAttachment(
+              name: '图标方案.png',
+              path: '/fixture/icon.png',
+              mimeType: 'image/png',
+              size: 39553,
+            ),
+            MessageAttachment(
+              name: '产品需求.pdf',
+              path: '/fixture/requirements.pdf',
+              mimeType: 'application/pdf',
+              size: 246784,
+            ),
+          ],
+        ),
+        ChatMessage(
+          id: 'attachment-answer',
+          role: 'assistant',
+          content:
+              '### 我的建议\n\n保留青绿色的轻盈感，让标识在小尺寸下也有足够辨识度。\n\n- 减少复杂装饰\n- 保持浅深主题一致\n- 正文始终是视觉重点',
+          reasoning: '先检查图形层次，再考虑移动端的实际尺寸。',
+          tools: [
+            ToolActivity(id: 'read', name: '读取附件', status: 'done'),
+            ToolActivity(id: 'inspect', name: '检查图像', status: 'done'),
+          ],
+        ),
+      ]);
+      h.controller.dismissError();
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 180));
+      });
+      await tester.pumpAndSettle();
+      await capture('attachments');
+      h.controller.timeline.replace(const [
+        ChatMessage(
+          id: 'failed-user',
+          role: 'user',
+          content: '请继续分析这份需求。',
+          delivery: 'failed',
+          failure: '模型服务暂时不可用，本次生成失败。',
+        ),
+      ]);
+      h.controller.dismissError();
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('回到最新消息'), findsNothing);
+      await capture('message-status');
+
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     } finally {

@@ -8,6 +8,7 @@ class ChatTimeline {
   bool working = false;
   Map<String, dynamic>? interaction;
   String activity = '';
+  int liveRevision = 0;
   final Set<String> _finishedRuns = {};
 
   void clear() {
@@ -19,18 +20,162 @@ class ChatTimeline {
     activity = '';
   }
 
-  void begin(String input, String localId) {
+  void begin(
+    String input,
+    String localId, {
+    List<MessageAttachment> attachments = const [],
+  }) {
     messages = [
       ...messages,
-      ChatMessage(id: localId, role: 'user', content: input, pending: true),
+      ChatMessage(
+        id: localId,
+        role: 'user',
+        content: input,
+        pending: true,
+        attachments: attachments,
+        delivery: 'sending',
+      ),
     ];
     working = true;
     activity = '正在发送';
     interaction = null;
   }
 
-  void replace(List<ChatMessage> history) {
-    messages = history.where((m) => m.visible).toList();
+  void replace(List<ChatMessage> history, {bool keepOlder = false}) {
+    final old = messages;
+    final used = <String>{};
+    messages = history.where((m) => m.visible).map((next) {
+      final eligible = old.where(
+        (m) => !used.contains(m.renderKey) && m.role == next.role,
+      );
+      final match =
+          eligible.where((m) => m.id == next.id).firstOrNull ??
+          eligible
+              .where(
+                (m) =>
+                    (m.renderKey.startsWith('local:') ||
+                        m.renderKey.startsWith('stream:')) &&
+                    m.content == next.content &&
+                    m.content.isNotEmpty,
+              )
+              .firstOrNull;
+      if (match == null) return next;
+      used.add(match.renderKey);
+      return next.copyWith(
+        localKey: match.renderKey,
+        tools: next.tools.isEmpty
+            ? match.tools
+            : next.tools
+                  .map(
+                    (t) => t.status == 'recorded'
+                        ? match.tools
+                                  .where((old) => old.id == t.id)
+                                  .firstOrNull ??
+                              t
+                        : t,
+                  )
+                  .toList(),
+        attachments: next.attachments.map((f) {
+          final previous = match.attachments
+              .where((a) => a.path == f.path)
+              .firstOrNull;
+          return f.size > 0 || previous == null ? f : previous;
+        }).toList(),
+      );
+    }).toList();
+    if (keepOlder && messages.isNotEmpty) {
+      final first = messages.first;
+      final overlap = old.indexWhere(
+        (m) => m.id == first.id || m.renderKey == first.renderKey,
+      );
+      if (overlap > 0) messages = [...old.take(overlap), ...messages];
+    }
+  }
+
+  /// Keep one visual assistant turn, while raw rows still determine pagination.
+  List<ChatMessage> get displayMessages {
+    final result = <ChatMessage>[];
+    for (final message in messages.where((m) => m.visible)) {
+      if (message.role == 'assistant' &&
+          result.isNotEmpty &&
+          result.last.role == 'assistant') {
+        final old = result.removeLast();
+        result.add(
+          old.copyWith(
+            content: [
+              old.content,
+              message.content,
+            ].where((s) => s.isNotEmpty).join('\n\n'),
+            reasoning: [
+              old.reasoning,
+              message.reasoning,
+            ].where((s) => s.isNotEmpty).join('\n'),
+            tools: {
+              ...{for (final t in old.tools) t.id: t},
+              ...{for (final t in message.tools) t.id: t},
+            }.values.toList(),
+            attachments: [...old.attachments, ...message.attachments],
+            pending: old.pending || message.pending,
+            failure: message.failure.isNotEmpty ? message.failure : old.failure,
+            delivery: message.delivery.isNotEmpty
+                ? message.delivery
+                : old.delivery,
+          ),
+        );
+      } else {
+        result.add(message);
+      }
+    }
+    return result;
+  }
+
+  void markUncertain() {
+    messages = messages
+        .map(
+          (m) => m.role == 'user' && m.delivery == 'sending'
+              ? m.copyWith(delivery: 'uncertain')
+              : m,
+        )
+        .toList();
+  }
+
+  void _acknowledge() {
+    final lastUser = messages.lastIndexWhere((m) => m.role == 'user');
+    if (lastUser < 0) return;
+    final user = messages[lastUser];
+    if (user.pending && ['sending', 'uncertain'].contains(user.delivery)) {
+      messages = [...messages]
+        ..[lastUser] = user.copyWith(pending: false, delivery: '');
+    }
+  }
+
+  void _tool(String event, Map<String, dynamic> data) {
+    var index = messages.lastIndexWhere(
+      (m) => m.role == 'assistant' && m.pending,
+    );
+    if (index < 0) {
+      _assistant();
+      index = messages.length - 1;
+    }
+    final message = messages[index];
+    final id = text(data['tool_call_id'] ?? data['id']);
+    final name = text(data['tool_name'] ?? data['tool'] ?? data['name']);
+    final tool = ToolActivity(
+      id: id.isEmpty ? name : id,
+      name: name.isEmpty ? '工具' : name,
+      status: event == 'tool.completed'
+          ? 'done'
+          : event == 'tool.failed'
+          ? 'failed'
+          : 'running',
+    );
+    messages = [...messages]
+      ..[index] = message.copyWith(
+        tools: {
+          ...{for (final t in message.tools) t.id: t},
+          tool.id: tool,
+        }.values.take(100).toList(),
+      );
   }
 
   void prepend(List<ChatMessage> history) {
@@ -88,6 +233,7 @@ class ChatTimeline {
         runId = incomingRun.isEmpty ? null : incomingRun;
         working = true;
         activity = '正在思考';
+        _acknowledge();
         messages = messages
             .map(
               (m) => m.role == 'user' && m.pending
@@ -96,6 +242,8 @@ class ChatTimeline {
             )
             .toList();
       case 'message.delta':
+        liveRevision++;
+        _acknowledge();
         working = true;
         activity = '';
         _assistant(delta: messageText(data['delta']));
@@ -115,8 +263,13 @@ class ChatTimeline {
         }
       case 'tool.started':
       case 'tool.call':
+        _tool(event, data);
         activity =
             '正在使用 ${text(data['tool_name'] ?? data['tool'] ?? data['name'])}';
+      case 'tool.completed':
+      case 'tool.failed':
+        _tool(event, data);
+        activity = '';
       case 'approval.requested':
       case 'clarify.requested':
         if (data['remaining_timeout_ms'] != null &&
@@ -133,6 +286,8 @@ class ChatTimeline {
         if (interaction?[idKey] == data[idKey]) interaction = null;
         activity = '';
       case 'run.completed':
+        _acknowledge();
+        liveRevision++;
         final output = data['output'];
         _assistant(
           output: output == null ? null : messageText(output),
@@ -149,7 +304,32 @@ class ChatTimeline {
         runId = null;
       case 'run.failed':
       case 'abort.completed':
-        messages = messages.map((m) => m.copyWith(pending: false)).toList();
+        final lastUser = messages.lastIndexWhere((m) => m.role == 'user');
+        messages = messages.indexed.map((entry) {
+          final m = entry.$2;
+          return m.copyWith(
+            pending: false,
+            delivery:
+                entry.$1 == lastUser && (m.delivery != 'uncertain' || m.pending)
+                ? (event == 'run.failed' ? 'failed' : 'stopped')
+                : m.delivery,
+            failure:
+                entry.$1 == lastUser &&
+                    event == 'run.failed' &&
+                    (m.delivery != 'uncertain' || m.pending)
+                ? (text(data['error']).isEmpty
+                      ? '生成失败，请检查模型配置'
+                      : text(data['error']))
+                : m.failure,
+            tools: m.tools
+                .map(
+                  (t) => t.status == 'running'
+                      ? ToolActivity(id: t.id, name: t.name, status: 'stopped')
+                      : t,
+                )
+                .toList(),
+          );
+        }).toList();
         working = false;
         interaction = null;
         activity = '';
@@ -163,13 +343,28 @@ class ChatTimeline {
   }
 
   void resume(Map<String, dynamic> data) {
+    final previous = messages;
+    final unresolved = messages
+        .where((m) => m.delivery == 'uncertain')
+        .toList();
     clear();
+    messages = previous;
     replace(
       asList(
         data['messages'],
       ).map((m) => ChatMessage.fromJson(asMap(m))).toList(),
+      keepOlder: flag(data['hasMoreBefore']),
     );
     working = flag(data['isWorking']);
+    for (final m in unresolved) {
+      if (!messages.any(
+        (n) =>
+            n.renderKey == m.renderKey ||
+            (n.role == m.role && n.content == m.content),
+      )) {
+        messages.add(m.copyWith(delivery: 'uncertain', pending: false));
+      }
+    }
     if (!working) return;
     final events = asList(data['events']).map(asMap).toList();
     final start = events.lastIndexWhere((e) => e['event'] == 'run.started');

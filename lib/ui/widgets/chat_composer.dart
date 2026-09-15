@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/mobile_media.dart';
+import '../../data/models.dart';
 import '../../state/app_controller.dart';
 import 'reading_handle.dart';
 import 'package:flutter/foundation.dart';
@@ -39,6 +40,13 @@ class _ChatComposerState extends State<ChatComposer>
   final _attachments = <LocalAttachment>[];
   final _focus = FocusNode();
   String _phase = '';
+  String? _inlineError;
+  double _uploadProgress = 0;
+  double _level = 0;
+  int _lastAudibleSecond = 0;
+  StreamSubscription<double>? _levels;
+  int _retryRevision = 0;
+  final _remoteAttachments = <MessageAttachment>[];
   int _operation = 0, _seconds = 0;
   late int _revision;
   Timer? _timer;
@@ -50,6 +58,7 @@ class _ChatComposerState extends State<ChatComposer>
   void initState() {
     super.initState();
     _focus.addListener(_focusChanged);
+    _retryRevision = c.retryRevision;
     _revision = c.chatRevision;
     c.addListener(_contextChanged);
     WidgetsBinding.instance.addObserver(this);
@@ -60,10 +69,32 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   void _contextChanged() {
+    if (_retryRevision != c.retryRevision) {
+      _retryRevision = c.retryRevision;
+      if (_busy ||
+          widget.input.text.isNotEmpty ||
+          _attachments.isNotEmpty ||
+          _remoteAttachments.isNotEmpty) {
+        setState(() => _inlineError = '请先完成当前操作或清空现有草稿，再恢复失败消息');
+        return;
+      }
+      widget.input.text = c.retryInput ?? '';
+      widget.input.selection = TextSelection.collapsed(
+        offset: widget.input.text.length,
+      );
+      _remoteAttachments
+        ..clear()
+        ..addAll(MessageAttachment.parse(c.retryAttachments));
+      setState(() => _inlineError = null);
+      widget.onExpand?.call();
+      _focus.requestFocus();
+    }
     if (_revision == c.chatRevision) return;
     _revision = c.chatRevision;
     if (!_sending) {
       _attachments.clear();
+      _remoteAttachments.clear();
+      _inlineError = null;
       _abort();
     }
   }
@@ -80,6 +111,8 @@ class _ChatComposerState extends State<ChatComposer>
   void _abort() {
     final operation = ++_operation;
     _timer?.cancel();
+    _levels?.cancel();
+    _levels = null;
     if (_cancel?.isCompleted == false) _cancel!.complete();
     _cancel = null;
     final voice = ['录音中', '识别中', '准备录音', '取消中'].contains(_phase);
@@ -95,7 +128,9 @@ class _ChatComposerState extends State<ChatComposer>
 
   bool _valid(int operation) => mounted && operation == _operation;
   void _error(Object error) {
-    if (mounted) c.reportError(error);
+    if (mounted) {
+      setState(() => _inlineError = '$error');
+    }
   }
 
   @override
@@ -107,6 +142,7 @@ class _ChatComposerState extends State<ChatComposer>
     _operation++;
     _timer?.cancel();
     if (_cancel?.isCompleted == false) _cancel!.complete();
+    _levels?.cancel();
     unawaited(_media.dispose().catchError((Object _) {}));
     super.dispose();
   }
@@ -146,11 +182,13 @@ class _ChatComposerState extends State<ChatComposer>
       final selected = await _media.pick(images: images);
       if (!_valid(operation)) return;
       final combined = [..._attachments, ...selected];
-      if (combined.length > LocalAttachment.maxCount ||
+      if (combined.length + _remoteAttachments.length >
+              LocalAttachment.maxCount ||
           combined.any(
             (f) => f.size <= 0 || f.size > LocalAttachment.maxBytes,
           ) ||
-          combined.fold<int>(0, (n, f) => n + f.size) >
+          combined.fold<int>(0, (n, f) => n + f.size) +
+                  _remoteAttachments.fold<int>(0, (n, f) => n + f.size) >
               LocalAttachment.maxTotalBytes) {
         throw StateError('最多 5 个非空附件，单个不超过 20 MB，总计不超过 40 MB');
       }
@@ -174,7 +212,24 @@ class _ChatComposerState extends State<ChatComposer>
       setState(() {
         _phase = '录音中';
         _seconds = 0;
+        _level = 0;
+        _lastAudibleSecond = 0;
+        _inlineError = null;
       });
+      if (_media is AudioLevelSource) {
+        _levels = (_media as AudioLevelSource).audioLevels.listen(
+          (level) {
+            if (!_valid(operation) || _phase != '录音中') return;
+            setState(() {
+              _level = level;
+              if (level > .2) _lastAudibleSecond = _seconds;
+            });
+          },
+          onError: (Object _) {
+            /* Recording remains usable without a meter. */
+          },
+        );
+      }
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!_valid(operation)) return;
         setState(() => _seconds++);
@@ -192,10 +247,12 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   Future<void> _finishVoice() async {
-    if (_phase != '录音中' && _phase != '选择附件') return;
+    if (_phase != '录音中') return;
     final operation = _operation, client = c.api, provider = c.sttProvider;
     _timer?.cancel();
     _cancel = Completer<void>();
+    _levels?.cancel();
+    _levels = null;
     setState(() => _phase = '识别中');
     try {
       final path = await _media.stopRecording();
@@ -233,6 +290,8 @@ class _ChatComposerState extends State<ChatComposer>
     if (_busy || !c.canSend) return;
     final operation = ++_operation, client = c.api;
     final input = widget.input.text;
+    _inlineError = null;
+    _uploadProgress = 0;
     if (input.length > 64000) {
       _error('消息不能超过 64000 字符');
       return;
@@ -245,14 +304,23 @@ class _ChatComposerState extends State<ChatComposer>
           : await client!.uploadAttachments(
               List.of(_attachments),
               cancel: _cancel!.future,
+              onProgress: (value) {
+                if (_valid(operation)) setState(() => _uploadProgress = value);
+              },
             );
       if (!_valid(operation)) return;
+      _remoteAttachments.addAll(MessageAttachment.parse(blocks));
+      _attachments.clear();
       _sending = true;
-      final sent = c.send(input, attachments: blocks);
+      final sent = c.send(
+        input,
+        attachments: _remoteAttachments.map((f) => f.toBlock()).toList(),
+      );
       _sending = false;
       if (sent) {
         widget.input.clear();
         _attachments.clear();
+        _remoteAttachments.clear();
         HapticFeedback.lightImpact();
       } else {
         _error('当前无法发送，草稿已保留。请恢复连接后重试。');
@@ -272,6 +340,7 @@ class _ChatComposerState extends State<ChatComposer>
         !_busy &&
         !_focus.hasFocus &&
         _attachments.isEmpty &&
+        _remoteAttachments.isEmpty &&
         c.timeline.interaction == null;
     final editor = AnimatedSize(
       duration: MediaQuery.of(context).disableAnimations
@@ -338,6 +407,39 @@ class _ChatComposerState extends State<ChatComposer>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_inlineError != null)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          '$_inlineError · 草稿已保留',
+                          style: TextStyle(fontSize: 12, color: colors.error),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '关闭输入提示',
+                      onPressed: () => setState(() => _inlineError = null),
+                      icon: const Icon(Icons.close, size: 16),
+                    ),
+                  ],
+                ),
+              if (_remoteAttachments.isNotEmpty)
+                Wrap(
+                  children: [
+                    for (final file in _remoteAttachments)
+                      InputChip(
+                        label: Text(file.name),
+                        onDeleted: _busy
+                            ? null
+                            : () => setState(
+                                () => _remoteAttachments.remove(file),
+                              ),
+                      ),
+                  ],
+                ),
               if (_attachments.isNotEmpty)
                 SizedBox(
                   height: 70,
@@ -409,6 +511,44 @@ class _ChatComposerState extends State<ChatComposer>
                         deleteButtonTooltipMessage: '移除 ${file.name}',
                       );
                     },
+                  ),
+                ),
+              if (_phase == '录音中' && _media is AudioLevelSource)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Column(
+                    children: [
+                      LinearProgressIndicator(
+                        key: const Key('voice-level'),
+                        value: _level,
+                        minHeight: 3,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      if (_seconds - _lastAudibleSecond >= 5)
+                        const Text(
+                          '暂未检测到声音，请靠近麦克风或检查权限',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                    ],
+                  ),
+                ),
+              if (_phase == '上传中' && _attachments.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Column(
+                    children: [
+                      LinearProgressIndicator(
+                        key: const Key('upload-progress'),
+                        value: _uploadProgress,
+                        minHeight: 2,
+                      ),
+                      Text(
+                        _uploadProgress >= 1
+                            ? '上传数据已发送 · 等待服务器保存'
+                            : '上传 ${(100 * _uploadProgress).floor()}%',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ],
                   ),
                 ),
               if (_busy)
@@ -500,7 +640,8 @@ class _ChatComposerState extends State<ChatComposer>
                           : (!_busy &&
                                     c.canSend &&
                                     (value.text.trim().isNotEmpty ||
-                                        _attachments.isNotEmpty)
+                                        _attachments.isNotEmpty ||
+                                        _remoteAttachments.isNotEmpty)
                                 ? _send
                                 : null),
                       icon: Icon(

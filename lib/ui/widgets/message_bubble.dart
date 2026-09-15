@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import '../../state/app_controller.dart';
+import 'stable_markdown.dart';
+import 'attachment_tile.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/models.dart';
 import '../theme.dart';
 
 class MessageBubble extends StatelessWidget {
-  const MessageBubble({super.key, required this.message});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.controller,
+    this.anchorKey,
+    this.onRetry,
+  });
+  final AppController? controller;
+  final Key Function(int)? anchorKey;
+  final VoidCallback? onRetry;
   final ChatMessage message;
   Future<void> _openLink(BuildContext context, String? href) async {
     final uri = Uri.tryParse(href ?? '');
@@ -67,7 +78,7 @@ class MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!user && message.content.trim().isNotEmpty)
+                if (!user && message.bodyText.isNotEmpty)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 4),
                     child: Row(
@@ -83,10 +94,10 @@ class MessageBubble extends StatelessWidget {
                   ),
                 Container(
                   key: ValueKey('message-surface:${message.id}'),
-                  padding: message.content.trim().isNotEmpty
+                  padding: message.bodyText.isNotEmpty
                       ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
                       : EdgeInsets.zero,
-                  decoration: message.content.trim().isNotEmpty
+                  decoration: message.bodyText.isNotEmpty
                       ? BoxDecoration(
                           color: user
                               ? colors.primaryContainer.withValues(alpha: .42)
@@ -125,44 +136,119 @@ class MessageBubble extends StatelessWidget {
                             ),
                           ],
                         ),
-                      if (message.content.trim().isNotEmpty &&
-                          (user || message.pending))
-                        SelectableText(
-                          message.content,
-                          style: const TextStyle(fontSize: 16, height: 1.5),
-                        )
-                      else if (message.content.trim().isNotEmpty)
-                        MarkdownBody(
-                          data: message.content,
-                          selectable: true,
-                          softLineBreak: true,
-                          onTapLink: (_, href, _) => _openLink(context, href),
-                          // Never fetch model-provided remote images: prevents tracking/IP leakage.
-                          imageBuilder: (_, _, _) => Text(
-                            '[图片附件请在 Studio 查看]',
-                            style: TextStyle(color: colors.onSurfaceVariant),
+                      if (message.tools.isNotEmpty)
+                        ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          shape: const Border(),
+                          collapsedShape: const Border(),
+                          title: Text(
+                            message.tools.every((t) => t.status == 'done')
+                                ? '${message.tools.length} 项操作已完成'
+                                : '${message.tools.length} 项工具操作${message.tools.any((t) => t.status == 'running') ? ' · 执行中' : ''}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colors.onSurfaceVariant,
+                            ),
                           ),
-                          styleSheet:
-                              MarkdownStyleSheet.fromTheme(
-                                Theme.of(context),
-                              ).copyWith(
-                                p: TextStyle(
-                                  fontSize: 16,
-                                  height: 1.45,
-                                  color: colors.onSurface,
+                          children: [
+                            for (final tool in message.tools)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 3,
+                                  ),
+                                  child: Text(
+                                    tool.label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ),
-                                code: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 13,
-                                  color: colors.primary,
-                                ),
-                                codeblockDecoration: BoxDecoration(
-                                  color: colors.surfaceContainer,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                codeblockPadding: const EdgeInsets.all(12),
-                                blockSpacing: 8,
                               ),
+                          ],
+                        ),
+                      if (message.bodyText.isNotEmpty)
+                        if (user)
+                          SelectableText(
+                            message.bodyText,
+                            style: const TextStyle(fontSize: 16, height: 1.5),
+                          )
+                        else
+                          StableMarkdown(
+                            data: message.bodyText,
+                            anchorKey: anchorKey,
+                            onTapLink: (_, href, _) => _openLink(context, href),
+                          ),
+                      if (controller != null)
+                        for (final file in message.attachments)
+                          AttachmentTile(
+                            key: ValueKey(
+                              '${controller!.api?.address.value}|${controller!.profile}|${file.path}',
+                            ),
+                            file: file,
+                            controller: controller!,
+                          ),
+                      if (message.delivery.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Row(
+                            children: [
+                              Icon(
+                                message.delivery == 'failed'
+                                    ? Icons.error_outline
+                                    : message.delivery == 'uncertain'
+                                    ? Icons.sync_rounded
+                                    : Icons.check_rounded,
+                                size: 13,
+                                color: message.delivery == 'failed'
+                                    ? colors.error
+                                    : colors.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  switch (message.delivery) {
+                                    'sending' => '正在发送 · 等待服务端确认',
+                                    'uncertain' => '正在核对发送状态 · 不会自动重发',
+                                    'failed' =>
+                                      message.failure.isEmpty
+                                          ? '本次生成失败'
+                                          : message.failure,
+                                    'stopped' => '已停止生成',
+                                    _ => message.delivery,
+                                  },
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: message.delivery == 'failed'
+                                        ? colors.error
+                                        : colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              if (message.delivery == 'failed' &&
+                                  onRetry != null)
+                                TextButton(
+                                  onPressed: onRetry,
+                                  child: const Text(
+                                    '编辑后重试',
+                                    style: TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                              if (message.delivery == 'uncertain' &&
+                                  controller != null)
+                                TextButton(
+                                  onPressed: controller!.reconnect,
+                                  child: const Text(
+                                    '核对',
+                                    style: TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                     ],
                   ),

@@ -42,6 +42,8 @@ jobs:
           export HERMES_HOME="$RUNNER_TEMP/contract/hermes"
           export HERMES_WEB_UI_HOME="$RUNNER_TEMP/contract/studio"
           export HERMES_WEBUI_STATE_DIR="$HERMES_WEB_UI_HOME"
+          export NODE_ENV=test
+          export HERMES_WEB_UI_TEST_DB_DIR="$RUNNER_TEMP/contract/database"
           export HERMES_RUNTIME_SOURCE=none
           export PORT=18647
           export TS_NODE_PROJECT=packages/server/tsconfig.json

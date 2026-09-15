@@ -326,7 +326,7 @@ void main() {
                 as ReadingHandlePainter;
         expect(painter.progress, .5);
         progress.value = 1;
-        await tester.pump();
+        await tester.pumpAndSettle();
         final updated =
             tester
                     .widget<CustomPaint>(

@@ -102,3 +102,10 @@ flowchart LR
 - `services/chat-run/content-blocks.ts`：服务端把上传后的图片路径转换为原生图片输入，把文档路径交给 Agent 工具。移动端在历史序列化内容块中保留图片/文件名称，不把工具块当作正文。
 - 默认通用上传总量上限 50 MB（含 multipart）；移动端主动限制单文件 20 MB、总计 40 MB / 5 个，为请求封装留余量。失败不自动提交 run，取消后不自动重试。
 - 父子模型树按 provider ID 分组（不是按可能重复的展示名称）；当前模型即使不在新目录中也显示在当前提供商下。搜索保留父级；渲染仍为懒加载，展开大量模型不一次性创建全部控件。
+
+
+## 1.0.4：附件读取与工具、测试隔离
+
+- `controllers/download.ts` 支持 GET `/api/studio/files/download`，参数 `path`、`name`，`variant=app-image` 可请求服务端优化图片；上游选择上传目录本地 provider 或当前 Profile file provider。客户端始终构造原 Studio 域名的受鉴权请求、不跟随重定向，不直接访问返回路径/外部 URL；读取超时、大小限制与会话切换检查都在客户端。
+- `handle-ekko-agent-run.ts` 的 `tool.started` / `tool.completed` / `tool.failed` 使用 `tool_call_id`、`name` / `tool`。客户端按 ID 去重，仅保存操作名与状态，不将命令、参数、结果日志展开为正文。历史 tool_calls 缺失完成信息时只标记“已调用”，不猜测成功。
+- `infrastructure/database/index.ts`：开发模式数据库目录固定为 cwd 下 packages/server/data；测试模式可用 `HERMES_WEB_UI_TEST_DB_DIR` 覆盖。本轮本地与 CI 配置同时明确 `NODE_ENV=test`，补全数据库隔离。

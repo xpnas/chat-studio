@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../core/server_address.dart';
 import 'models.dart';
@@ -14,6 +15,8 @@ class StudioApi {
   String token = '';
   String profile = 'default';
   void Function()? onUnauthorized;
+  final _images = <String, Uint8List>{};
+  int _imageBytes = 0;
 
   Future<Map<String, dynamic>> request(
     String path, {
@@ -65,6 +68,7 @@ class StudioApi {
     List<http.MultipartFile> files, {
     Map<String, String> fields = const {},
     Future<void>? cancel,
+    void Function(double)? onProgress,
   }) async {
     final abort = Completer<void>();
     void stop() {
@@ -73,10 +77,11 @@ class StudioApi {
 
     cancel?.then((_) => stop());
     final request =
-        http.AbortableMultipartRequest(
+        ProgressMultipartRequest(
             'POST',
             address.uri.replace(path: path),
             abortTrigger: abort.future,
+            onProgress: onProgress,
           )
           ..followRedirects = false
           ..headers.addAll({
@@ -128,6 +133,7 @@ class StudioApi {
   Future<List<Map<String, dynamic>>> uploadAttachments(
     List<LocalAttachment> attachments, {
     Future<void>? cancel,
+    void Function(double)? onProgress,
   }) async {
     if (attachments.isEmpty ||
         attachments.length > LocalAttachment.maxCount ||
@@ -154,7 +160,12 @@ class StudioApi {
     if (canceled || scope != profile || credential != token) {
       throw const ApiException('已取消：会话或 Profile 已变化');
     }
-    final data = await _multipart('/api/studio/uploads', files, cancel: cancel);
+    final data = await _multipart(
+      '/api/studio/uploads',
+      files,
+      cancel: cancel,
+      onProgress: onProgress,
+    );
     final rows = asList(data['files']).map(asMap).toList();
     if (rows.length != attachments.length ||
         rows.any((f) => text(f['path']).isEmpty)) {
@@ -167,6 +178,7 @@ class StudioApi {
         'name': attachments[i].name,
         'path': text(rows[i]['path']),
         'media_type': attachments[i].mimeType,
+        'size': attachments[i].size,
       },
     );
   }
@@ -198,6 +210,101 @@ class StudioApi {
     final result = text(data['text']).trim();
     if (result.isEmpty) throw const ApiException('未识别到语音，请重试');
     return result;
+  }
+
+  Future<Uint8List> attachmentBytes(
+    MessageAttachment file, {
+    bool thumbnail = false,
+    Future<void>? cancel,
+  }) async {
+    // Never navigate to a URL or use arbitrary response headers as destinations.
+    final scope = profile, credential = token;
+    final key = '$scope|$credential|${file.path}|$thumbnail';
+    final cached = thumbnail ? _images.remove(key) : null;
+    if (cached != null) {
+      _images[key] = cached;
+      return cached;
+    }
+    final abort = Completer<void>();
+    void stop() {
+      if (!abort.isCompleted) abort.complete();
+    }
+
+    cancel?.then((_) => stop());
+    final request =
+        http.AbortableRequest(
+            'GET',
+            address.uri.replace(
+              path: '/api/studio/files/download',
+              queryParameters: {
+                'path': file.path,
+                'name': file.name,
+                if (thumbnail) 'variant': 'app-image',
+              },
+            ),
+            abortTrigger: abort.future,
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            'Authorization': 'Bearer $credential',
+            'X-Hermes-Profile': scope,
+          });
+    final limit = thumbnail ? 8 * 1024 * 1024 : 25 * 1024 * 1024;
+    try {
+      return await (() async {
+        final response = await _client.send(request);
+        if (response.statusCode == 401) onUnauthorized?.call();
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          stop();
+          throw ApiException(
+            response.statusCode == 404
+                ? '附件已失效或被删除'
+                : response.statusCode == 403
+                ? '没有权限查看此附件'
+                : '附件读取失败 (${response.statusCode})',
+            response.statusCode,
+          );
+        }
+        if ((response.contentLength ?? 0) > limit) {
+          stop();
+          throw const ApiException('附件过大，请在 Studio 查看');
+        }
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response.stream) {
+          if (bytes.length + chunk.length > limit) {
+            stop();
+            throw const ApiException('附件过大，请在 Studio 查看');
+          }
+          bytes.add(chunk);
+        }
+        if (scope != profile || credential != token) {
+          throw const ApiException('会话已切换');
+        }
+        final result = bytes.takeBytes();
+        if (thumbnail && result.isNotEmpty) {
+          while (_images.isNotEmpty &&
+              (_imageBytes + result.length > 12 * 1024 * 1024 ||
+                  _images.length >= 12)) {
+            _imageBytes -= _images.remove(_images.keys.first)!.length;
+          }
+          _images[key] = result;
+          _imageBytes += result.length;
+        }
+        return result;
+      })().timeout(
+        const Duration(seconds: 45),
+        onTimeout: () {
+          stop();
+          throw const ApiException('附件读取超时，点击重试');
+        },
+      );
+    } on http.RequestAbortedException {
+      throw const ApiException('已取消读取附件');
+    } on http.ClientException {
+      throw const ApiException('附件下载连接失败');
+    } on SocketException {
+      throw const ApiException('无法连接附件服务器');
+    }
   }
 
   Future<Map<String, dynamic>> login(
@@ -295,5 +402,39 @@ class StudioApi {
     );
   }
 
-  void close() => _client.close();
+  void close() {
+    _images.clear();
+    _imageBytes = 0;
+    _client.close();
+  }
+}
+
+class ProgressMultipartRequest extends http.MultipartRequest
+    with http.Abortable {
+  ProgressMultipartRequest(
+    super.method,
+    super.url, {
+    this.abortTrigger,
+    this.onProgress,
+  });
+  @override
+  final Future<void>? abortTrigger;
+  final void Function(double)? onProgress;
+  @override
+  http.ByteStream finalize() {
+    final total = contentLength;
+    var sent = 0, lastPercent = -1;
+    return http.ByteStream(
+      super.finalize().map((chunk) {
+        sent += chunk.length;
+        final progress = total == 0 ? 0.0 : (sent / total).clamp(0.0, 1.0);
+        final percent = (progress * 100).floor();
+        if (percent != lastPercent) {
+          lastPercent = percent;
+          onProgress?.call(progress);
+        }
+        return chunk;
+      }),
+    );
+  }
 }

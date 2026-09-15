@@ -11,11 +11,43 @@ abstract class AppStorage {
   Future<String> deviceId();
   Future<String> readTheme();
   Future<void> saveTheme(String theme);
+  Future<Map<String, dynamic>?> readChoice(String scope);
+  Future<void> saveChoice(String scope, Map<String, dynamic> choice);
+  Future<bool> readReadingHintSeen();
+  Future<void> markReadingHintSeen();
 }
 
 class SecureAppStorage implements AppStorage {
   final _secure = const FlutterSecureStorage();
   static const _session = 'ekko.session.v1';
+  String _choiceKey(String scope) =>
+      'ekko.choice.v1.${base64Url.encode(utf8.encode(scope))}';
+  @override
+  Future<Map<String, dynamic>?> readChoice(String scope) async {
+    final value = await _secure.read(key: _choiceKey(scope));
+    if (value == null) return null;
+    try {
+      return asMap(jsonDecode(value));
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveChoice(String scope, Map<String, dynamic> choice) =>
+      _secure.write(key: _choiceKey(scope), value: jsonEncode(choice));
+  @override
+  Future<bool> readReadingHintSeen() async =>
+      (await SharedPreferences.getInstance()).getBool('readingHintSeen') ??
+      false;
+  @override
+  Future<void> markReadingHintSeen() async {
+    await (await SharedPreferences.getInstance()).setBool(
+      'readingHintSeen',
+      true,
+    );
+  }
+
   @override
   Future<Map<String, dynamic>?> readSession() async {
     final value = await _secure.read(key: _session);

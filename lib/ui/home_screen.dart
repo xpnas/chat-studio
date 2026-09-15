@@ -7,6 +7,7 @@ import 'theme.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/chat_composer.dart';
 import 'widgets/reading_handle.dart';
+import 'widgets/reading_anchor.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
@@ -22,7 +23,15 @@ class _HomeScreenState extends State<HomeScreen> {
   final _readingProgress = ValueNotifier<double>(0);
   Timer? _searchTimer;
   String? _lastSession;
-  int _lastLength = 0;
+  int _lastLength = 0, _liveRevision = 0;
+  bool _hasNewContent = false;
+  final _anchors = ReadingAnchor();
+  final _stage = GlobalKey();
+  int _gestureRevision = 0;
+  bool _hintOffered = false;
+  int _hintSerial = 0;
+  bool _showReadingHint = false;
+  Timer? _hintTimer;
   bool _showJump = false;
   bool _composerCollapsed = false, _userScrolling = false;
   AppController get c => widget.controller;
@@ -36,11 +45,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void _scrollChanged() {
     if (!mounted || !_scroll.hasClients) return;
     _updateReadingProgress();
-    final pixels = _scroll.position.pixels;
+    final pixels = _scroll.position.pixels.clamp(
+      _scroll.position.minScrollExtent,
+      _scroll.position.maxScrollExtent,
+    );
     final showJump = pixels > 220;
     final restore = _composerCollapsed && pixels <= 24;
-    if (showJump != _showJump || restore) {
+    if (showJump != _showJump || restore || (pixels <= 24 && _hasNewContent)) {
       setState(() {
+        if (pixels <= 24) _hasNewContent = false;
         _showJump = showJump;
         if (restore) _composerCollapsed = false;
       });
@@ -61,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (notification is ScrollStartNotification &&
         notification.dragDetails != null) {
+      _gestureRevision++;
       _userScrolling = true;
     } else if (notification is ScrollEndNotification) {
       _userScrolling = false;
@@ -73,8 +87,23 @@ class _HomeScreenState extends State<HomeScreen> {
       // reverse:true: increasing offset means browsing older messages. Ignore
       // programmatic restores, pagination and streaming layout changes.
       setState(() => _composerCollapsed = true);
+      _offerReadingHint();
     }
     return false;
+  }
+
+  void _offerReadingHint() {
+    if (_hintOffered || c.readingHintSeen) return;
+    _hintOffered = true;
+    final serial = ++_hintSerial;
+    unawaited(c.markReadingHintSeen());
+    setState(() => _showReadingHint = true);
+    _hintTimer?.cancel();
+    _hintTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && serial == _hintSerial) {
+        setState(() => _showReadingHint = false);
+      }
+    });
   }
 
   void _expandComposer() {
@@ -85,8 +114,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _changed() {
     if (!mounted) return;
+    final session = c.sessionId, gesture = _gestureRevision;
+    if (session == _lastSession &&
+        !_userScrolling &&
+        _stage.currentContext != null) {
+      final box = _stage.currentContext!.findRenderObject() as RenderBox;
+      _anchors.preserve(
+        _scroll,
+        box.localToGlobal(Offset.zero).dy,
+        () =>
+            mounted &&
+            c.sessionId == session &&
+            gesture == _gestureRevision &&
+            !_userScrolling,
+      );
+    }
+    if (c.timeline.liveRevision != _liveRevision) {
+      if (_scroll.hasClients && _scroll.offset > 120) _hasNewContent = true;
+      _liveRevision = c.timeline.liveRevision;
+    }
     if (_lastSession != c.sessionId) {
       _lastSession = c.sessionId;
+      _anchors.clear();
+      _hasNewContent = false;
+      _showReadingHint = false;
+      _hintSerial++;
       _readingProgress.value = 0;
       _composerCollapsed = false;
       _userScrolling = false;
@@ -120,6 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _search.dispose();
     _scroll.dispose();
     _readingProgress.dispose();
+    _hintTimer?.cancel();
+    _hintSerial++;
     _searchTimer?.cancel();
     super.dispose();
   }
@@ -294,6 +348,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+                if (c.workspaceNotice != null)
+                  ErrorNotice(
+                    message: c.workspaceNotice!,
+                    onDismiss: () {
+                      c.workspaceNotice = null;
+                      c.dismissError();
+                    },
+                  ),
                 if (c.error != null)
                   ErrorNotice(message: c.error!, onDismiss: c.dismissError),
                 if (c.current?.canContinue == false)
@@ -307,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: NotificationListener<ScrollMetricsNotification>(
                     onNotification: (_) {
-                      _updateReadingProgress();
+                      _scrollChanged();
                       return false;
                     },
                     child: _composer(context),
@@ -323,82 +385,129 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _readingLayout(Widget editor, Widget? handle, Widget? stop) {
     final colors = Theme.of(context).colorScheme;
+    final rows = c.timeline.displayMessages;
+    _anchors.prune(rows.map((m) => m.renderKey).toSet());
     return Column(
       children: [
         Expanded(
           child: NotificationListener<ScrollNotification>(
             onNotification: _chatScrolled,
-            child: Stack(
+            child: SizedBox.expand(
               key: const Key('reading-stage'),
-              children: [
-                if (c.timeline.messages.isEmpty && !c.loadingMessages)
-                  _welcome(context)
-                else if (c.loadingMessages && c.timeline.messages.isEmpty)
-                  const Center(child: CircularProgressIndicator.adaptive())
-                else
-                  SelectionArea(
-                    child: ListView.builder(
-                      key: const Key('message-list'),
-                      controller: _scroll,
-                      reverse: true,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.only(bottom: 8, top: 8),
-                      itemCount:
-                          c.timeline.messages.length +
-                          (c.hasMoreMessages ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == c.timeline.messages.length) {
-                          return Center(
-                            child: TextButton(
-                              onPressed: c.loadingMessages
-                                  ? null
-                                  : () => c.loadHistory(more: true),
-                              child: Text(
-                                c.loadingMessages ? '正在加载…' : '加载更早的消息',
+              child: Stack(
+                key: _stage,
+                children: [
+                  if (c.timeline.messages.isEmpty && !c.loadingMessages)
+                    _welcome(context)
+                  else if (c.loadingMessages && c.timeline.messages.isEmpty)
+                    const Center(child: CircularProgressIndicator.adaptive())
+                  else
+                    SelectionArea(
+                      child: ListView.builder(
+                        key: const Key('message-list'),
+                        controller: _scroll,
+                        reverse: true,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.only(bottom: 8, top: 8),
+                        itemCount: rows.length + (c.hasMoreMessages ? 1 : 0),
+                        findChildIndexCallback: (key) {
+                          final index = rows.indexWhere(
+                            (m) => ValueKey(m.renderKey) == key,
+                          );
+                          return index < 0 ? null : rows.length - index - 1;
+                        },
+                        itemBuilder: (context, index) {
+                          if (index == rows.length) {
+                            return Center(
+                              child: TextButton(
+                                onPressed: c.loadingMessages
+                                    ? null
+                                    : () => c.loadHistory(more: true),
+                                child: Text(
+                                  c.loadingMessages ? '正在加载…' : '加载更早的消息',
+                                ),
                               ),
+                            );
+                          }
+                          final message = rows[rows.length - index - 1];
+                          return Container(
+                            key: ValueKey(message.renderKey),
+                            child: MessageBubble(
+                              key: _anchors.keyFor(message.renderKey),
+                              message: message,
+                              controller: c,
+                              anchorKey: (block) => _anchors.keyFor(
+                                '${message.renderKey}:$block',
+                              ),
+                              onRetry: c.canRetryMessage(message)
+                                  ? c.prepareRetry
+                                  : null,
                             ),
                           );
-                        }
-                        final message = c
-                            .timeline
-                            .messages[c.timeline.messages.length - index - 1];
-                        return MessageBubble(
-                          key: ValueKey(message.id),
-                          message: message,
-                        );
-                      },
-                    ),
-                  ),
-                if (handle != null)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 10,
-                    child: Center(child: RepaintBoundary(child: handle)),
-                  ),
-                if (stop != null)
-                  Positioned(
-                    right: 20,
-                    bottom: _showJump ? 70 : 12,
-                    child: stop,
-                  ),
-                if (_showJump)
-                  Positioned(
-                    bottom: 12,
-                    right: 20,
-                    child: FloatingActionButton.small(
-                      heroTag: 'jump',
-                      tooltip: '回到最新消息',
-                      onPressed: () => _scroll.animateTo(
-                        0,
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
+                        },
                       ),
-                      child: const Icon(Icons.arrow_downward_rounded),
                     ),
-                  ),
-              ],
+                  if (_showReadingHint && handle != null)
+                    Positioned(
+                      left: 45,
+                      right: 45,
+                      bottom: 72,
+                      child: IgnorePointer(
+                        child: Center(
+                          child: Material(
+                            color: colors.surfaceContainerHighest.withValues(
+                              alpha: .94,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              child: Text(
+                                '轻点底部线条，继续输入',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (handle != null)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 10,
+                      child: Center(child: RepaintBoundary(child: handle)),
+                    ),
+                  if (stop != null)
+                    Positioned(
+                      right: 20,
+                      bottom: _showJump ? 70 : 12,
+                      child: stop,
+                    ),
+                  if (_showJump)
+                    Positioned(
+                      bottom: 12,
+                      right: 20,
+                      child: FloatingActionButton.small(
+                        heroTag: 'jump',
+                        tooltip: '回到最新消息',
+                        onPressed: () => _scroll.animateTo(
+                          0,
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOut,
+                        ),
+                        child: Badge(
+                          isLabelVisible: _hasNewContent,
+                          label: const Text('新'),
+                          child: const Icon(Icons.arrow_downward_rounded),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

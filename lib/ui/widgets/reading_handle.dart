@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -11,7 +12,7 @@ double historyReadProgress(ScrollMetrics metrics) {
 
 /// A quiet, floating twin-line affordance. Only the glyph is small; its
 /// transparent 128 x 48 hit target remains accessible and keyboard-operable.
-class ReadingHandle extends StatelessWidget {
+class ReadingHandle extends StatefulWidget {
   const ReadingHandle({
     super.key,
     required this.progress,
@@ -22,14 +23,56 @@ class ReadingHandle extends StatelessWidget {
   final VoidCallback? onExpand;
   final bool hasDraft;
   @override
+  State<ReadingHandle> createState() => _ReadingHandleState();
+}
+
+class _ReadingHandleState extends State<ReadingHandle> {
+  Timer? _idle;
+  bool _active = true;
+  @override
+  void initState() {
+    super.initState();
+    widget.progress.addListener(_wake);
+    _schedule();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReadingHandle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.progress != widget.progress) {
+      oldWidget.progress.removeListener(_wake);
+      widget.progress.addListener(_wake);
+    }
+  }
+
+  void _schedule() {
+    _idle?.cancel();
+    _idle = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _active = false);
+    });
+  }
+
+  void _wake() {
+    if (!_active && mounted) setState(() => _active = true);
+    _schedule();
+  }
+
+  @override
+  void dispose() {
+    widget.progress.removeListener(_wake);
+    _idle?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     return ValueListenableBuilder<double>(
-      valueListenable: progress,
+      valueListenable: widget.progress,
       builder: (context, raw, _) {
         final value = raw.isFinite ? raw.clamp(0.0, 1.0) : 0.0;
-        final label = hasDraft ? '继续编辑草稿' : '展开输入框';
+        final label = widget.hasDraft ? '继续编辑草稿' : '展开输入框';
         final description = '已加载历史回看 ${(value * 100).round()}%';
         return Semantics(
           button: true,
@@ -42,7 +85,7 @@ class ReadingHandle extends StatelessWidget {
               child: InkWell(
                 key: const Key('expand-composer'),
                 borderRadius: BorderRadius.circular(24),
-                onTap: onExpand,
+                onTap: widget.onExpand,
                 child: SizedBox(
                   width: 128,
                   height: 48,
@@ -57,16 +100,29 @@ class ReadingHandle extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: CustomPaint(
-                        key: const Key('reading-progress-lines'),
-                        size: const Size(96, 10),
-                        painter: ReadingHandlePainter(
-                          progress: value,
-                          track: colors.onSurfaceVariant.withValues(
-                            alpha: dark ? .4 : .24,
-                          ),
-                          fill: colors.primary.withValues(
-                            alpha: dark ? .9 : .82,
+                      child: AnimatedOpacity(
+                        duration: MediaQuery.of(context).disableAnimations
+                            ? Duration.zero
+                            : const Duration(milliseconds: 280),
+                        opacity: _active ? 1 : .68,
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: value, end: value),
+                          duration: MediaQuery.of(context).disableAnimations
+                              ? Duration.zero
+                              : const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, interpolated, _) => CustomPaint(
+                            key: const Key('reading-progress-lines'),
+                            size: const Size(96, 10),
+                            painter: ReadingHandlePainter(
+                              progress: interpolated,
+                              track: colors.onSurfaceVariant.withValues(
+                                alpha: dark ? .4 : .24,
+                              ),
+                              fill: colors.primary.withValues(
+                                alpha: dark ? .9 : .82,
+                              ),
+                            ),
                           ),
                         ),
                       ),

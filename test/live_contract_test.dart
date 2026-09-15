@@ -91,6 +91,16 @@ void main() {
           await LocalAttachment.fromPath(image.path, '示例.png'),
         ]);
         expect(blocks.map((b) => b['type']), ['file', 'image']);
+        final uploaded = MessageAttachment.parse(blocks);
+        expect(
+          utf8.decode(await api.attachmentBytes(uploaded.first)),
+          'A test attachment, not private data.',
+        );
+        expect(
+          await api.attachmentBytes(uploaded.last, thumbnail: true),
+          isNotEmpty,
+        );
+
         final deadline = DateTime.now().add(const Duration(seconds: 50));
         while (!c.canSend && DateTime.now().isBefore(deadline)) {
           await Future<void>.delayed(const Duration(milliseconds: 50));

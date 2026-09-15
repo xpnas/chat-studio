@@ -37,7 +37,20 @@ abstract class MediaAccess {
   Future<void> dispose();
 }
 
-class NativeMediaAccess implements MediaAccess {
+abstract class AudioLevelSource {
+  Stream<double> get audioLevels;
+}
+
+class NativeMediaAccess implements MediaAccess, AudioLevelSource {
+  @override
+  Stream<double> get audioLevels => (_recorder ??= AudioRecorder())
+      .onAmplitudeChanged(const Duration(milliseconds: 120))
+      .map(
+        (amplitude) => amplitude.current.isFinite
+            ? ((amplitude.current + 60) / 60).clamp(0.0, 1.0)
+            : 0.0,
+      );
+
   Future<void> _tail = Future.value();
   Future<T> _serial<T>(Future<T> Function() action) {
     final result = _tail.then((_) => action());

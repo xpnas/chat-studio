@@ -207,7 +207,7 @@ class ProfileScreen extends StatelessWidget {
                   onTap: () => showLicensePage(
                     context: context,
                     applicationName: 'Ekko Mobile',
-                    applicationVersion: '1.0.3',
+                    applicationVersion: '1.0.4',
                   ),
                 ),
                 const SizedBox(height: 26),
@@ -245,7 +245,7 @@ class ProfileScreen extends StatelessWidget {
                 const SizedBox(height: 30),
                 Center(
                   child: Text(
-                    'EKKO MOBILE  1.0.3\n适配 Studio v1.0.3',
+                    'EKKO MOBILE  1.0.4\n适配 Studio v1.0.4',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
