@@ -228,3 +228,14 @@ bash scripts/studio-contract.sh /absolute/path/to/pinned-studio
 - Android 打包与签名验证记录见 [1.0.15 发布记录](release-1.0.15.md)。
 
 本次未重跑真实 Studio HTTP/Socket.IO 联调，未运行远端 GitHub Actions。没有连接 Android 真机/模拟器，未验证真实断网、后台/前台、进程回收和帧率；iOS 原生编译与签名仍需 macOS/Xcode 验证。不可将单元测试通过等同于这些环境的验收。
+
+
+## 1.0.17 Chat Studio（2026-09-15）
+
+- `dart format` / `flutter analyze --fatal-infos`：通过。
+- `flutter test`：212 项通过、8 项环境相关跳过；新增 10 项服务器迁移/隔离/重启/过期/并发/存储失败、Agent 标识和图片预览回归。
+- 隔离真实 Studio v1.0.3：7 项 HTTP/Socket.IO 契约通过，包含截断事件缓存后的连续后台断网恢复。新增多服务器切换由 Mock HTTP + 真实控制器验证，未启动两个生产服务器。
+- 截图测试：1 项通过，14 张 PNG；增加服务器管理、全屏图片预览，更新 Chat Studio 品牌。截图使用确定性测试数据和本地字体，非真机截图。
+- AI 音频卡不再暴露转文字；保留底层 STT 协议测试来保护麦克风语音输入及兼容接口，不代表还提供音频附件转文字功能。
+- Windows 上不要同时运行 Flutter 测试/pub get 和 Android Gradle 打包：它们会重写同一份生成的插件注册文件。此次一次并行尝试出现 `IntegrationTestPlugin` 缺失，随后改为串行执行质量检查和打包。
+- Android 包、签名及本次范围说明见 [发布记录](release-1.0.17.md)。未验证 Android 真机交互/弱网、iOS 原生编译、真实 Codex/Hermes runtime 或远端 GitHub Actions。

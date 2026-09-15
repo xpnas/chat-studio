@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ekko_app/main.dart';
 import 'package:ekko_app/data/models.dart';
 import 'support.dart';
+import 'package:ekko_app/ui/server_screen.dart';
+import 'package:ekko_app/ui/widgets/attachment_tile.dart';
 
 // Optional deterministic UI previews, not screenshots of a physical phone.
 // Load a user-supplied CJK font locally; never redistribute the font itself.
@@ -198,6 +200,22 @@ void main() {
       });
       await tester.pumpAndSettle();
       await capture('attachments');
+      await tester.tap(find.byType(AttachmentTile).first);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(AttachmentViewer),
+          matching: find.byType(RawImage),
+        ),
+        findsOneWidget,
+      );
+      await capture('image-preview');
+      await tester.tap(find.byKey(const Key('dismiss-image-preview')));
+      await tester.pumpAndSettle();
       h.controller.timeline.replace(const [
         ChatMessage(
           id: 'failed-user',
@@ -272,6 +290,7 @@ void main() {
       await tester.tap(find.byTooltip('对话记录'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
+      expect(find.text('Chat Studio'), findsOneWidget);
       await capture('history-tasks');
       await h.controller.setTheme('dark');
       await tester.pump(); // Start the theme transition before advancing time.
@@ -280,6 +299,42 @@ void main() {
         await tester.pump(const Duration(milliseconds: 350));
       }
       await capture('history-tasks-dark');
+      Navigator.of(tester.element(find.byType(Scaffold).first)).pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await h.controller.setTheme('light');
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 350));
+      }
+      h.controller.servers = [
+        {
+          'server': 'https://example.com',
+          'profile': 'work',
+          'token': 'fixture',
+        },
+        {
+          'server': 'http://192.168.1.8:8641',
+          'profile': 'default',
+          'token': 'fixture',
+          'allowLocalHttp': true,
+        },
+        {
+          'server': 'https://lab.example.com',
+          'profile': 'default',
+          'token': '',
+        },
+      ];
+      final context = tester.element(find.byType(Scaffold).first);
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ServerScreen(controller: h.controller),
+        ),
+      );
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 350));
+      }
+      await capture('servers');
 
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

@@ -60,11 +60,12 @@ ThemeData ekkoTheme(Brightness brightness) {
 }
 
 class EkkoMark extends StatelessWidget {
-  const EkkoMark({super.key, this.size = 56});
+  const EkkoMark({super.key, this.size = 56, this.label = 'Chat Studio'});
+  final String label;
   final double size;
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Ekko',
+    label: label,
     image: true,
     child: Container(
       width: size,

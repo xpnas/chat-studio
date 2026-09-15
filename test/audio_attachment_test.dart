@@ -119,7 +119,7 @@ void main() {
       expect(find.byKey(ValueKey('download:${audio.path}')), findsNWidgets(2));
       expect(
         find.byKey(ValueKey('transcribe-audio:${audio.path}')),
-        findsNWidgets(2),
+        findsNothing,
       );
       await tester.tap(find.byKey(ValueKey('play-audio:${audio.path}')).last);
       await tester.pump();

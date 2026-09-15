@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state/app_controller.dart';
 import 'theme.dart';
+import 'server_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.controller});
@@ -19,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    _lastServer = widget.controller.serverInput;
     _server = TextEditingController(
       text: widget.controller.serverInput.isEmpty
           ? const String.fromEnvironment('DEFAULT_SERVER_URL')
@@ -27,6 +29,19 @@ class _LoginScreenState extends State<LoginScreen> {
     _local = widget.controller.allowLocalHttp;
   }
 
+  @override
+  void didUpdateWidget(covariant LoginScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_lastServer != widget.controller.serverInput) {
+      _lastServer = widget.controller.serverInput;
+      _server.text = _lastServer;
+      _local = widget.controller.allowLocalHttp;
+      _password.clear();
+      _username.clear();
+    }
+  }
+
+  late String _lastServer;
   @override
   void dispose() {
     _server.dispose();
@@ -69,12 +84,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       EkkoMark(size: 46),
                       SizedBox(width: 14),
-                      Text(
-                        'ekko',
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -1,
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Chat Studio',
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -1,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -92,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    '连接你的 Ekko Studio，让每一次好奇都有回应。',
+                    '连接你的 Studio，让每一次好奇都有回应。',
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
                       fontSize: 15,
@@ -102,6 +122,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 34),
                   if (c.error != null)
                     ErrorNotice(message: c.error!, onDismiss: c.dismissError),
+                  if (c.servers.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.dns_outlined, size: 18),
+                        label: Text('已保存的服务器（${c.servers.length}）'),
+                        onPressed: c.busy
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => ServerScreen(controller: c),
+                                ),
+                              ),
+                      ),
+                    ),
                   AutofillGroup(
                     child: Form(
                       key: _form,

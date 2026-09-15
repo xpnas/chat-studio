@@ -8,6 +8,8 @@ abstract class AppStorage {
   Future<Map<String, dynamic>?> readSession();
   Future<void> saveSession(Map<String, dynamic> session);
   Future<void> clearSession();
+  Future<List<Map<String, dynamic>>> readServers();
+  Future<void> saveServers(List<Map<String, dynamic>> servers);
   Future<String> deviceId();
   Future<String> readTheme();
   Future<void> saveTheme(String theme);
@@ -20,6 +22,22 @@ abstract class AppStorage {
 class SecureAppStorage implements AppStorage {
   final _secure = const FlutterSecureStorage();
   static const _session = 'ekko.session.v1';
+  @override
+  Future<List<Map<String, dynamic>>> readServers() async {
+    final raw = await _secure.read(key: 'ekko.servers.v1');
+    if (raw == null) return [];
+    try {
+      return asList(
+        jsonDecode(raw),
+      ).map(asMap).where((s) => text(s['server']).isNotEmpty).toList();
+    } on FormatException {
+      return [];
+    }
+  }
+
+  @override
+  Future<void> saveServers(List<Map<String, dynamic>> servers) =>
+      _secure.write(key: 'ekko.servers.v1', value: jsonEncode(servers));
   String _choiceKey(String scope) =>
       'ekko.choice.v1.${base64Url.encode(utf8.encode(scope))}';
   @override

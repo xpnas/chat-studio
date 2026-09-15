@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import '../../state/app_controller.dart';
 import 'stable_markdown.dart';
 import 'attachment_tile.dart';
+import 'agent_avatar.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/models.dart';
 import '../../data/message_file_reference.dart';
-import '../theme.dart';
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -102,10 +102,12 @@ class MessageBubble extends StatelessWidget {
                         if (message.role == 'command')
                           const Icon(Icons.terminal_rounded, size: 20)
                         else
-                          const EkkoMark(size: 20),
+                          AgentAvatar(controller: controller, size: 20),
                         const SizedBox(width: 9),
                         Text(
-                          message.role == 'command' ? '命令' : 'Ekko',
+                          message.role == 'command'
+                              ? '命令'
+                              : AgentIdentity.current(controller).name,
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ],

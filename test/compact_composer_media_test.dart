@@ -122,7 +122,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(Image), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is Image && w.image is! NetworkImage),
+        findsOneWidget,
+      );
       final request = h.requests.lastWhere(
         (r) => r.url.path == '/api/studio/files/download',
       );

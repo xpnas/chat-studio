@@ -65,7 +65,7 @@ class _EkkoAppState extends State<EkkoApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Ekko',
+    title: 'Chat Studio',
     debugShowCheckedModeBanner: false,
     theme: ekkoTheme(Brightness.light),
     darkTheme: ekkoTheme(Brightness.dark),

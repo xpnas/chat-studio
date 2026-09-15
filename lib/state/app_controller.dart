@@ -47,16 +47,6 @@ class AppController extends ChangeNotifier {
     unawaited(speech.playAttachment(api!, id, file));
   }
 
-  void transcribeAudioAttachment(MessageAttachment file) {
-    if (!authenticated || api == null || !foreground || !file.isAudio) return;
-    final id = audioAttachmentId(file);
-    if (transcription.activeId == id) {
-      transcription.cancel();
-      return;
-    }
-    unawaited(transcription.transcribe(api!, id, file));
-  }
-
   final AppStorage storage;
   final ChatTransport transport;
   final ApiFactory _apiFactory;
@@ -223,6 +213,96 @@ class AppController extends ChangeNotifier {
   int get chatRevision => _navigationRevision;
   String theme = 'system';
   String serverInput = '';
+  bool savedLocalHttp = false;
+  List<Map<String, dynamic>> servers = [];
+  Future<void> _storageQueue = Future.value();
+  Future<void> _writeStorage(Future<void> Function() action) {
+    final next = _storageQueue.then((_) => action());
+    _storageQueue = next.catchError((Object _) {});
+    return next;
+  }
+
+  Future<void> _persistSession() {
+    final saved = _saved();
+    servers = [saved, ...servers.where((s) => s['server'] != saved['server'])];
+    final records = List<Map<String, dynamic>>.of(servers);
+    return _writeStorage(() async {
+      await storage.saveServers(records);
+      await storage.saveSession(saved);
+    });
+  }
+
+  Future<void> removeServer(String server) async {
+    if (busy || (authenticated && api?.address.value == server)) return;
+    if (api?.address.value == server) {
+      api?.close();
+      api = null;
+    }
+    final previous = servers;
+    servers = servers.where((s) => s['server'] != server).toList();
+    final updated = servers;
+    final records = List<Map<String, dynamic>>.of(servers);
+    try {
+      await _writeStorage(() => storage.saveServers(records));
+    } catch (e) {
+      if (identical(servers, updated)) servers = previous;
+      reportError('删除服务器记录失败：$e');
+    }
+    _notify();
+  }
+
+  Future<void> addServer() async {
+    if (busy) return;
+    await logout(preserveServer: true);
+    serverInput = '';
+    busy = false;
+    savedLocalHttp = false;
+    _notify();
+  }
+
+  Future<void> switchServer(String server) async {
+    if (busy || (authenticated && api?.address.value == server)) return;
+    final saved = servers.where((s) => s['server'] == server).firstOrNull;
+    if (saved == null) return;
+    // Invalidate socket callbacks, drafts, timers and media before changing origin.
+    await logout(preserveServer: true);
+    if (_disposed) return;
+    final epoch = ++_epoch;
+    serverInput = server;
+    savedLocalHttp = flag(saved['allowLocalHttp']);
+    if (text(saved['token']).isEmpty) {
+      busy = false;
+      _notify();
+      return;
+    }
+    busy = true;
+    _notify();
+    try {
+      final client =
+          _apiFactory(
+              ServerAddress.parse(server, allowLocalHttp: savedLocalHttp),
+            )
+            ..token = text(saved['token'])
+            ..profile = text(saved['profile']).isEmpty
+                ? 'default'
+                : text(saved['profile']);
+      _bind(client);
+      final user = await client.me();
+      if (!_valid(epoch)) return;
+      await _persistSession();
+      if (!_valid(epoch)) return;
+      account = user;
+      await _loadWorkspace(epoch);
+    } catch (e) {
+      if (_valid(epoch)) reportError('连接未完成，可重试或重新登录。$e');
+    } finally {
+      if (_valid(epoch)) {
+        busy = false;
+        _notify();
+      }
+    }
+  }
+
   String search = '';
   String? error;
   bool booting = true, busy = false, loadingSessions = false;
@@ -262,7 +342,7 @@ class AppController extends ChangeNotifier {
       current?.canContinue != false;
   String get profile => api?.profile ?? 'default';
   String get title => current?.title ?? '新对话';
-  bool get allowLocalHttp => api?.address.allowLocalHttp ?? false;
+  bool get allowLocalHttp => api?.address.allowLocalHttp ?? savedLocalHttp;
 
   void _notify({bool batch = false}) {
     if (_disposed) return;
@@ -293,6 +373,7 @@ class AppController extends ChangeNotifier {
     api?.close();
     api = value;
     value.onUnauthorized = () {
+      if (api != value) return;
       unawaited(logout(expired: true));
     };
   }
@@ -308,9 +389,16 @@ class AppController extends ChangeNotifier {
     final epoch = ++_epoch;
     try {
       theme = await storage.readTheme();
+      servers = await storage.readServers();
       final saved = await storage.readSession();
+      if (saved != null &&
+          !servers.any((s) => s['server'] == saved['server'])) {
+        servers = [saved, ...servers];
+        await storage.saveServers(servers);
+      }
       if (saved != null && _valid(epoch)) {
         serverInput = text(saved['server']);
+        savedLocalHttp = flag(saved['allowLocalHttp']);
         final client =
             _apiFactory(
                 ServerAddress.parse(
@@ -367,7 +455,7 @@ class AppController extends ChangeNotifier {
       final user = await client.me();
       if (!_valid(epoch)) return false;
       serverInput = client.address.value;
-      await storage.saveSession(_saved());
+      await _persistSession();
       if (!_valid(epoch)) return false;
       account = user;
       await _loadWorkspace(epoch);
@@ -442,7 +530,7 @@ class AppController extends ChangeNotifier {
         if (sessionId == null) engine = _newChatEngine;
         workspaceNotice = '服务端 Codex 尚未安装，新对话已改用 Ekko Agent。';
       }
-      await storage.saveSession(_saved());
+      await _persistSession();
       if (!_valid(epoch)) return;
       reconnect();
       await refreshSessions();
@@ -1522,7 +1610,22 @@ class AppController extends ChangeNotifier {
     await storage.saveTheme(value);
   }
 
-  Future<void> logout({bool expired = false}) async {
+  Future<void> logout({
+    bool expired = false,
+    bool preserveServer = false,
+  }) async {
+    final oldServer = api?.address.value;
+    if (api != null) savedLocalHttp = api!.address.allowLocalHttp;
+    if (!preserveServer && oldServer != null) {
+      servers = [
+        for (final record in servers)
+          if (record['server'] == oldServer)
+            {...record, 'token': ''}
+          else
+            record,
+      ];
+    }
+    final records = List<Map<String, dynamic>>.of(servers);
     _epoch++;
     _searchEpoch++;
     transport.dispose();
@@ -1542,13 +1645,20 @@ class AppController extends ChangeNotifier {
     codexInstalled = null;
     _resetChat(preserve: false);
     connected = false;
-    busy = false;
+    busy = preserveServer;
     loadingSessions = false;
     search = '';
     error = expired ? '登录已过期或设备授权已撤销，请重新登录' : null;
     _notify();
     try {
-      await storage.clearSession();
+      await _writeStorage(() async {
+        try {
+          await storage.saveServers(records);
+        } finally {
+          // Still attempt to remove the active session if the record write fails.
+          await storage.clearSession();
+        }
+      });
     } catch (e) {
       reportError('本地凭据清理失败，请在系统设置中清除应用数据');
     }

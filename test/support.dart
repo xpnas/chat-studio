@@ -10,6 +10,16 @@ import 'package:ekko_app/state/app_controller.dart';
 
 class MemoryStorage implements AppStorage {
   Map<String, dynamic>? session;
+  List<Map<String, dynamic>> servers = [];
+  bool failServerWrites = false;
+  @override
+  Future<List<Map<String, dynamic>>> readServers() async => servers;
+  @override
+  Future<void> saveServers(List<Map<String, dynamic>> value) async {
+    if (failServerWrites) throw StateError('secure storage unavailable');
+    servers = value;
+  }
+
   String theme = 'system';
   final choices = <String, Map<String, dynamic>>{};
   bool hintSeen = false;

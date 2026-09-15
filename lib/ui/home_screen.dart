@@ -5,6 +5,7 @@ import '../state/app_controller.dart';
 import '../state/conversation_state.dart';
 import 'profile_screen.dart';
 import 'theme.dart';
+import 'widgets/agent_avatar.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/chat_composer.dart';
 import 'widgets/reading_handle.dart';
@@ -324,12 +325,24 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.menu_rounded),
           onPressed: () => _scaffold.currentState!.openDrawer(),
         ),
-        title: Text(
-          c.title,
-          key: const Key('chat-title'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            AgentAvatar(controller: c, size: 25),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                c.title,
+                key: const Key('chat-title'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
@@ -831,12 +844,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   EkkoMark(size: 34),
                   SizedBox(width: 12),
-                  Text(
-                    'ekko',
-                    style: TextStyle(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.8,
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Chat Studio',
+                        style: TextStyle(
+                          fontSize: 25,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.8,
+                        ),
+                      ),
                     ),
                   ),
                 ],

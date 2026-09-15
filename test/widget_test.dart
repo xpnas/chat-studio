@@ -17,6 +17,7 @@ void main() {
       EkkoApp(controller: h.controller, initialize: false),
     );
     expect(find.text('你的灵感，\n随时接续。'), findsOneWidget);
+    expect(find.text('Chat Studio'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('login-button')));
     await tester.tap(find.byKey(const Key('login-button')));
     await tester.pump();

@@ -1,4 +1,4 @@
-# Ekko Mobile
+# Chat Studio
 
 Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3** 的真实协议实现，Flutter 独立 UI，**不是 WebView 套壳**。
 
@@ -19,7 +19,7 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
 - 工具授权/拒绝、澄清问题；审批失败保留卡片，过期或提交中防重复操作，永久授权按服务端能力显示并二次确认。
 - 生成中可继续输入加入服务端队列，支持取消和断线恢复，不自动重发消息。
 - 输入 `/` 查看命令建议，支持技能入口；选择只填入草稿，不自动发送。
-- AI 返回的音频文件可播放、停止、下载和主动转文字；转文字需要服务端 STT，普通文字回复不自动朗读。
+- AI 返回的音频文件仅提供播放、停止和下载，不再展示转文字；麦克风语音输入仍可通过服务端 STT 生成可编辑草稿，普通文字回复不自动朗读。
 - 阅读历史时输入框收为悬浮双线，不占底栏；线长表示当前已加载历史的回看位置。轻点恢复、回到最新自动展开，草稿保留；录音/上传/附件待发送时保持展开。
 - 消息旁显示发送/核对/失败状态；明确失败后可恢复文字和已上传附件到草稿，手动编辑再发送，不自动重试。
 - 按服务器、账号和 Profile 记忆最近模型/引擎；历史会话采用自己的配置，失效配置提示后回退。
@@ -27,13 +27,19 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
 - 实际麦克风音量指示、持续无声提示；悬浮双线首次引导、闲置淡化、进度柔和过渡。
 - 移动端懒加载列表、40ms 流式刷新合并；已完成 Markdown 分段复用，流式末段增量更新；按可见段落/文字位置校正阅读位置，不强制滚动打断阅读。
 
+- 多服务器记录：在登录页或「个人信息 → 服务器管理与切换」添加、切换、删除；每个地址独立保存 token、Profile 和局域网 HTTP 选项，不保存密码。旧版单服务器登录自动迁移。切换清空本机聊天/草稿/播放，不中止服务端任务；退出只清除当前服务器 token。
+- 对话标题左侧和 AI 气泡同步展示当前 Agent 的图标与名称；图标从当前 Studio 的 Agent 管理静态资源加载，无法加载时使用本地标识或缩写。
+- 图片采用近全屏无标题预览，支持双指缩放，轻点图片关闭；右下角小尺寸保存/关闭控件，下载继续使用系统保存位置。
+
 **范围边界：** 不提供终端、工作流编辑、群聊编辑、语音朗读/TTS 播放、实时语音通话、推送通知、离线聊天缓存、云中继授权码登录或模型密钥配置。模型密钥应在 Studio 网页端配置。本客户端没有收费模型调用的演示凭据。
 
 ## 界面预览
 
-以下图片由当前源码的真实 Flutter 组件重新渲染（测试数据，不是真机截图），展示输入框内模型/思考选择、紧凑任务列表与悬浮阅读入口。生成步骤、全部场景及验证边界见 [截图说明](docs/screenshots/README.md)。
+以下图片由当前源码的真实 Flutter 组件重新渲染（测试数据，不是真机截图），展示输入框内模型/思考选择、紧凑任务列表、悬浮阅读入口、多服务器和全屏图片预览。生成步骤、全部场景及验证边界见 [截图说明](docs/screenshots/README.md)。
 
 <p>
+  <img src="docs/screenshots/servers.png" width="230" alt="多服务器配置与切换" />
+  <img src="docs/screenshots/image-preview.png" width="230" alt="无标题全屏图片预览" />
   <img src="docs/screenshots/login.png" width="230" alt="登录页" />
   <img src="docs/screenshots/home.png" width="230" alt="新建对话" />
   <img src="docs/screenshots/chat.png" width="230" alt="对话页" />
@@ -124,7 +130,7 @@ docs/analysis/           v1.0.3 源码分析及 CodeGraph 原始结果
 
 ## 许可证、隐私与上游关系
 
-Ekko Mobile 是面向 EKKOLearnAI/hermes-studio 兼容接口的独立 Flutter 第三方客户端，不是 EKKOLearnAI 官方项目，也未获得其背书。本仓库不包含 Hermes Studio 源代码；兼容 REST / Socket.IO 协议不授予上游实现、商标、Logo 或其他资源的许可。
+Chat Studio 是面向 EKKOLearnAI/hermes-studio 兼容接口的独立 Flutter 第三方客户端，不是 EKKOLearnAI 官方项目，也未获得其背书。本仓库不包含 Hermes Studio 源代码；兼容 REST / Socket.IO 协议不授予上游实现、商标、Logo 或其他资源的许可。
 
 本仓库原创源代码采用 [Apache License 2.0](LICENSE)。上游 Hermes Studio / Hermes Web UI 由 EKKOLearnAI 单独以 [Business Source License 1.1](https://github.com/EKKOLearnAI/hermes-studio/blob/main/LICENSE) 授权；使用、修改或再分发上游服务端时必须遵守其对应版本的许可证。第三方依赖和资源遵循各自许可证，详见 [第三方声明](THIRD_PARTY_NOTICES.md)。相关名称和 Logo 不授予商标权。
 

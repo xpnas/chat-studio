@@ -513,10 +513,10 @@ class StudioApi {
       'password': password,
       'device_code': deviceId,
       'device_name': Platform.isIOS
-          ? 'Ekko Mobile · iOS'
-          : 'Ekko Mobile · Android',
+          ? 'Chat Studio · iOS'
+          : 'Chat Studio · Android',
       'device_brand': Platform.isIOS ? 'Apple' : 'Android',
-      'device_model': 'Ekko Mobile',
+      'device_model': 'Chat Studio',
     },
   );
   Future<Account> me() async =>

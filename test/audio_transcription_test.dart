@@ -106,28 +106,23 @@ void main() {
       h.dispose();
     },
   );
-  testWidgets(
-    'only audio card offers transcription, errors visible and retryable',
-    (tester) async {
-      final h = TestHarness();
-      await h.login();
-      h.override = (r) async => http.Response('{"configured":false}', 200);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: AttachmentTile(file: audio, controller: h.controller),
-          ),
+  testWidgets('audio card offers clean playback without transcription', (
+    tester,
+  ) async {
+    final h = TestHarness();
+    await h.login();
+    h.override = (r) async => http.Response('{"configured":false}', 200);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AttachmentTile(file: audio, controller: h.controller),
         ),
-      );
-      expect(find.text('播放语音'), findsOneWidget);
-      expect(find.text('转文字'), findsOneWidget);
-      await tester.tap(find.text('转文字'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('配置语音识别 STT'), findsOneWidget);
-      expect(find.text('重试转文字'), findsOneWidget);
-      expect(find.byType(SelectableText), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-      h.dispose();
-    },
-  );
+      ),
+    );
+    expect(find.text('播放语音'), findsOneWidget);
+    expect(find.text('转文字'), findsNothing);
+    expect(find.byType(SelectableText), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    h.dispose();
+  });
 }

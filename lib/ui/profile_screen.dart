@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../state/app_controller.dart';
 import 'theme.dart';
+import 'server_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.controller});
@@ -142,7 +143,15 @@ class ProfileScreen extends StatelessWidget {
                 _section(context, '连接', [
                   ListTile(
                     leading: const Icon(Icons.dns_outlined),
-                    title: const Text('服务地址'),
+                    title: const Text('服务器管理与切换'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: c.busy
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ServerScreen(controller: c),
+                            ),
+                          ),
                     subtitle: SelectableText(c.api?.address.value ?? ''),
                     isThreeLine: false,
                   ),
@@ -206,8 +215,8 @@ class ProfileScreen extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => showLicensePage(
                     context: context,
-                    applicationName: 'Ekko Mobile',
-                    applicationVersion: '1.0.5',
+                    applicationName: 'Chat Studio',
+                    applicationVersion: '1.0.17',
                   ),
                 ),
                 const SizedBox(height: 26),
@@ -218,7 +227,7 @@ class ProfileScreen extends StatelessWidget {
                       builder: (context) => AlertDialog(
                         title: const Text('退出登录？'),
                         content: const Text(
-                          '将清除本机登录凭据和内存中的聊天内容。服务端历史与正在执行的任务不会被删除或停止。',
+                          '将清除当前服务器的本机登录凭据和聊天内存，保留其他服务器登录。服务端历史和任务不会被删除或停止。',
                         ),
                         actions: [
                           TextButton(
@@ -245,7 +254,7 @@ class ProfileScreen extends StatelessWidget {
                 const SizedBox(height: 30),
                 Center(
                   child: Text(
-                    'EKKO MOBILE  1.0.5\n适配 Studio v1.0.5',
+                    'Chat Studio\n适配 Studio v1.0.3',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
