@@ -10,12 +10,120 @@ import 'package:ekko_app/data/chat_transport.dart';
 import 'package:ekko_app/data/models.dart';
 import 'package:ekko_app/data/studio_api.dart';
 import 'package:ekko_app/state/app_controller.dart';
+import 'package:ekko_app/state/conversation_state.dart';
 import 'support.dart';
 
 // Opt-in destructive contract test: only use an isolated disposable Studio.
 // Never point this at your production workspace.
 void main() {
   final server = Platform.environment['EKKO_TEST_SERVER'];
+  test(
+    'real simultaneous sessions, activity snapshot and reasoning persistence',
+    () async {
+      final c = AppController(storage: _MultiDeviceStorage('ekko-multi-main'));
+      final observer = AppController(
+        storage: _MultiDeviceStorage('ekko-multi-observer'),
+      );
+      final ids = <String>[];
+      Future<void> until(bool Function() condition) async {
+        final end = DateTime.now().add(const Duration(seconds: 40));
+        while (!condition()) {
+          if (DateTime.now().isAfter(end)) {
+            throw StateError(
+              'Multi-session condition timed out: ${c.error ?? ''}',
+            );
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        }
+      }
+
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['EKKO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        await until(() => c.canConfigure);
+        await c.chooseReasoningEffort('high');
+        await until(() => c.canSend);
+        expect(c.send('SLOW multi-session A'), true);
+        final a = c.current!;
+        ids.add(a.id);
+        final aTimeline = c.timeline;
+        await until(
+          () => aTimeline.messages.any(
+            (m) => m.role == 'assistant' && m.content.isNotEmpty,
+          ),
+        );
+        await observer.initialize();
+        expect(
+          await observer.login(
+            server,
+            Platform.environment['EKKO_TEST_USERNAME'] ?? 'admin',
+            Platform.environment['EKKO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        await until(
+          () =>
+              observer.conversations.any((row) => row.id == a.id) &&
+              observer.taskStatus(a) == ConversationTaskStatus.running,
+        );
+        c.newChat();
+        await c.chooseReasoningEffort('low');
+        expect(c.send('multi-session B'), true);
+        final b = c.current!;
+        ids.add(b.id);
+        final bTimeline = c.timeline;
+        expect(aTimeline.working, true);
+        expect(bTimeline.working, true);
+        await c.openConversation(a);
+        await until(() => !c.syncing && c.timeline.working);
+        expect(c.timeline, same(aTimeline));
+        expect(c.reasoningEffort, 'high');
+        await until(() => !bTimeline.working);
+        expect(c.sessionId, a.id);
+        expect(aTimeline.working, true);
+        expect(
+          bTimeline.messages.where((m) => m.role == 'assistant').last.content,
+          '你好！这是本地协议自测回复。流式连接正常。',
+        );
+        c.stop();
+        await until(() => !aTimeline.working && c.canConfigure);
+        await c.chooseReasoningEffort('xhigh');
+        c.reconnect();
+        await until(() => c.connected && !c.syncing);
+        expect(c.reasoningEffort, 'xhigh');
+        await until(
+          () => observer.taskStatus(a) == ConversationTaskStatus.completed,
+        );
+        final bHistory = await c.api!.messages(b.id);
+        expect(bHistory.messages.where((m) => m.role == 'user').length, 1);
+        expect(
+          bHistory.messages.where((m) => m.role == 'assistant').last.content,
+          '你好！这是本地协议自测回复。流式连接正常。',
+        );
+      } finally {
+        for (final id in ids) {
+          if (c.connected) c.transport.emit('abort', {'session_id': id});
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        for (final id in ids) {
+          await c.api?.delete(id);
+        }
+        observer.dispose();
+        c.dispose();
+      }
+    },
+    skip: server == null,
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
   test(
     'real upload references round-trip and server STT transcription',
     () async {
@@ -300,4 +408,11 @@ void main() {
         : false,
     timeout: const Timeout(Duration(minutes: 3)),
   );
+}
+
+class _MultiDeviceStorage extends MemoryStorage {
+  _MultiDeviceStorage(this.id);
+  final String id;
+  @override
+  Future<String> deviceId() async => id;
 }

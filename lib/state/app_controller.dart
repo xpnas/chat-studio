@@ -7,6 +7,7 @@ import '../data/chat_transport.dart';
 import '../data/models.dart';
 import '../data/studio_api.dart';
 import 'chat_timeline.dart';
+import 'conversation_state.dart';
 
 typedef ApiFactory = StudioApi Function(ServerAddress address);
 
@@ -21,24 +22,110 @@ class AppController extends ChangeNotifier {
   final ChatTransport transport;
   final ApiFactory _apiFactory;
   StudioApi? api;
-  final timeline = ChatTimeline();
+  ConversationState _view = ConversationState('default');
+  final _states = <String, ConversationState>{};
+  final _profileDrafts = <String, ConversationState>{};
+  final _tasks = <String, ConversationTaskStatus>{};
+  final _activityTimes = <String, int>{};
+  int _navigationRevision = 0, _sessionOffset = 0;
+  ChatTimeline get timeline => _view.timeline;
+  ConversationDraft get draft => _view.draft;
+  String _stateKey(String profile, String id) => '$profile::$id';
+  String _key(ConversationState state) => _stateKey(state.profile, state.id!);
+  ConversationState? _findState(String id) =>
+      sessionId == id ? _view : _states[_stateKey(profile, id)];
+  void _cacheView() {
+    if (_view.id == null) {
+      _profileDrafts[_view.profile] = _view;
+      return;
+    }
+    _states.remove(_key(_view));
+    _states[_key(_view)] = _view;
+    final evictable = _states.entries
+        .where(
+          (entry) =>
+              entry.value != _view &&
+              !entry.value.timeline.working &&
+              entry.value.timeline.interaction == null &&
+              !(_tasks[entry.key]?.active ?? false) &&
+              entry.value.draft.isEmpty,
+        )
+        .map((e) => e.key)
+        .toList();
+    for (final key in evictable) {
+      if (_states.length <= 16) break;
+      _states.remove(key)?.cancelTimers();
+    }
+  }
+
+  ConversationTaskStatus taskStatus(Conversation conversation) {
+    final key = _stateKey(conversation.profile, conversation.id);
+    final state =
+        conversation.id == sessionId && conversation.profile == profile
+        ? _view
+        : _states[key];
+    var status = _tasks[key] ?? ConversationTaskStatus.idle;
+    if (state?.timeline.interaction != null) {
+      status = ConversationTaskStatus.waiting;
+    } else if (state?.timeline.working == true &&
+        status != ConversationTaskStatus.checking) {
+      status = ConversationTaskStatus.running;
+    }
+    if (status.active &&
+        (!connected ||
+            conversation.profile != profile ||
+            state?.syncing == true)) {
+      return ConversationTaskStatus.checking;
+    }
+    return status;
+  }
+
+  bool get canConfigure =>
+      authenticated && !busy && !working && !syncing && !loadingMessages;
+  void _disposeStates() {
+    for (final state in {..._states.values, _view}) {
+      state.cancelTimers();
+    }
+    _states.clear();
+    _profileDrafts.clear();
+    _tasks.clear();
+    _activityTimes.clear();
+  }
+
   Account? account;
   List<String> profiles = [];
   List<ModelChoice> models = [];
   List<Conversation> conversations = [];
-  ModelChoice? selectedModel;
-  Conversation? current;
-  String? sessionId;
-  String engine = 'ekko-agent';
+  ModelChoice? get selectedModel => _view.model;
+  set selectedModel(ModelChoice? value) => _view.model = value;
+  Conversation? get current => _view.conversation;
+  set current(Conversation? value) => _view.conversation = value;
+  String? get sessionId => _view.id;
+  set sessionId(String? value) {
+    _view.id = value;
+    if (value != null) _cacheView();
+  }
+
+  String get engine => _view.engine;
+  set engine(String value) => _view.engine = value;
+  String get reasoningEffort => _view.reasoningEffort;
+  set reasoningEffort(String value) => _view.reasoningEffort = value;
   ModelChoice? _newChatModel;
-  String _newChatEngine = 'ekko-agent';
+  String _newChatEngine = 'ekko-agent', _newChatReasoning = '';
   String? workspaceNotice;
   bool readingHintSeen = true;
-  String? retryInput;
-  List<Map<String, dynamic>> retryAttachments = [];
+  String? get retryInput => _view.retryInput;
+  set retryInput(String? value) => _view.retryInput = value;
+  List<Map<String, dynamic>> get retryAttachments => _view.retryAttachments;
+  set retryAttachments(List<Map<String, dynamic>> value) =>
+      _view.retryAttachments = value;
   int retryRevision = 0;
-  String? _lastSubmittedInput;
-  List<Map<String, dynamic>> _lastSubmittedAttachments = [];
+  String? get _lastSubmittedInput => _view.submittedInput;
+  set _lastSubmittedInput(String? value) => _view.submittedInput = value;
+  List<Map<String, dynamic>> get _lastSubmittedAttachments =>
+      _view.submittedAttachments;
+  set _lastSubmittedAttachments(List<Map<String, dynamic>> value) =>
+      _view.submittedAttachments = value;
   Future<void> _choiceWrite = Future.value();
   String get _choiceScope => '${api!.address.value}|${account!.id}|$profile';
 
@@ -46,11 +133,13 @@ class AppController extends ChangeNotifier {
     if (api == null || account == null) return;
     _newChatModel = selectedModel;
     _newChatEngine = engine;
+    _newChatReasoning = reasoningEffort;
     final scope = _choiceScope;
     final choice = {
       'model': selectedModel?.id,
       'provider': selectedModel?.provider,
       'engine': engine,
+      'reasoning_effort': reasoningEffort,
     };
     _choiceWrite = _choiceWrite
         .then((_) => storage.saveChoice(scope, choice))
@@ -90,22 +179,22 @@ class AppController extends ChangeNotifier {
   bool? codexInstalled;
   String? sttProvider;
   String voiceHint = '请在服务端配置语音识别（STT）；仅配置 TTS 不能语音输入';
-  int get chatRevision => _chatEpoch;
+  int get chatRevision => _navigationRevision;
   String theme = 'system';
   String serverInput = '';
   String search = '';
   String? error;
-  bool booting = true,
-      busy = false,
-      loadingSessions = false,
-      loadingMessages = false;
-  bool connected = false,
-      syncing = false,
-      hasMoreSessions = false,
-      hasMoreMessages = false;
-  int _epoch = 0, _chatEpoch = 0, _searchEpoch = 0, _historyOffset = 0;
+  bool booting = true, busy = false, loadingSessions = false;
+  bool connected = false, hasMoreSessions = false;
+  bool get loadingMessages => _view.loading;
+  set loadingMessages(bool value) => _view.loading = value;
+  bool get syncing => _view.syncing;
+  set syncing(bool value) => _view.syncing = value;
+  bool get hasMoreMessages => _view.hasMore;
+  set hasMoreMessages(bool value) => _view.hasMore = value;
+  int _epoch = 0, _chatEpoch = 0, _searchEpoch = 0;
   bool _disposed = false;
-  Timer? _paintTimer, _runTimer, _syncTimer;
+  Timer? _paintTimer;
   bool get authenticated => account != null;
   bool get working => timeline.working;
   bool get canSend =>
@@ -115,6 +204,9 @@ class AppController extends ChangeNotifier {
       !syncing &&
       !loadingMessages &&
       !working &&
+      !(_tasks[sessionId == null ? '' : _stateKey(profile, sessionId!)]
+              ?.active ??
+          false) &&
       !busy &&
       current?.canContinue != false;
   String get profile => api?.profile ?? 'default';
@@ -249,6 +341,10 @@ class AppController extends ChangeNotifier {
         throw const ApiException('账号没有可访问的 Profile，请联系服务管理员');
       }
       if (!available.contains(profile)) api!.profile = available.first;
+      if (sessionId == null && _view.profile != profile) {
+        _view = ConversationState(profile);
+        _navigationRevision++;
+      }
       final catalog = await api!.models();
       if (!_valid(epoch)) return;
       models = ModelChoice.parseGroups(catalog['groups']);
@@ -273,6 +369,9 @@ class AppController extends ChangeNotifier {
           )
           .firstOrNull;
       _newChatModel = storedModel ?? fallback;
+      _newChatReasoning = storedModel == null
+          ? ''
+          : normalizeReasoningEffort(remembered?['reasoning_effort']);
       _newChatEngine =
           ['ekko-agent', 'hermes', 'codex'].contains(remembered?['engine'])
           ? remembered!['engine'] as String
@@ -283,6 +382,7 @@ class AppController extends ChangeNotifier {
       if (sessionId == null) {
         selectedModel = _newChatModel;
         engine = _newChatEngine;
+        reasoningEffort = _newChatReasoning;
       }
       await refreshCapabilities();
       if (!_valid(epoch)) return;
@@ -347,8 +447,14 @@ class AppController extends ChangeNotifier {
     syncing = sessionId != null;
     error = null;
     final epoch = _epoch;
+    final socketProfile = profile;
+    for (final state in {..._states.values, _view}) {
+      state.cancelTimers();
+      state.syncing = false;
+      if (state.timeline.working) state.timeline.markUncertain();
+    }
     transport.connect(api!, (event, data) {
-      if (_valid(epoch)) _event(event, data);
+      if (_valid(epoch) && profile == socketProfile) _event(event, data);
     });
     _notify();
   }
@@ -363,8 +469,14 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> switchProfile(String value) async {
-    if (working || busy || value == profile || !profiles.contains(value)) {
+    if (busy || value == profile || !profiles.contains(value)) {
       return;
+    }
+    _cacheView();
+    for (final state in _states.values) {
+      state.cancelTimers();
+      state.syncing = false;
+      state.loading = false;
     }
     final epoch = ++_epoch;
     transport.dispose();
@@ -372,12 +484,17 @@ class AppController extends ChangeNotifier {
     syncing = false;
     busy = true;
     api!.profile = value;
+    _view = _profileDrafts.remove(value) ?? ConversationState(value);
+    _navigationRevision++;
+    _chatEpoch++;
+    _sessionOffset = 0;
+    search = '';
+    _searchEpoch++;
     conversations = [];
     models = [];
     selectedModel = null;
     sttProvider = null;
     codexInstalled = null;
-    _resetChat();
     _notify();
     await _loadWorkspace(epoch);
     if (_valid(epoch)) {
@@ -395,14 +512,28 @@ class AppController extends ChangeNotifier {
     _notify();
     try {
       final data = await client.sessions(
-        offset: more ? conversations.length : 0,
+        offset: more ? _sessionOffset : 0,
         search: search,
       );
       if (!_valid(epoch) || searchEpoch != _searchEpoch) return;
       final rows = asList(
         data[search.isEmpty ? 'sessions' : 'results'],
       ).map((s) => Conversation.fromJson(asMap(s))).toList();
-      final merged = [if (more) ...conversations, ...rows];
+      _sessionOffset = (more ? _sessionOffset : 0) + rows.length;
+      final local = _states.values
+          .where(
+            (s) =>
+                s.profile == profile &&
+                s.conversation != null &&
+                (_tasks[_key(s)]?.active ?? s.timeline.working) &&
+                !rows.any((r) => r.id == s.id) &&
+                (search.isEmpty ||
+                    s.conversation!.title.toLowerCase().contains(
+                      search.toLowerCase(),
+                    )),
+          )
+          .map((s) => s.conversation!);
+      final merged = [if (more) ...conversations, ...local, ...rows];
       conversations = {for (final s in merged) s.id: s}.values.toList();
       hasMoreSessions = search.isEmpty && flag(data['hasMore']);
     } catch (e) {
@@ -415,94 +546,138 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void _resetChat() {
+  void _resetChat({bool preserve = true}) {
+    if (preserve) _cacheView();
     _chatEpoch++;
-    _runTimer?.cancel();
-    _syncTimer?.cancel();
-    sessionId = null;
-    current = null;
-    timeline.clear();
-    _lastSubmittedInput = null;
-    _lastSubmittedAttachments = [];
-    retryInput = null;
-    retryAttachments = [];
-    hasMoreMessages = false;
-    _historyOffset = 0;
-    syncing = false;
-    loadingMessages = false;
+    _navigationRevision++;
+    _view = ConversationState(profile);
   }
 
   void newChat() {
-    if (working || busy) return;
+    if (busy) return;
     _resetChat();
-    selectedModel = _newChatModel ?? selectedModel;
+    selectedModel = _newChatModel;
     engine = _newChatEngine;
+    reasoningEffort = _newChatReasoning;
     error = null;
     _notify();
   }
 
   Future<void> openConversation(Conversation conversation) async {
-    if (working || busy) return;
+    if (busy) return;
     if (conversation.profile != profile) {
       await switchProfile(conversation.profile);
+      if (!authenticated || conversation.profile != profile) return;
     }
-    _resetChat();
+    _cacheView();
+    _chatEpoch++;
+    _navigationRevision++;
+    final state = _states.putIfAbsent(
+      _stateKey(profile, conversation.id),
+      () => ConversationState(profile)..id = conversation.id,
+    );
+    _view = state;
     current = conversation;
-    sessionId = conversation.id;
     engine = ['ekko-agent', 'codex'].contains(conversation.agent)
         ? conversation.agent
         : 'hermes';
-    selectedModel =
-        models
-            .where(
-              (m) =>
-                  m.id == conversation.model &&
-                  m.provider == conversation.provider,
-            )
-            .firstOrNull ??
-        (conversation.model.isEmpty
-            ? selectedModel
-            : ModelChoice(
-                id: conversation.model,
-                provider: conversation.provider,
-                label: conversation.model,
-              ));
-    await loadHistory();
-    if (sessionId == conversation.id && connected) _resume();
+    if (state.model == null) {
+      selectedModel =
+          models
+              .where(
+                (m) =>
+                    m.id == conversation.model &&
+                    m.provider == conversation.provider,
+              )
+              .firstOrNull ??
+          (conversation.model.isEmpty
+              ? _newChatModel
+              : ModelChoice(
+                  id: conversation.model,
+                  provider: conversation.provider,
+                  label: conversation.model,
+                ));
+      reasoningEffort = normalizeReasoningEffort(conversation.reasoningEffort);
+    }
+    error = null;
+    _notify();
+    if (state.timeline.messages.isEmpty) await _loadHistoryState(state);
+    if (_view != state || !authenticated || state.profile != profile) return;
+    if (connected) _resumeState(state);
   }
 
-  Future<void> loadHistory({bool more = false}) async {
-    final sid = sessionId;
-    if (sid == null || loadingMessages) return;
-    final epoch = _epoch, chatEpoch = _chatEpoch;
-    loadingMessages = true;
-    _notify();
+  Future<void> loadHistory({bool more = false}) =>
+      _loadHistoryState(_view, more: more);
+
+  Future<void> _loadHistoryState(
+    ConversationState state, {
+    bool more = false,
+  }) async {
+    final sid = state.id, client = api;
+    if (sid == null ||
+        state.loading ||
+        client == null ||
+        state.profile != profile) {
+      return;
+    }
+    final epoch = _epoch,
+        revision = state.revision,
+        requestId = ++state.loadRequest;
+    state.loading = true;
+    if (state == _view) _notify();
     try {
-      final page = await api!.messages(sid, offset: more ? _historyOffset : 0);
-      if (!_valid(epoch) || chatEpoch != _chatEpoch) return;
+      final page = await client.messages(sid, offset: more ? state.offset : 0);
+      if (!_valid(epoch) ||
+          state.loadRequest != requestId ||
+          (!more && state.revision != revision) ||
+          client != api) {
+        return;
+      }
       if (more) {
-        timeline.prepend(page.messages);
+        state.timeline.prepend(page.messages);
       } else {
-        timeline.replace(page.messages, keepOlder: page.hasMore);
+        state.timeline.replace(page.messages, keepOlder: page.hasMore);
       }
       if (more ||
-          _historyOffset <= page.offset ||
-          timeline.messages.length <= page.messages.length) {
-        _historyOffset = page.offset;
-        hasMoreMessages = page.hasMore;
+          state.offset <= page.offset ||
+          state.timeline.messages.length <= page.messages.length) {
+        state.offset = page.offset;
+        state.hasMore = page.hasMore;
       }
     } catch (e) {
-      if (_valid(epoch) && chatEpoch == _chatEpoch) reportError(e);
+      if (_valid(epoch) && state == _view && state.revision == revision) {
+        reportError(e);
+      }
     } finally {
-      if (_valid(epoch) && chatEpoch == _chatEpoch) {
-        loadingMessages = false;
+      if (_valid(epoch) && state.loadRequest == requestId) {
+        state.loading = false;
+        if (state == _view) _notify();
+      }
+    }
+  }
+
+  Future<void> chooseReasoningEffort(String value) async {
+    if (!canConfigure || !reasoningEffortLabels.containsKey(value)) return;
+    final state = _view, epoch = _epoch;
+    busy = true;
+    _notify();
+    try {
+      if (state.id != null) await api!.setReasoningEffort(state.id!, value);
+      if (!_valid(epoch) || _view != state) return;
+      reasoningEffort = value;
+      await _rememberChoice();
+    } catch (e) {
+      if (_valid(epoch) && _view == state) reportError(e);
+    } finally {
+      if (_valid(epoch)) {
+        busy = false;
         _notify();
       }
     }
   }
 
   Future<void> chooseModel(ModelChoice model) async {
-    if (working || busy) return;
+    if (!canConfigure) return;
     final epoch = _epoch, chatEpoch = _chatEpoch;
     busy = true;
     _notify();
@@ -510,6 +685,7 @@ class AppController extends ChangeNotifier {
       if (current != null) await api!.setModel(current!.id, model);
       if (_valid(epoch) && chatEpoch == _chatEpoch) {
         selectedModel = model;
+        reasoningEffort = '';
         await _rememberChoice();
       }
     } catch (e) {
@@ -555,12 +731,14 @@ class AppController extends ChangeNotifier {
         if (engine != 'hermes') 'agent_id': engine,
         if (engine != 'hermes') 'source': 'coding_agent',
         if (engine == 'codex') 'mode': 'scoped',
+        'reasoning_effort': reasoningEffort,
         if (selectedModel != null) 'model': selectedModel!.id,
         if (selectedModel != null) 'provider': selectedModel!.provider,
         if (selectedModel?.apiMode.isNotEmpty == true)
           'api_mode': selectedModel!.apiMode,
       });
       _chatEpoch++;
+      _view.revision++;
       _lastSubmittedInput = input;
       _lastSubmittedAttachments = List.of(attachments);
       sessionId = sid;
@@ -572,14 +750,32 @@ class AppController extends ChangeNotifier {
         'local:$queueId',
         attachments: MessageAttachment.parse(attachments),
       );
+      final state = _view;
+      state.conversation ??= Conversation(
+        id: sid,
+        title: input.isEmpty
+            ? '附件对话'
+            : String.fromCharCodes(input.runes.take(48)),
+        profile: profile,
+        agent: engine,
+        source: engine == 'hermes' ? '' : 'coding_agent',
+        model: selectedModel?.id ?? '',
+        provider: selectedModel?.provider ?? '',
+        reasoningEffort: reasoningEffort,
+      );
+      if (!conversations.any((c) => c.id == sid)) {
+        conversations = [state.conversation!, ...conversations];
+      }
+      _tasks[_key(state)] = ConversationTaskStatus.running;
       error = null;
-      _runTimer?.cancel();
-      _runTimer = Timer(const Duration(seconds: 25), () {
-        if (working) {
-          timeline.markUncertain();
-          _notify();
-          if (connected) _resume();
-        }
+      state.runTimer?.cancel();
+      final epoch = _epoch;
+      state.runTimer = Timer(const Duration(seconds: 25), () {
+        if (!_valid(epoch) || !state.timeline.working) return;
+        state.timeline.markUncertain();
+        _tasks[_key(state)] = ConversationTaskStatus.checking;
+        if (connected && state.profile == profile) _resumeState(state);
+        _notify();
       });
       _notify();
       return true;
@@ -589,8 +785,13 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void stop() {
-    if (!connected || sessionId == null) return;
+  void stop({String? expectedSession}) {
+    if (!connected ||
+        sessionId == null ||
+        current?.canContinue == false ||
+        (expectedSession != null && expectedSession != sessionId)) {
+      return;
+    }
     try {
       transport.emit('abort', {'session_id': sessionId});
       timeline.activity = '正在停止';
@@ -600,51 +801,88 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void _resume() {
-    if (sessionId == null || !connected) return;
-    syncing = true;
-    timeline.markUncertain();
-    _syncTimer?.cancel();
-    _syncTimer = Timer(const Duration(seconds: 20), () {
-      timeline.markUncertain();
-      error = '同步超时，请重新连接；消息不会自动重发。';
+  void _resumeState(ConversationState state) {
+    if (state.id == null ||
+        !connected ||
+        state.profile != profile ||
+        state.syncing) {
+      return;
+    }
+    state.syncing = true;
+    state.timeline.markUncertain();
+    state.syncTimer?.cancel();
+    final epoch = _epoch;
+    state.syncTimer = Timer(const Duration(seconds: 20), () {
+      if (!_valid(epoch)) return;
+      state.syncing = false;
+      state.timeline.markUncertain();
+      _tasks[_key(state)] = ConversationTaskStatus.checking;
+      if (state == _view) error = '同步超时，请重新连接；消息不会自动重发。';
       _notify();
     });
     try {
-      transport.emit('resume', {'session_id': sessionId});
+      transport.emit('resume', {'session_id': state.id});
     } catch (e) {
-      reportError(e);
+      state.syncing = false;
+      state.syncTimer?.cancel();
+      if (state == _view) reportError(e);
     }
     _notify();
   }
 
-  void onForeground() {
-    if (authenticated) {
-      if (connected) {
-        _resume();
-      } else {
-        reconnect();
+  void _recoverSessions() {
+    for (final state in _states.values.toList()) {
+      if (state != _view &&
+          state.profile == profile &&
+          (state.timeline.working ||
+              state.timeline.interaction != null ||
+              (_tasks[_key(state)]?.active ?? false))) {
+        _resumeState(state);
       }
     }
+    _resumeState(_view);
+  }
+
+  void onForeground() {
+    if (!authenticated) return;
+    if (connected) {
+      _recoverSessions();
+    } else {
+      reconnect();
+    }
+  }
+
+  void _activity(
+    String id,
+    ConversationTaskStatus status, {
+    int timestamp = 0,
+  }) {
+    if (id.isEmpty) return;
+    final key = _stateKey(profile, id);
+    if (timestamp > 0 && timestamp < (_activityTimes[key] ?? 0)) return;
+    if (timestamp > 0) _activityTimes[key] = timestamp;
+    _tasks[key] = status;
   }
 
   void _event(String event, Map<String, dynamic> data) {
     if (event == 'connected') {
       connected = true;
-      if (sessionId != null) {
-        _resume();
-      } else {
-        syncing = false;
-        _notify();
+      for (final state in {..._states.values, _view}) {
+        state.syncing = false;
       }
+      _recoverSessions();
+      _notify();
       return;
     }
     if (event == 'disconnected' || event == 'connection.error') {
       connected = false;
-      timeline.markUncertain();
+      for (final state in {..._states.values, _view}) {
+        state.timeline.markUncertain();
+        state.cancelTimers();
+        state.syncing = false;
+      }
       if (event == 'connection.error') {
-        final message = text(data['error']);
-        if (message.toLowerCase().contains('auth')) {
+        if (text(data['error']).toLowerCase().contains('auth')) {
           unawaited(logout(expired: true));
           return;
         }
@@ -653,38 +891,201 @@ class AppController extends ChangeNotifier {
       _notify();
       return;
     }
-    if (sessionId == null || text(data['session_id']) != sessionId) return;
-    if (event == 'resumed') {
-      _syncTimer?.cancel();
-      _runTimer?.cancel();
-      syncing = false;
-      _chatEpoch++;
-      loadingMessages = false;
-      timeline.resume(data);
-      _historyOffset = integer(data['messageLoadedCount']);
-      if (_historyOffset == 0) _historyOffset = asList(data['messages']).length;
-      hasMoreMessages = flag(data['hasMoreBefore']);
+    if (text(data['profile']).isNotEmpty && text(data['profile']) != profile) {
+      return;
+    }
+    if (event == 'session.activity.snapshot') {
+      final timestamp = integer(data['timestamp']);
+      final running = <String>{};
+      for (final row in asList(data['sessions']).map(asMap)) {
+        final id = text(row['session_id']);
+        if (id.isEmpty || row['status'] != 'running') continue;
+        running.add(id);
+        _activity(id, ConversationTaskStatus.running, timestamp: timestamp);
+      }
+      // A snapshot is a point-in-time view. Missing cached runs are unknown,
+      // never proof of completion; reconcile them via resume.
+      for (final state in _states.values.toList()) {
+        if (state.profile != profile ||
+            state.id == null ||
+            running.contains(state.id)) {
+          continue;
+        }
+        if (state.timeline.working || (_tasks[_key(state)]?.active ?? false)) {
+          _activity(
+            state.id!,
+            ConversationTaskStatus.checking,
+            timestamp: timestamp,
+          );
+          _resumeState(state);
+        }
+      }
       _notify();
       return;
     }
-    if (event == 'run.failed' && syncing) {
-      syncing = false;
-      _syncTimer?.cancel();
+    final sid = text(data['session_id']);
+    if (event == 'session.activity') {
+      final status = switch (text(data['status'])) {
+        'running' => ConversationTaskStatus.running,
+        'completed' => ConversationTaskStatus.completed,
+        'failed' => ConversationTaskStatus.failed,
+        _ => null,
+      };
+      if (status == null || sid.isEmpty) return;
+      final stamp = integer(data['timestamp']);
+      if (stamp > 0 && stamp < (_activityTimes[_stateKey(profile, sid)] ?? 0)) {
+        return;
+      }
+      _activity(sid, status, timestamp: stamp);
+      final state = _findState(sid);
+      if (state != null &&
+          !state.syncing &&
+          ((status == ConversationTaskStatus.running &&
+                  !state.timeline.working) ||
+              (!status.active && state.timeline.working))) {
+        _resumeState(state);
+      }
+      _notify();
+      return;
     }
-    if (!timeline.apply(event, data)) return;
-    if (event == 'run.started' || event == 'message.delta') _runTimer?.cancel();
+    final state = _findState(sid);
+    if (state == null || state.profile != profile) {
+      if (['approval.resolved', 'clarify.resolved'].contains(event) &&
+          _tasks[_stateKey(profile, sid)] == ConversationTaskStatus.waiting) {
+        _activity(sid, ConversationTaskStatus.running);
+        _notify();
+      }
+      // Profile-wide interaction broadcasts can arrive before a conversation
+      // has been opened. Mark its list entry; resume hydrates the prompt on tap.
+      if (['approval.requested', 'clarify.requested'].contains(event) &&
+          conversations.any((c) => c.id == sid) &&
+          (data['remaining_timeout_ms'] == null ||
+              integer(data['remaining_timeout_ms']) > 0)) {
+        _activity(sid, ConversationTaskStatus.waiting);
+        _notify();
+      }
+      return;
+    }
+    if (event == 'resumed') {
+      state.syncTimer?.cancel();
+      state.runTimer?.cancel();
+      state.syncing = false;
+      state.loading = false;
+      state.revision++;
+      state.loadRequest++;
+      if (state == _view) _chatEpoch++;
+      state.timeline.resume(data);
+      final loaded = integer(data['messageLoadedCount']);
+      state.offset = loaded == 0 ? asList(data['messages']).length : loaded;
+      state.hasMore = flag(data['hasMoreBefore']);
+      if (data.containsKey('reasoning_effort')) {
+        state.reasoningEffort = normalizeReasoningEffort(
+          data['reasoning_effort'],
+        );
+      }
+      final model = text(data['model']), provider = text(data['provider']);
+      if (model.isNotEmpty) {
+        state.model =
+            models
+                .where((m) => m.id == model && m.provider == provider)
+                .firstOrNull ??
+            ModelChoice(
+              id: model,
+              provider: provider,
+              label: model,
+              apiMode: text(data['api_mode']),
+            );
+      }
+      final status = state.timeline.interaction != null
+          ? ConversationTaskStatus.waiting
+          : state.timeline.working || integer(data['queueLength']) > 0
+          ? ConversationTaskStatus.running
+          : state.timeline.messages.any((m) => m.delivery == 'uncertain')
+          ? ConversationTaskStatus.checking
+          : state.timeline.messages
+                    .where((m) => m.role == 'user')
+                    .lastOrNull
+                    ?.delivery ==
+                'failed'
+          ? ConversationTaskStatus.failed
+          : ConversationTaskStatus.idle;
+      _activity(sid, status);
+      _notify();
+      return;
+    }
+    if (event == 'run.failed' &&
+        state.syncing &&
+        text(data['run_id']).isEmpty) {
+      state.syncing = false;
+      state.syncTimer?.cancel();
+      _activity(sid, ConversationTaskStatus.checking);
+      if (state == _view) {
+        error = text(data['error']).isEmpty
+            ? '同步会话失败，请重新连接核对'
+            : text(data['error']);
+      }
+      _notify();
+      return;
+    }
+    if (!state.timeline.apply(event, data)) return;
+    if (event == 'run.started' || event == 'message.delta') {
+      state.revision++;
+      state.runTimer?.cancel();
+      _activity(sid, ConversationTaskStatus.running);
+    }
+    if (['approval.requested', 'clarify.requested'].contains(event) &&
+        state.timeline.interaction != null) {
+      _activity(sid, ConversationTaskStatus.waiting);
+    }
+    if (['approval.resolved', 'clarify.resolved'].contains(event)) {
+      _activity(sid, ConversationTaskStatus.running);
+    }
     if (['run.completed', 'run.failed', 'abort.completed'].contains(event)) {
-      _runTimer?.cancel();
-      if (event != 'run.failed') unawaited(loadHistory());
+      state.runTimer?.cancel();
+      state.syncing = false;
+      state.syncTimer?.cancel();
+      state.revision++;
+      final queued =
+          integer(data['queue_remaining'] ?? data['queue_length']) > 0;
+      _activity(
+        sid,
+        queued
+            ? ConversationTaskStatus.running
+            : event == 'run.failed'
+            ? ConversationTaskStatus.failed
+            : ConversationTaskStatus.completed,
+      );
+      if (state == _view && event != 'run.failed') {
+        unawaited(_loadHistoryState(state));
+      }
       unawaited(refreshSessions());
+    }
+    if (state != _view &&
+        ['message.delta', 'reasoning.delta'].contains(event)) {
+      return;
     }
     _notify(batch: event == 'message.delta' || event == 'reasoning.delta');
   }
 
-  void respondToInteraction(String response) {
+  void respondToInteraction(
+    String response, {
+    String? expectedSession,
+    String? expectedInteraction,
+  }) {
     final pending = timeline.interaction;
-    if (pending == null || !connected) return;
+    if (pending == null ||
+        !connected ||
+        syncing ||
+        current?.canContinue == false ||
+        (expectedSession != null && expectedSession != sessionId)) {
+      return;
+    }
     final approval = pending['kind'] == 'approval.requested';
+    if (expectedInteraction != null &&
+        expectedInteraction !=
+            text(pending[approval ? 'approval_id' : 'clarify_id'])) {
+      return;
+    }
     try {
       transport.emit(approval ? 'approval.respond' : 'clarify.respond', {
         'session_id': sessionId,
@@ -718,6 +1119,7 @@ class AppController extends ChangeNotifier {
           source: conversation.source,
           model: conversation.model,
           provider: conversation.provider,
+          reasoningEffort: conversation.reasoningEffort,
         );
       }
       await refreshSessions();
@@ -727,12 +1129,17 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> deleteConversation(Conversation conversation) async {
-    if (working && sessionId == conversation.id) return;
+    if (taskStatus(conversation).active) return;
     final epoch = _epoch;
     try {
       await api!.delete(conversation.id);
       if (!_valid(epoch)) return;
-      if (sessionId == conversation.id) _resetChat();
+      final removed = _states.remove(
+        _stateKey(conversation.profile, conversation.id),
+      );
+      removed?.cancelTimers();
+      _tasks.remove(_stateKey(conversation.profile, conversation.id));
+      if (sessionId == conversation.id) _resetChat(preserve: false);
       await refreshSessions();
     } catch (e) {
       if (_valid(epoch)) reportError(e);
@@ -778,6 +1185,7 @@ class AppController extends ChangeNotifier {
     _epoch++;
     _searchEpoch++;
     transport.dispose();
+    _disposeStates();
     api?.close();
     api = null;
     account = null;
@@ -785,12 +1193,13 @@ class AppController extends ChangeNotifier {
     models = [];
     _newChatModel = null;
     _newChatEngine = 'ekko-agent';
+    _newChatReasoning = '';
     workspaceNotice = null;
     conversations = [];
     selectedModel = null;
     sttProvider = null;
     codexInstalled = null;
-    _resetChat();
+    _resetChat(preserve: false);
     connected = false;
     busy = false;
     loadingSessions = false;
@@ -809,8 +1218,7 @@ class AppController extends ChangeNotifier {
     _disposed = true;
     _epoch++;
     _paintTimer?.cancel();
-    _runTimer?.cancel();
-    _syncTimer?.cancel();
+    _disposeStates();
     transport.dispose();
     api?.close();
     super.dispose();

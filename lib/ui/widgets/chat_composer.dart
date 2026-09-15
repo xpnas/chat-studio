@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../data/mobile_media.dart';
 import '../../data/models.dart';
 import '../../state/app_controller.dart';
+import '../../state/conversation_state.dart';
 import 'reading_handle.dart';
 import 'package:flutter/foundation.dart';
 
@@ -37,7 +38,8 @@ class ChatComposer extends StatefulWidget {
 class _ChatComposerState extends State<ChatComposer>
     with WidgetsBindingObserver {
   late final MediaAccess _media = widget.media ?? NativeMediaAccess();
-  final _attachments = <LocalAttachment>[];
+  late ConversationDraft _draft;
+  List<LocalAttachment> get _attachments => _draft.files;
   final _focus = FocusNode();
   String _phase = '';
   String? _inlineError;
@@ -46,12 +48,10 @@ class _ChatComposerState extends State<ChatComposer>
   int _lastAudibleSecond = 0;
   StreamSubscription<double>? _levels;
   int _retryRevision = 0;
-  final _remoteAttachments = <MessageAttachment>[];
+  List<MessageAttachment> get _remoteAttachments => _draft.uploaded;
   int _operation = 0, _seconds = 0;
-  late int _revision;
   Timer? _timer;
   Completer<void>? _cancel;
-  bool _sending = false;
   AppController get c => widget.controller;
   bool get _busy => _phase.isNotEmpty;
   @override
@@ -59,7 +59,13 @@ class _ChatComposerState extends State<ChatComposer>
     super.initState();
     _focus.addListener(_focusChanged);
     _retryRevision = c.retryRevision;
-    _revision = c.chatRevision;
+    _draft = c.draft;
+    if (_draft.text.isNotEmpty) {
+      widget.input.text = _draft.text;
+    } else {
+      _draft.text = widget.input.text;
+    }
+    widget.input.addListener(_saveDraft);
     c.addListener(_contextChanged);
     WidgetsBinding.instance.addObserver(this);
   }
@@ -68,7 +74,22 @@ class _ChatComposerState extends State<ChatComposer>
     if (mounted) setState(() {});
   }
 
+  void _saveDraft() => _draft.text = widget.input.text;
+
   void _contextChanged() {
+    if (!identical(_draft, c.draft)) {
+      _abort();
+      _focus.unfocus();
+      _draft = c.draft;
+      _retryRevision = c.retryRevision;
+      _inlineError = null;
+      widget.input.value = TextEditingValue(
+        text: _draft.text,
+        selection: TextSelection.collapsed(offset: _draft.text.length),
+      );
+      if (mounted) setState(() {});
+      return;
+    }
     if (_retryRevision != c.retryRevision) {
       _retryRevision = c.retryRevision;
       if (_busy ||
@@ -88,14 +109,6 @@ class _ChatComposerState extends State<ChatComposer>
       setState(() => _inlineError = null);
       widget.onExpand?.call();
       _focus.requestFocus();
-    }
-    if (_revision == c.chatRevision) return;
-    _revision = c.chatRevision;
-    if (!_sending) {
-      _attachments.clear();
-      _remoteAttachments.clear();
-      _inlineError = null;
-      _abort();
     }
   }
 
@@ -136,6 +149,7 @@ class _ChatComposerState extends State<ChatComposer>
   @override
   void dispose() {
     c.removeListener(_contextChanged);
+    widget.input.removeListener(_saveDraft);
     _focus.removeListener(_focusChanged);
     _focus.dispose();
     WidgetsBinding.instance.removeObserver(this);
@@ -145,6 +159,56 @@ class _ChatComposerState extends State<ChatComposer>
     _levels?.cancel();
     unawaited(_media.dispose().catchError((Object _) {}));
     super.dispose();
+  }
+
+  Future<void> _reasoning() async {
+    final draft = c.draft;
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * .7,
+        child: Column(
+          children: [
+            const Text(
+              '思考深度',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
+              child: Text(
+                '实际效果取决于服务端引擎与模型支持；更深的思考可能更慢。',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                children: [
+                  for (final entry in reasoningEffortLabels.entries)
+                    ListTile(
+                      key: ValueKey('reasoning:${entry.key}'),
+                      selected: c.reasoningEffort == entry.key,
+                      title: Text(entry.value),
+                      subtitle: entry.key.isEmpty
+                          ? const Text('使用服务端 / 模型默认值')
+                          : null,
+                      trailing: c.reasoningEffort == entry.key
+                          ? const Icon(Icons.check_rounded)
+                          : null,
+                      onTap: () => Navigator.pop(context, entry.key),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null && identical(draft, c.draft)) {
+      await c.chooseReasoningEffort(chosen);
+    }
   }
 
   Future<void> _pick() async {
@@ -311,12 +375,10 @@ class _ChatComposerState extends State<ChatComposer>
       if (!_valid(operation)) return;
       _remoteAttachments.addAll(MessageAttachment.parse(blocks));
       _attachments.clear();
-      _sending = true;
       final sent = c.send(
         input,
         attachments: _remoteAttachments.map((f) => f.toBlock()).toList(),
       );
-      _sending = false;
       if (sent) {
         widget.input.clear();
         _attachments.clear();
@@ -328,13 +390,13 @@ class _ChatComposerState extends State<ChatComposer>
     } catch (e) {
       if (_valid(operation)) _error(e);
     } finally {
-      _sending = false;
       if (_valid(operation)) setState(() => _phase = '');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final owner = c.sessionId;
     final folded =
         widget.collapsed &&
         !_busy &&
@@ -370,7 +432,9 @@ class _ChatComposerState extends State<ChatComposer>
         ? IconButton.filledTonal(
             key: const Key('collapsed-stop-button'),
             tooltip: '停止生成',
-            onPressed: c.connected ? c.stop : null,
+            onPressed: c.connected && c.current?.canContinue != false
+                ? () => c.stop(expectedSession: owner)
+                : null,
             icon: const Icon(Icons.stop_rounded, size: 21),
           )
         : null;
@@ -393,6 +457,7 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   Widget _expanded(BuildContext context) {
+    final owner = c.sessionId;
     final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -618,7 +683,34 @@ class _ChatComposerState extends State<ChatComposer>
                     onPressed: !_busy && c.canSend ? _pick : null,
                     icon: const Icon(Icons.add_rounded),
                   ),
-                  const Spacer(),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        key: const Key('reasoning-button'),
+                        onPressed: !_busy && c.canConfigure ? _reasoning : null,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          minimumSize: const Size(0, 44),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.psychology_alt_outlined, size: 17),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                '思考 · ${reasoningEffortLabels[c.reasoningEffort] ?? '默认'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   IconButton(
                     key: const Key('voice-button'),
                     tooltip: c.sttProvider == null ? '配置语音输入' : '语音输入',
@@ -636,7 +728,9 @@ class _ChatComposerState extends State<ChatComposer>
                       key: Key(c.working ? 'stop-button' : 'send-button'),
                       tooltip: c.working ? '停止生成' : '发送消息',
                       onPressed: c.working
-                          ? (c.connected ? c.stop : null)
+                          ? (c.connected && c.current?.canContinue != false
+                                ? () => c.stop(expectedSession: owner)
+                                : null)
                           : (!_busy &&
                                     c.canSend &&
                                     (value.text.trim().isNotEmpty ||

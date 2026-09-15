@@ -211,6 +211,71 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byTooltip('回到最新消息'), findsNothing);
       await capture('message-status');
+      h.controller.newChat();
+      await h.controller.chooseReasoningEffort('high');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('reasoning-button')));
+      await tester.pumpAndSettle();
+      await capture('reasoning');
+      await tester.tap(find.byKey(const ValueKey('reasoning:high')));
+      await tester.pumpAndSettle();
+      h.controller.conversations = const [
+        Conversation(
+          id: 'preview-running',
+          title: '分析项目结构与重构建议',
+          preview: 'Codex · 正在检查代码与依赖',
+          agent: 'codex',
+          model: 'gpt-5',
+        ),
+        Conversation(
+          id: 'preview-waiting',
+          title: '整理产品文档',
+          preview: '需要确认读取工作区文件',
+          agent: 'ekko-agent',
+          model: 'gpt-5',
+        ),
+        Conversation(
+          id: 'preview-done',
+          title: '设计一套轻量的晨间计划',
+          preview: '计划已整理完成',
+          agent: 'ekko-agent',
+        ),
+        Conversation(
+          id: 'preview-note',
+          title: '周末的阅读清单',
+          preview: '关于专注、设计和日常灵感',
+        ),
+        Conversation(
+          id: 'preview-idea',
+          title: '移动端交互细节',
+          preview: '让正文始终成为视觉重点',
+        ),
+      ];
+      h.transport.receive('session.activity.snapshot', {
+        'profile': 'default',
+        'timestamp': 1,
+        'sessions': [
+          {'session_id': 'preview-running', 'status': 'running'},
+        ],
+      });
+      h.transport.receive('approval.requested', {
+        'session_id': 'preview-waiting',
+        'approval_id': 'preview-approval',
+        'remaining_timeout_ms': 60000,
+      });
+      h.transport.receive('session.activity', {
+        'session_id': 'preview-done',
+        'status': 'completed',
+        'timestamp': 2,
+      });
+      await tester.pump();
+      await tester.tap(find.byTooltip('对话记录'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await capture('history-tasks');
+      await h.controller.setTheme('dark');
+      await tester.pump(const Duration(milliseconds: 250));
+      await capture('history-tasks-dark');
 
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

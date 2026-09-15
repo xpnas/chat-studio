@@ -9,6 +9,9 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
 - 自定义服务地址，设备绑定账号密码登录、安全保存会话、过期退出。
 - 个人信息、修改用户名/密码、退出登录、浅色/深色/跟随系统。
 - Profile 切换，会话分页、搜索、重命名、二次确认删除。
+- 运行中的对话可切换查看，当前 Profile 的多会话输出/授权/停止独立处理；切回时恢复正文、草稿、附件和阅读位置。
+- 历史列表紧凑排版，运行任务带轻量动画；待确认、待同步、完成、失败分别标记，支持系统减少动画设置。
+- 输入框可选 8 档思考深度，通过真实 run / reasoning-effort 接口提交并记住偏好，实际效果取决于引擎与模型支持。
 - 新建会话，Ekko / Hermes / Codex 引擎选择；按提供商折叠分组的模型选择，当前提供商与模型置顶。
 - 流式文字与折叠思考内容、停止生成、断线/前台恢复、消息复制、Markdown；用户/AI 使用淡色圆角背景区分，空白工具消息不显示头像。
 - 原生文件与相册选择、图片发送前预览、附件移除；最多 5 个，单个 20 MB、总计 40 MB，点击发送才上传。
@@ -31,6 +34,8 @@ Android / iOS 上的轻量 Ekko Studio 客户端。面向 **hermes-studio v1.0.3
   <img src="docs/screenshots/login.png" width="230" alt="登录页" />
   <img src="docs/screenshots/home.png" width="230" alt="新建对话" />
   <img src="docs/screenshots/chat.png" width="230" alt="对话页" />
+  <img src="docs/screenshots/reasoning.png" width="230" alt="思考深度选择" />
+  <img src="docs/screenshots/history-tasks.png" width="230" alt="紧凑历史列表和任务状态" />
   <img src="docs/screenshots/attachments.png" width="230" alt="已发送附件及紧凑工具状态" />
   <img src="docs/screenshots/reading.png" width="230" alt="悬浮双线历史阅读模式" />
   <img src="docs/screenshots/models.png" width="230" alt="按提供商分组选择模型" />
@@ -71,7 +76,7 @@ flutter run
 
 ## Android 安装包
 
-已整理好的交付包位于 `dist/ekko-mobile-1.0.4-android-release.apk` 和同名 `.aab`，校验值见 `dist/SHA256SUMS.txt`。
+已整理好的交付包位于 `dist/ekko-mobile-1.0.5-android-release.apk` 和同名 `.aab`，校验值见 `dist/SHA256SUMS.txt`。
 
 原始本地构建产物（被 Git 忽略，不作为源码提交）：
 

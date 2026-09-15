@@ -109,3 +109,13 @@ flowchart LR
 - `controllers/download.ts` 支持 GET `/api/studio/files/download`，参数 `path`、`name`，`variant=app-image` 可请求服务端优化图片；上游选择上传目录本地 provider 或当前 Profile file provider。客户端始终构造原 Studio 域名的受鉴权请求、不跟随重定向，不直接访问返回路径/外部 URL；读取超时、大小限制与会话切换检查都在客户端。
 - `handle-ekko-agent-run.ts` 的 `tool.started` / `tool.completed` / `tool.failed` 使用 `tool_call_id`、`name` / `tool`。客户端按 ID 去重，仅保存操作名与状态，不将命令、参数、结果日志展开为正文。历史 tool_calls 缺失完成信息时只标记“已调用”，不猜测成功。
 - `infrastructure/database/index.ts`：开发模式数据库目录固定为 cwd 下 packages/server/data；测试模式可用 `HERMES_WEB_UI_TEST_DB_DIR` 覆盖。本轮本地与 CI 配置同时明确 `NODE_ENV=test`，补全数据库隔离。
+
+
+## 1.0.5：思考深度与多会话事件
+
+- `controllers/sessions.ts` 的 `SESSION_REASONING_EFFORTS` 接受空字符串（默认）及 `none/minimal/low/medium/high/xhigh/max`；POST `/api/studio/sessions/:id/reasoning-effort` 使用 `reasoningEffort`，变更模型会重置该值。移动端与 Web `ChatInput.vue` 使用一致档位，不承诺每个模型都实现每一档。
+- Socket run 使用 `reasoning_effort`；`handle-ekko-agent-run.ts`、`handle-coding-agent-run.ts` 读取这个字段，`chat-run.ts` 传给 Hermes 桥接；`resumed` 返回 `reasoning_effort`、model/provider/api_mode。移动端按返回的会话 ID 更新对应配置，不能更新别的聊天。
+- `/chat-run` 连接时服务器发送 `session.activity.snapshot`（当前 Profile 的 sessions 数组，包含 session_id/status），之后通过 `session.activity` 更新 running/completed/failed，携带 timestamp。权限/澄清事件也通过 Profile 房间广播。
+- `resume` 经会话/Profile 授权后执行 `socket.join(session:<id>)`，没有自动 leave 先前房间，所以同一连接可以继续接收之前会话的输出。客户端用 Profile + session_id 路由并缓存，而非仅保留当前 timeline。
+- 客户端断线只恢复订阅/resume，不重发 run 或授权；多个任务的确认/同步超时定时器绑定各自会话。活动快照缺项先标记待同步并 resume，不当成任务已完成；旧时间戳状态事件与迟到历史响应不会覆盖新的运行状态。
+- 新增真实 Studio + 本地模型夹具测试：两个独立会话同时工作、另一个设备从快照发现运行任务、切回 A 不影响 B 完成、只停止 A、会话 reasoning-effort 修改后重连仍保留。尚未运行真实 Codex CLI/收费模型并行验收。

@@ -2,12 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../state/app_controller.dart';
+import '../state/conversation_state.dart';
 import 'profile_screen.dart';
 import 'theme.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/chat_composer.dart';
 import 'widgets/reading_handle.dart';
 import 'widgets/reading_anchor.dart';
+import 'widgets/conversation_activity_mark.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
@@ -23,6 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final _readingProgress = ValueNotifier<double>(0);
   Timer? _searchTimer;
   String? _lastSession;
+  ConversationDraft? _lastDraft;
+  bool _restoringView = false;
   int _lastLength = 0, _liveRevision = 0;
   bool _hasNewContent = false;
   final _anchors = ReadingAnchor();
@@ -38,6 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _lastDraft = c.draft;
+    _lastSession = c.sessionId;
     c.addListener(_changed);
     _scroll.addListener(_scrollChanged);
   }
@@ -45,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _scrollChanged() {
     if (!mounted || !_scroll.hasClients) return;
     _updateReadingProgress();
+    if (!_restoringView && identical(_lastDraft, c.draft)) {
+      c.draft.scrollOffset = _scroll.offset;
+    }
     final pixels = _scroll.position.pixels.clamp(
       _scroll.position.minScrollExtent,
       _scroll.position.maxScrollExtent,
@@ -133,8 +142,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_scroll.hasClients && _scroll.offset > 120) _hasNewContent = true;
       _liveRevision = c.timeline.liveRevision;
     }
-    if (_lastSession != c.sessionId) {
+    if (_lastSession != c.sessionId || !identical(_lastDraft, c.draft)) {
+      if (_scroll.hasClients && !_restoringView) {
+        _lastDraft?.scrollOffset = _scroll.offset;
+      }
       _lastSession = c.sessionId;
+      _lastDraft = c.draft;
+      _restoringView = true;
+      _liveRevision = c.timeline.liveRevision;
       _anchors.clear();
       _hasNewContent = false;
       _showReadingHint = false;
@@ -142,11 +157,21 @@ class _HomeScreenState extends State<HomeScreen> {
       _readingProgress.value = 0;
       _composerCollapsed = false;
       _userScrolling = false;
-      _input.clear();
-      _lastLength = 0;
+      _lastLength = c.timeline.messages.length;
+      final restoredDraft = c.draft;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) _scroll.jumpTo(0);
+        if (!mounted || !identical(c.draft, restoredDraft)) return;
+        if (_scroll.hasClients) {
+          _scroll.jumpTo(
+            restoredDraft.scrollOffset.clamp(
+              0,
+              _scroll.position.maxScrollExtent,
+            ),
+          );
+        }
+        _restoringView = false;
       });
+      return;
     }
     if (c.timeline.messages.length != _lastLength) {
       _lastLength = c.timeline.messages.length;
@@ -284,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: () => _scaffold.currentState!.openDrawer(),
         ),
         title: TextButton(
-          onPressed: c.working || c.busy ? null : _models,
+          onPressed: c.canConfigure ? _models : null,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -312,7 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             tooltip: '新建对话',
-            onPressed: c.working || c.busy ? null : c.newChat,
+            onPressed: c.busy ? null : c.newChat,
             icon: const Icon(Icons.edit_square, size: 22),
           ),
           const SizedBox(width: 6),
@@ -511,7 +536,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-        if (c.timeline.interaction != null) _InteractionCard(controller: c),
+        if (c.timeline.interaction != null)
+          _InteractionCard(
+            key: ValueKey(
+              '${c.profile}:${c.sessionId}:${c.timeline.interaction?["approval_id"] ?? c.timeline.interaction?["clarify_id"]}',
+            ),
+            controller: c,
+          ),
         if (c.working && c.timeline.activity.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
@@ -707,7 +738,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.tonalIcon(
-                  onPressed: c.working || c.busy
+                  onPressed: c.busy
                       ? null
                       : () {
                           c.newChat();
@@ -790,7 +821,20 @@ class _HomeScreenState extends State<HomeScreen> {
                             );
                           }
                           final conversation = c.conversations[index];
+                          final task = c.taskStatus(conversation);
                           return ListTile(
+                            key: ValueKey('history:${conversation.id}'),
+                            dense: true,
+                            minTileHeight: 54,
+                            visualDensity: const VisualDensity(
+                              horizontal: -2,
+                              vertical: -2,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 0,
+                            ),
+                            horizontalTitleGap: 8,
                             selected: conversation.id == c.sessionId,
                             selectedTileColor: colors.primaryContainer
                                 .withValues(alpha: .4),
@@ -801,7 +845,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               conversation.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 14),
+                              style: const TextStyle(fontSize: 13, height: 1.2),
                             ),
                             subtitle: Text(
                               conversation.preview.isNotEmpty
@@ -809,24 +853,41 @@ class _HomeScreenState extends State<HomeScreen> {
                                   : conversation.model,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11),
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                height: 1.15,
+                              ),
                             ),
-                            onTap: c.working || c.busy
+                            onTap: c.busy
                                 ? null
                                 : () {
                                     Navigator.pop(context);
                                     c.openConversation(conversation);
                                   },
-                            trailing: IconButton(
-                              tooltip: '管理对话',
-                              icon: const Icon(
-                                Icons.more_horiz_rounded,
-                                size: 18,
-                              ),
-                              onPressed:
-                                  c.working && c.sessionId == conversation.id
-                                  ? null
-                                  : () => _manage(conversation),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (task != ConversationTaskStatus.idle) ...[
+                                  ConversationActivityMark(status: task),
+                                  const SizedBox(width: 6),
+                                ],
+                                IconButton(
+                                  tooltip: '管理对话',
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 48,
+                                    minHeight: 48,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.more_horiz_rounded,
+                                    size: 17,
+                                  ),
+                                  onPressed: task.active
+                                      ? null
+                                      : () => _manage(conversation),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -854,7 +915,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           )
                           .toList(),
-                      onChanged: c.working || c.busy
+                      onChanged: c.busy
                           ? null
                           : (v) {
                               if (v != null) {
@@ -1054,7 +1115,7 @@ class _ModelSheetState extends State<_ModelSheet> {
 }
 
 class _InteractionCard extends StatefulWidget {
-  const _InteractionCard({required this.controller});
+  const _InteractionCard({super.key, required this.controller});
   final AppController controller;
   @override
   State<_InteractionCard> createState() => _InteractionCardState();
@@ -1072,6 +1133,17 @@ class _InteractionCardState extends State<_InteractionCard> {
   Widget build(BuildContext context) {
     final data = widget.controller.timeline.interaction!,
         approval = data['kind'] == 'approval.requested';
+    final owner = widget.controller.sessionId;
+    final interactionId = text(data[approval ? 'approval_id' : 'clarify_id']);
+    final canRespond =
+        widget.controller.connected &&
+        !widget.controller.syncing &&
+        widget.controller.current?.canContinue != false;
+    void respond(String value) => widget.controller.respondToInteraction(
+      value,
+      expectedSession: owner,
+      expectedInteraction: interactionId,
+    );
     final choices = asList(data['choices']).whereType<String>().toList();
     final colors = Theme.of(context).colorScheme;
     return ConstrainedBox(
@@ -1113,17 +1185,12 @@ class _InteractionCardState extends State<_InteractionCard> {
                   children: [
                     // No permanent/session-wide approval in this lightweight client.
                     OutlinedButton(
-                      onPressed: widget.controller.connected
-                          ? () => widget.controller.respondToInteraction('deny')
-                          : null,
+                      onPressed: canRespond ? () => respond('deny') : null,
                       child: const Text('拒绝'),
                     ),
                     if (choices.contains('once'))
                       FilledButton(
-                        onPressed: widget.controller.connected
-                            ? () =>
-                                  widget.controller.respondToInteraction('once')
-                            : null,
+                        onPressed: canRespond ? () => respond('once') : null,
                         child: const Text('仅允许本次'),
                       ),
                   ],
@@ -1136,8 +1203,7 @@ class _InteractionCardState extends State<_InteractionCard> {
                         .map(
                           (v) => ActionChip(
                             label: Text(v),
-                            onPressed: () =>
-                                widget.controller.respondToInteraction(v),
+                            onPressed: canRespond ? () => respond(v) : null,
                           ),
                         )
                         .toList(),
@@ -1149,14 +1215,14 @@ class _InteractionCardState extends State<_InteractionCard> {
                     suffixIcon: IconButton(
                       tooltip: '提交说明',
                       icon: const Icon(Icons.send_rounded),
-                      onPressed: () {
-                        if (field.text.trim().isNotEmpty) {
-                          widget.controller.respondToInteraction(
-                            field.text.trim(),
-                          );
-                          field.clear();
-                        }
-                      },
+                      onPressed: !canRespond
+                          ? null
+                          : () {
+                              if (field.text.trim().isNotEmpty) {
+                                respond(field.text.trim());
+                                field.clear();
+                              }
+                            },
                     ),
                   ),
                 ),

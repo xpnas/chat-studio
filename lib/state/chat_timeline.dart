@@ -63,6 +63,14 @@ class ChatTimeline {
       used.add(match.renderKey);
       return next.copyWith(
         localKey: match.renderKey,
+        delivery:
+            next.delivery.isEmpty &&
+                ['failed', 'stopped'].contains(match.delivery)
+            ? match.delivery
+            : next.delivery,
+        failure: next.failure.isEmpty && match.delivery == 'failed'
+            ? match.failure
+            : next.failure,
         tools: next.tools.isEmpty
             ? match.tools
             : next.tools

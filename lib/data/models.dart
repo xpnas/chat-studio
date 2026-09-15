@@ -105,7 +105,9 @@ class Conversation {
     this.model = '',
     this.provider = '',
     this.updatedAt = 0,
+    this.reasoningEffort = '',
   });
+  final String reasoningEffort;
   final String id, title, preview, profile, agent, source, model, provider;
   final int updatedAt;
   bool get canContinue =>
@@ -123,6 +125,7 @@ class Conversation {
     source: text(json['source']),
     model: text(json['model']),
     provider: text(json['provider']),
+    reasoningEffort: text(json['reasoning_effort']),
     updatedAt: integer(json['last_active'] ?? json['started_at']),
   );
 }
@@ -297,3 +300,16 @@ class ApiException implements Exception {
   @override
   String toString() => message;
 }
+
+const reasoningEffortLabels = <String, String>{
+  '': '默认',
+  'none': '关闭',
+  'minimal': '极低',
+  'low': '低',
+  'medium': '中',
+  'high': '高',
+  'xhigh': '极高',
+  'max': '最高',
+};
+String normalizeReasoningEffort(dynamic value) =>
+    reasoningEffortLabels.containsKey(value) ? value as String : '';

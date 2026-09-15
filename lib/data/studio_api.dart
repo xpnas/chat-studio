@@ -374,6 +374,17 @@ class StudioApi {
     );
   }
 
+  Future<void> setReasoningEffort(String id, String effort) async {
+    if (!reasoningEffortLabels.containsKey(effort)) {
+      throw const ApiException('无效的思考深度');
+    }
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/reasoning-effort',
+      method: 'POST',
+      body: {'reasoningEffort': effort},
+    );
+  }
+
   Future<void> setModel(String id, ModelChoice model) async {
     await request(
       '/api/studio/sessions/${Uri.encodeComponent(id)}/model',

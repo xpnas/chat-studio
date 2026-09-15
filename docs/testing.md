@@ -6,8 +6,8 @@
 |---|---|
 | 格式检查 | `dart format`，格式与 CI 检查一致 |
 | 静态分析 | `flutter analyze --fatal-infos`：无问题 |
-| 客户端单元 / 组件测试 | **97 项通过**，默认跳过 3 项需真实服务的测试及 1 项需本地字体的预览测试 |
-| 真实 v1.0.3 服务协议测试（1.0.4 已重新运行） | **3 项通过**：实际 HTTP、Dart Socket.IO、AppController、文件/图片上传和鉴权下载/缩略图、STT 链路，非 FakeTransport |
+| 客户端单元 / 组件测试 | **122 项通过**，默认跳过 4 项需真实服务的测试及 1 项需本地字体的预览测试 |
+| 真实 v1.0.3 服务协议测试（1.0.5 已扩展） | **4 项通过**：实际 HTTP、Dart Socket.IO、多会话并行/任务快照/思考深度持久化、文件/图片上传和鉴权下载、STT 链路，非 FakeTransport |
 | Flutter 设计预览 | 单独运行 **1 项通过**，生成登录、首页、聊天、分组模型选择、历史阅读模式及深色预览 |
 | 上游认证回归（首轮交付已验证，本轮未重复运行） | `app-connections-auth.test.ts`、`user-auth.test.ts`：2 个文件 **57 项通过** |
 | CodeGraph | 实际运行 orient / explore，JSON 存于 docs/analysis |
@@ -15,7 +15,7 @@
 | Android Release AAB | 实际编译成功，bundletool 1.18.3 validate 通过 |
 | 自动化脚本 | actionlint 1.7.12 检查 3 个 workflow 通过；Bash / Python / plist 语法检查通过 |
 
-本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.4`，versionCode `5`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
+本地 APK 元信息：`ai.ekkolearn.ekko_app`，versionName `1.0.5`，versionCode `6`，minSdk 24，targetSdk 36，ABI 为 arm64-v8a / armeabi-v7a / x86_64。最终包与 SHA-256 在 `dist/`，被 Git 忽略。AAB 的 JAR 签名验证会提示自签名证书/无时间戳及 ZIP 流读取差异；bundletool 的结构验证已通过，尚未上传 Play Console 验证。
 
 ## 没有完成、不能混同为已验证
 
@@ -142,3 +142,12 @@ export HERMES_WEB_UI_TEST_DB_DIR=/absolute/disposable/database
 ### 真机验收仍需设备
 
 本轮 `adb devices -l` 返回空列表，SDK 没有已安装模拟器；没有把组件测试说成 Android 真机验收。必须后续验证：原生录音权限/中断、相册与文件保存、系统返回手势、输入法遮挡、切网/后台、1.0.3 → 1.0.4 原签名覆盖更新及长对话帧率。Windows 无 Xcode，iOS 编译/签名/真机测试仍待执行。
+
+
+## 1.0.5 多会话 / 思考深度 / 紧凑历史
+
+`test/multi_conversation_test.dart` 25 项回归覆盖：A/B 并行与输出隔离、后台完成/失败/待确认、停止只针对所选任务、同步完成前不提交旧权限提示、多个任务重连不重发输入、Profile 隔离与旧回调拒绝、快速切换/迟到历史、任务快照/旧时间戳、缺项待同步、后台任务防误删、思考深度 run/REST/偏好/失败回滚/会话模型切换重置、动态历史条目导航与字号/行距、减少动画、独立确认超时、注销清理、未发送草稿/文件/已上传引用/阅读位置恢复。
+
+新增真实测试使用两个不同 device_code 登录，一个客户端运行 A/B，另一个仅观察活动快照。对话 A 使用 SLOW 本地夹具保持工作，B 独立完成，切回 A 后停止不会影响 B；reasoning-effort 经 REST 保存后由重连快照读回。完整真实套件需新建隔离数据库再运行媒体测试，避免已有 STT 配置影响破坏性夹具。
+
+本轮保持 Android/iOS 共用 Flutter 状态层；未连接 Android 真机，未运行真实 Codex CLI；Xcode/iOS 编译与真机权限/性能仍待外部设备环境验证。多会话并行使用本地确定性模型，不表示所有供应商的并发限制已验证。

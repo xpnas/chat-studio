@@ -120,6 +120,7 @@ void main() {
       h.transport.receive('run.failed', {
         'session_id': h.controller.sessionId,
         'error': '模型服务不可用',
+        'run_id': 'confirmed-run',
       });
       expect(h.controller.timeline.messages.last.delivery, 'failed');
       expect(h.controller.error, isNull);
