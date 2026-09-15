@@ -26,6 +26,8 @@
 
 ## 验证
 
-新增 5 项恢复测试：截图同类“assistant + tool + replay”、重复 resume 保持 renderKey、无 marker 保守合并、重复词不误去重、无 replay 时继续接收当前 run 增量。新增场景测试通过；完整本地回归仍有 2 项失败（见 `docs/testing.md`），静态分析与 Release 构建需在最终修复后重新确认。
+初版新增 5 项恢复测试，但截至 `c31696a` 完整回归仍有 2 项失败，不能视为已验证完成。1.0.15 修复了该回归：删除已见事件抵扣，保留有序状态重放；仅允许同一 run 的 pending assistant 提供缓存前缀，删除不检查 run 的二次兜底拼接。
+
+新增 `test/resume_state_integrity_test.dart` 共 13 项用例，覆盖审批/澄清完整与截断恢复、已解决/已过期交互不复活、工具状态重建、相同增量的有序保留、跨 run 正文/思考/renderKey 隔离和空回放。完整本地测试 189 项通过、8 项按环境跳过。构建记录及未验证项见 [1.0.15](release-1.0.15.md)。
 
 仍需真实 Android 真机进行：切换 Wi-Fi/后台、杀进程重启、超长回复、工具调用中恢复和弱网下帧率观察。服务端恢复 payload 的具体 metadata 会随版本变化，升级 Studio 后应复跑恢复契约测试。

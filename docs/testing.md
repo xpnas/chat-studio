@@ -196,14 +196,17 @@ bash scripts/studio-contract.sh /absolute/path/to/pinned-studio
 历史 1.0.14 验证记录为 175 项本地测试通过；7 项环境相关测试默认跳过。该记录对应此前版本；当前工作区新增的回归结果与未解决项见下方“当前前台恢复修复回归状态”。
 
 
-## 当前前台恢复修复回归状态（2026-09-15）
+## 当前前台恢复修复回归状态（2026-09-15，1.0.15）
 
-本次针对“后台断网 → 回到前台联网 → 同步后最新助手消息部分重复”的稳定复现路径，新增了流式事件抵扣与恢复尾部合并逻辑，并添加了 `test/foreground_resume_test.dart` 的回归用例。新增用例通过，验证结果为：
+对 `c31696a` 的评审复测为 174 项通过、8 项跳过、2 项失败。失败项是 `multi_conversation_test.dart` 的后台审批时序，以及 `resume_snapshot_test.dart` 中相同文本跨轮次保留；此前按内容抵扣事件及不校验 run 的兜底拼接是原因。
 
-- `flutter test test/foreground_resume_test.dart test/resume_test.dart`：目标场景通过；
-- `flutter test`：174 项通过、8 项跳过、2 项失败；
-- 失败项为 `multi_conversation_test.dart` 的后台审批时序，以及 `resume_snapshot_test.dart` 中相同文本跨轮次保留；这两项尚未解决，不能将当前版本描述为完整回归通过；
-- Android Release APK 已成功构建：`build/app/outputs/flutter-apk/app-release.apk`；
-- 当前环境没有连接 Android 真机或模拟器，因此尚未完成真实断网/后台/前台操作验收。
+1.0.15 移除事件抵扣，在独立 reducer 中完整重放，再按同一 run 合并正文/思考及复用气泡身份；原有失败测试未删除、未放宽断言。新增 13 项 `resume_state_integrity_test.dart` 回归，并修正已有前台恢复测试文件的格式，使 CI 格式门禁也通过。
 
-后续提交前必须先修复上述两项回归，再串行执行格式检查、静态分析、完整测试及 Release 构建。
+验证结果：
+
+- `dart format --output=none --set-exit-if-changed lib test integration_test test_driver`：通过；
+- `flutter analyze --fatal-infos`：通过；
+- `flutter test`：189 项通过、8 项按环境默认跳过、0 项失败；
+- Android 打包与签名验证记录见 [1.0.15 发布记录](release-1.0.15.md)。
+
+本次未重跑真实 Studio HTTP/Socket.IO 联调，未运行远端 GitHub Actions。没有连接 Android 真机/模拟器，未验证真实断网、后台/前台、进程回收和帧率；iOS 原生编译与签名仍需 macOS/Xcode 验证。不可将单元测试通过等同于这些环境的验收。

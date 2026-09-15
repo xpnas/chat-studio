@@ -1,7 +1,7 @@
 name: ekko_app
 description: A native-feeling Android and iOS client for Ekko Studio v1.0.3.
 publish_to: none
-version: 1.0.14+15
+version: 1.0.15+16
 environment:
   sdk: '>=3.12.0 <4.0.0'
 dependencies:
