@@ -23,6 +23,7 @@ class ConversationState {
   String engine = 'ekko-agent', reasoningEffort = '';
   bool syncing = false, loading = false, hasMore = false;
   int offset = 0, revision = 0, loadRequest = 0;
+  String? historyPageError;
   String? submittedInput, retryInput;
   List<Map<String, dynamic>> submittedAttachments = [], retryAttachments = [];
   DateTime? submittedAt;

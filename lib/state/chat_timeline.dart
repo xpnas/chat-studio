@@ -1,5 +1,6 @@
 import '../data/models.dart';
 import '../data/queued_message.dart';
+import 'resume_text.dart';
 
 /// Pure reducer. Historical pages are authoritative; live tokens affect only one
 /// pending bubble. It is independent of widgets and of the Socket.IO library.
@@ -533,16 +534,25 @@ class ChatTimeline {
     final events = asList(data['events']).map(asMap).toList();
     final start = events.lastIndexWhere((e) => e['event'] == 'run.started');
     final currentEvents = events.skip(start < 0 ? 0 : start).toList();
-    final marker =
+    final eventMarker =
         currentEvents
             .map((e) => text(asMap(e['data'])['run_id']))
             .where((id) => id.isNotEmpty)
             .lastOrNull ??
         '';
+    final marker = eventMarker.isNotEmpty ? eventMarker : previousRun ?? '';
     final snapshot = asList(
       data['messages'],
     ).map((m) => ChatMessage.fromJson(asMap(m))).toList();
+    // A terminal live event may overtake an asynchronous resume response.
+    // Never resurrect a run that this client has already observed finishing.
+    if (flag(data['isWorking']) &&
+        marker.isNotEmpty &&
+        finished.contains(marker)) {
+      return;
+    }
     clear();
+    _finishedRuns.addAll(finished);
     messages = previous;
     replace(snapshot, keepOlder: flag(data['hasMoreBefore']));
     working = flag(data['isWorking']);
@@ -554,11 +564,13 @@ class ChatTimeline {
       final candidates = messages.indexed
           .where((entry) {
             final m = entry.$2;
-            if (m.role != 'assistant' || entry.$1 <= lastUser) return false;
+            if (m.role != 'assistant') return false;
             if (marker.isNotEmpty && m.runMarker.isNotEmpty) {
               return m.runMarker == marker;
             }
-            return m.hasFinishReason && m.finishReason == null;
+            return entry.$1 > lastUser &&
+                m.hasFinishReason &&
+                m.finishReason == null;
           })
           .map((e) => e.$1)
           .toList();
@@ -610,21 +622,18 @@ class ChatTimeline {
       if (stored.isNotEmpty || live.isNotEmpty || identity != null) {
         final replayBody = live.map((m) => m.content).join();
         final replayReasoning = live.map((m) => m.reasoning).join();
+        final completeReplay = start >= 0;
         String reconcile(List<String> parts, String replayValue) {
           final compact = parts.join();
           final spaced = parts.where((s) => s.isNotEmpty).join('\n\n');
-          if (compact.isEmpty) return replayValue;
-          if (replayValue.isEmpty) return spaced;
-          if (replayValue.startsWith(compact) ||
-              replayValue.startsWith(spaced)) {
+          if (replayValue.startsWith(compact) && compact.isNotEmpty) {
             return replayValue;
           }
-          if (compact.startsWith(replayValue) ||
-              spaced.startsWith(replayValue)) {
-            return spaced;
-          }
-          // Partial replay starts after persisted steps: preserve both, in order.
-          return '$spaced\n\n$replayValue';
+          return reconcileResumeText(
+            spaced,
+            replayValue,
+            completeReplay: completeReplay,
+          );
         }
 
         var body = reconcile(stored.map((m) => m.content).toList(), replayBody);
@@ -632,12 +641,20 @@ class ChatTimeline {
           stored.map((m) => m.reasoning).toList(),
           replayReasoning,
         );
-        // An older snapshot must not roll back already-rendered bytes of this run.
-        if (identity != null && identity.content.startsWith(body)) {
-          body = identity.content;
-        }
-        if (identity != null && identity.reasoning.startsWith(reasoning)) {
-          reasoning = identity.reasoning;
+        if (identity != null) {
+          // The local bubble may contain the prefix already dropped from the
+          // bounded server event log. Restore that prefix once, then only new
+          // bytes. No reset to the replay tail on foreground/resume.
+          body = reconcileResumeText(
+            identity.content,
+            body,
+            completeReplay: completeReplay,
+          );
+          reasoning = reconcileResumeText(
+            identity.reasoning,
+            reasoning,
+            completeReplay: completeReplay,
+          );
         }
         final base = stored.firstOrNull ?? live.firstOrNull ?? identity!;
         final merged = base.copyWith(

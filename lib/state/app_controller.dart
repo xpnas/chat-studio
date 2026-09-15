@@ -231,6 +231,16 @@ class AppController extends ChangeNotifier {
   set loadingMessages(bool value) => _view.loading = value;
   bool get syncing => _view.syncing;
   set syncing(bool value) => _view.syncing = value;
+  String? get historyPageError => _view.historyPageError;
+  bool get canLoadEarlier =>
+      authenticated &&
+      connected &&
+      !busy &&
+      !syncing &&
+      !loadingMessages &&
+      sessionId != null &&
+      hasMoreMessages &&
+      historyPageError == null;
   bool get hasMoreMessages => _view.hasMore;
   set hasMoreMessages(bool value) => _view.hasMore = value;
   int _epoch = 0, _chatEpoch = 0, _searchEpoch = 0;
@@ -664,6 +674,18 @@ class AppController extends ChangeNotifier {
   Future<void> loadHistory({bool more = false}) =>
       _loadHistoryState(_view, more: more);
 
+  Future<void> retryEarlierHistory() async {
+    if (!authenticated ||
+        !connected ||
+        syncing ||
+        loadingMessages ||
+        !hasMoreMessages) {
+      return;
+    }
+    _view.historyPageError = null;
+    await _loadHistoryState(_view, more: true);
+  }
+
   Future<void> _loadHistoryState(
     ConversationState state, {
     bool more = false,
@@ -673,7 +695,9 @@ class AppController extends ChangeNotifier {
         state.loading ||
         client == null ||
         state.profile != profile ||
-        (!more && state.syncing)) {
+        state.syncing ||
+        (more &&
+            (!connected || !state.hasMore || state.historyPageError != null))) {
       return;
     }
     final epoch = _epoch,
@@ -689,7 +713,13 @@ class AppController extends ChangeNotifier {
           client != api) {
         return;
       }
+      if (more && page.hasMore && page.offset <= state.offset) {
+        // Malformed/non-advancing pages must not cause an automatic request loop.
+        state.historyPageError = '历史分页未推进，请重试';
+        return;
+      }
       if (more) {
+        state.historyPageError = null;
         state.timeline.prepend(page.messages);
       } else {
         state.timeline.replace(page.messages, keepOlder: page.hasMore);
@@ -701,11 +731,12 @@ class AppController extends ChangeNotifier {
         state.hasMore = page.hasMore;
       }
     } catch (e) {
-      if (_valid(epoch) &&
-          state == _view &&
-          state.revision == revision &&
-          state.loadRequest == requestId) {
-        reportError(e);
+      if (_valid(epoch) && state.loadRequest == requestId && client == api) {
+        if (more) {
+          state.historyPageError = '较早消息加载失败，请重试';
+        } else if (state == _view && state.revision == revision) {
+          reportError(e);
+        }
       }
     } finally {
       if (_valid(epoch) && state.loadRequest == requestId) {

@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _lastSession;
   ConversationDraft? _lastDraft;
   bool _restoringView = false;
+  bool _historyCheckScheduled = false;
   int _lastLength = 0, _liveRevision = 0;
   bool _hasNewContent = false;
   final _anchors = ReadingAnchor();
@@ -46,11 +47,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _lastSession = c.sessionId;
     c.addListener(_changed);
     _scroll.addListener(_scrollChanged);
+    _scheduleEarlierHistory();
   }
 
   void _scrollChanged() {
     if (!mounted || !_scroll.hasClients) return;
     _updateReadingProgress();
+    _scheduleEarlierHistory();
     if (!_restoringView && identical(_lastDraft, c.draft)) {
       c.draft.scrollOffset = _scroll.offset;
     }
@@ -67,6 +70,28 @@ class _HomeScreenState extends State<HomeScreen> {
         if (restore) _composerCollapsed = false;
       });
     }
+  }
+
+  void _scheduleEarlierHistory() {
+    if (!mounted || _historyCheckScheduled) return;
+    _historyCheckScheduled = true;
+    final draft = c.draft;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _historyCheckScheduled = false;
+      if (!mounted ||
+          !identical(draft, c.draft) ||
+          _restoringView ||
+          !_scroll.hasClients ||
+          !_scroll.position.hasContentDimensions ||
+          !c.canLoadEarlier) {
+        return;
+      }
+      // reverse:true: older messages live at maxScrollExtent, not at zero.
+      // Also fill a viewport with short/hidden-only pages until it can scroll.
+      if (_scroll.position.extentAfter <= 240) {
+        unawaited(c.loadHistory(more: true));
+      }
+    });
   }
 
   void _updateReadingProgress() {
@@ -124,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _changed() {
     if (!mounted) return;
     setState(() {});
+    _scheduleEarlierHistory();
     final session = c.sessionId, gesture = _gestureRevision;
     if (session == _lastSession &&
         !_userScrolling &&
@@ -171,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
         _restoringView = false;
+        _scheduleEarlierHistory();
       });
       return;
     }
@@ -396,9 +423,13 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Stack(
                 key: _stage,
                 children: [
-                  if (c.timeline.messages.isEmpty && !c.loadingMessages)
+                  if (c.timeline.messages.isEmpty &&
+                      !c.loadingMessages &&
+                      !c.hasMoreMessages)
                     _welcome(context)
-                  else if (c.loadingMessages && c.timeline.messages.isEmpty)
+                  else if (c.loadingMessages &&
+                      c.timeline.messages.isEmpty &&
+                      !c.hasMoreMessages)
                     const Center(child: CircularProgressIndicator.adaptive())
                   else
                     SelectionArea(
@@ -413,14 +444,52 @@ class _HomeScreenState extends State<HomeScreen> {
                         findChildIndexCallback: (key) => indices[key],
                         itemBuilder: (context, index) {
                           if (index == rows.length) {
-                            return Center(
-                              child: TextButton(
-                                onPressed: c.loadingMessages
-                                    ? null
-                                    : () => c.loadHistory(more: true),
-                                child: Text(
-                                  c.loadingMessages ? '正在加载…' : '加载更早的消息',
-                                ),
+                            return SizedBox(
+                              key: const Key('history-loading-edge'),
+                              height: 48,
+                              child: Center(
+                                child: c.historyPageError != null
+                                    ? TextButton.icon(
+                                        key: const Key('retry-earlier-history'),
+                                        onPressed:
+                                            c.connected &&
+                                                !c.syncing &&
+                                                !c.loadingMessages
+                                            ? c.retryEarlierHistory
+                                            : null,
+                                        icon: const Icon(
+                                          Icons.refresh_rounded,
+                                          size: 16,
+                                        ),
+                                        label: Text(
+                                          c.historyPageError!,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      )
+                                    : c.loadingMessages
+                                    ? const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 1.5,
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            '正在加载更早的消息…',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ],
+                                      )
+                                    : Text(
+                                        c.connected
+                                            ? '继续上滑查看更早消息'
+                                            : '连接恢复后加载历史',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
                               ),
                             );
                           }

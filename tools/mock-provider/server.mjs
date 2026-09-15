@@ -31,7 +31,8 @@ const server = http.createServer(async (req, res) => {
   try { body=JSON.parse(raw); } catch {res.writeHead(400);res.end();return;}
   const last = JSON.stringify(body.messages?.findLast(m => m.role === 'user')?.content || '');
   const slow = last.includes('SLOW');
-  const answer = '你好！这是本地协议自测回复。流式连接正常。';
+  const longResume = last.includes('LONG_FOREGROUND');
+  const answer = longResume ? Array.from({length: 100}, (_, i) => `[${String(i).padStart(3, '0')}]`).join('') : '你好！这是本地协议自测回复。流式连接正常。';
   const base = {id:'chatcmpl-local-test',created:Math.floor(Date.now()/1000),model:'ekko-test'};
   if (!body.stream) {
     res.setHeader('Content-Type','application/json');
@@ -44,7 +45,7 @@ const server = http.createServer(async (req, res) => {
   const timer=setInterval(() => {
     if(index<answer.length) {send({content:answer[index++]});return;}
     send({},'stop');res.end('data: [DONE]\n\n');clearInterval(timer);
-  },slow?500:40);
+  },longResume?20:slow?500:40);
   res.on('close',()=>clearInterval(timer));
 });
 server.listen(port,'127.0.0.1',()=>console.log(`Fixture ready on 127.0.0.1:${port}`));

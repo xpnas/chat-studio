@@ -19,6 +19,77 @@ import 'package:ekko_app/data/audio_transcription.dart';
 void main() {
   final server = Platform.environment['EKKO_TEST_SERVER'];
   test(
+    'real foreground resume after server 200-event buffer truncation keeps full text',
+    () async {
+      final c = AppController(storage: _MultiDeviceStorage('foreground-long'));
+      String? sid;
+      final expected = List.generate(
+        100,
+        (i) => '[${i.toString().padLeft(3, '0')}]',
+      ).join();
+      String body() => c.timeline.messages
+          .where((m) => m.role == 'assistant')
+          .map((m) => m.content)
+          .join();
+      Future<void> until(bool Function() condition) async {
+        final deadline = DateTime.now().add(const Duration(seconds: 45));
+        while (!condition()) {
+          if (DateTime.now().isAfter(deadline)) {
+            throw StateError('foreground resume timeout: ${c.error}');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      }
+
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            'admin',
+            Platform.environment['EKKO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        await until(() => c.canSend);
+        expect(c.send('LONG_FOREGROUND'), true);
+        sid = c.sessionId;
+        await until(() => body().length > 250);
+        final key = c.timeline.messages.last.renderKey;
+        for (var i = 0; i < 3; i++) {
+          c.onBackground();
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          final before = body();
+          c.onForeground();
+          await until(() => !c.syncing);
+          expect(body().length, greaterThanOrEqualTo(before.length));
+          expect(
+            expected.startsWith(body()),
+            true,
+            reason:
+                'restored body must be one exact prefix, not a repeated tail',
+          );
+          expect(c.timeline.messages.last.renderKey, key);
+        }
+        await until(() => !c.working && !c.loadingMessages);
+        expect(body(), expected);
+        c.onBackground();
+        c.onForeground();
+        await until(() => !c.syncing);
+        expect(body(), expected);
+      } finally {
+        if (sid != null) {
+          c.stop();
+          await c.api?.delete(sid);
+        }
+        c.dispose();
+      }
+    },
+    skip: server == null,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+  test(
     'real queue cancellation, sequential start and server TTS audio',
     () async {
       final c = AppController(
