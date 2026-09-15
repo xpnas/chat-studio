@@ -26,6 +26,6 @@
 
 ## 验证
 
-新增 5 项恢复测试：截图同类“assistant + tool + replay”、重复 resume 保持 renderKey、无 marker 保守合并、重复词不误去重、无 replay 时继续接收当前 run 增量。完整本地测试通过，静态分析通过。
+新增 5 项恢复测试：截图同类“assistant + tool + replay”、重复 resume 保持 renderKey、无 marker 保守合并、重复词不误去重、无 replay 时继续接收当前 run 增量。新增场景测试通过；完整本地回归仍有 2 项失败（见 `docs/testing.md`），静态分析与 Release 构建需在最终修复后重新确认。
 
 仍需真实 Android 真机进行：切换 Wi-Fi/后台、杀进程重启、超长回复、工具调用中恢复和弱网下帧率观察。服务端恢复 payload 的具体 metadata 会随版本变化，升级 Studio 后应复跑恢复契约测试。

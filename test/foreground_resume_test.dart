@@ -132,4 +132,45 @@ void main() {
       expect(h.transport.emitted.where((e) => e.$1 == 'run').length, 1);
     },
   );
+  test('network reconnect buffered deltas are not replayed twice by resume', () {
+    final t = ChatTimeline()..begin('work', 'local:u');
+    t.apply('run.started', {'run_id': 'r'});
+    t.apply('message.delta', {'run_id': 'r', 'delta': '前半。'});
+    t.apply('message.delta', {'run_id': 'r', 'delta': '中段。'});
+    t.resume({
+      'isWorking': true,
+      'messages': [
+        {'id': 'u', 'role': 'user', 'content': 'work'},
+        {
+          'id': 'a',
+          'role': 'assistant',
+          'content': '前半。中段。',
+          'run_marker': 'r',
+          'finish_reason': null,
+        },
+      ],
+      'events': [
+        {
+          'event': 'run.started',
+          'data': {'run_id': 'r'},
+        },
+        {
+          'event': 'message.delta',
+          'data': {'run_id': 'r', 'delta': '前半。'},
+        },
+        {
+          'event': 'message.delta',
+          'data': {'run_id': 'r', 'delta': '中段。'},
+        },
+        {
+          'event': 'message.delta',
+          'data': {'run_id': 'r', 'delta': '后半。'},
+        },
+      ],
+    });
+    expect(t.displayMessages.last.content, '前半。中段。后半。');
+    expect(t.messages.last.content.contains('前半。中段。前半。'), false);
+    t.apply('message.delta', {'run_id': 'r', 'delta': '结束。'});
+    expect(t.messages.last.content, '前半。中段。后半。结束。');
+  });
 }

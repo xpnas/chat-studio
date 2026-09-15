@@ -65,8 +65,28 @@ class ChatTimeline {
 
   int liveRevision = 0;
   final Set<String> _finishedRuns = {};
+  final Map<String, int> _liveEventCounts = {};
 
-  void clear() {
+  String _eventKey(String event, Map<String, dynamic> data) {
+    final run = text(data['run_id']);
+    final parts = [
+      event,
+      run,
+      text(data['delta']),
+      text(data['message_id']),
+      text(data['tool_call_id'] ?? data['approval_id'] ?? data['clarify_id']),
+      text(data['output']),
+    ];
+    return parts.join('\u0000');
+  }
+
+  Map<String, int> _takeLiveEventCounts() {
+    final value = Map<String, int>.from(_liveEventCounts);
+    _liveEventCounts.clear();
+    return value;
+  }
+
+  void clear({bool preserveLiveEvents = false}) {
     messages = [];
     _finishedRuns.clear();
     runId = null;
@@ -78,6 +98,7 @@ class ChatTimeline {
     queue = [];
     activeQueueId = null;
     activity = '';
+    if (!preserveLiveEvents) _liveEventCounts.clear();
   }
 
   void begin(
@@ -295,7 +316,7 @@ class ChatTimeline {
     }
   }
 
-  bool apply(String event, Map<String, dynamic> data) {
+  bool apply(String event, Map<String, dynamic> data, {bool trackLive = true}) {
     final incomingRun = text(data['run_id']);
     final failedQueue = text(data['queue_id']);
     if (event == 'run.failed' &&
@@ -317,6 +338,10 @@ class ChatTimeline {
         runId != null &&
         incomingRun != runId) {
       return false;
+    }
+    if (trackLive && event != 'session.command') {
+      final key = _eventKey(event, data);
+      _liveEventCounts[key] = (_liveEventCounts[key] ?? 0) + 1;
     }
     switch (event) {
       case 'session.command':
@@ -531,11 +556,23 @@ class ChatTimeline {
     final unresolved = previous
         .where((m) => m.delivery == 'uncertain')
         .toList();
+    final alreadyApplied = _takeLiveEventCounts();
     final events = asList(data['events']).map(asMap).toList();
     final start = events.lastIndexWhere((e) => e['event'] == 'run.started');
-    final currentEvents = events.skip(start < 0 ? 0 : start).toList();
+    final currentEvents = <Map<String, dynamic>>[];
+    for (final entry in events.skip(start < 0 ? 0 : start)) {
+      final event = text(entry['event']);
+      final payload = asMap(entry['data']);
+      final key = _eventKey(event, payload);
+      final seen = alreadyApplied[key] ?? 0;
+      if (seen > 0) {
+        alreadyApplied[key] = seen - 1;
+      } else {
+        currentEvents.add(entry);
+      }
+    }
     final eventMarker =
-        currentEvents
+        events
             .map((e) => text(asMap(e['data'])['run_id']))
             .where((id) => id.isNotEmpty)
             .lastOrNull ??
@@ -551,7 +588,7 @@ class ChatTimeline {
         finished.contains(marker)) {
       return;
     }
-    clear();
+    clear(preserveLiveEvents: true);
     _finishedRuns.addAll(finished);
     messages = previous;
     replace(snapshot, keepOlder: flag(data['hasMoreBefore']));
@@ -597,7 +634,8 @@ class ChatTimeline {
                 m.role == 'assistant' &&
                 m.pending &&
                 (marker.isNotEmpty &&
-                    (m.runMarker == marker || previousRun == marker)),
+                    (m.runMarker == marker || previousRun == marker)) ||
+                (marker.isNotEmpty && previousRun == null && m.runMarker.isNotEmpty),
           )
           .firstOrNull;
       final insertion = candidates.isEmpty ? messages.length : candidates.first;
@@ -611,7 +649,7 @@ class ChatTimeline {
       for (final entry in currentEvents) {
         final event = text(entry['event']);
         if (event == 'run.peer_user_message' || event == 'run.queued') continue;
-        replay.apply(event, asMap(entry['data']));
+        replay.apply(event, asMap(entry['data']), trackLive: false);
       }
       runId = marker.isEmpty
           ? (stored.lastOrNull?.runMarker.isNotEmpty == true
@@ -677,6 +715,25 @@ class ChatTimeline {
           merged,
           ...messages.skip(insertion),
         ];
+      }
+      // If the resume payload contained only a tail (or all of its events
+      // were already applied live), keep the locally rendered prefix.
+      final localPrefix = previous
+          .where((m) => m.role == 'assistant' && m.pending)
+          .firstOrNull;
+      if (localPrefix != null && localPrefix.content.isNotEmpty) {
+        final index = messages.lastIndexWhere((m) => m.role == 'assistant');
+        if (index >= 0 &&
+            !messages[index].content.startsWith(localPrefix.content)) {
+          messages = [...messages]..[index] = messages[index].copyWith(
+            content: reconcileResumeText(
+              localPrefix.content,
+              messages[index].content,
+              completeReplay: false,
+            ),
+            localKey: localPrefix.renderKey,
+          );
+        }
       }
       interaction = replay.interaction;
       interactionDeadline = replay.interactionDeadline;

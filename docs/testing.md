@@ -193,4 +193,17 @@ bash scripts/studio-contract.sh /absolute/path/to/pinned-studio
 
 ## 1.0.14 前台恢复
 
-175 项本地测试通过；7 项环境相关测试默认跳过。真实隔离 Studio 测试 7 项通过，新增 200+ 事件缓冲截断下的多次后台/前台恢复，确认正文、思考和 renderKey 不重复且不会重发 run。
+历史 1.0.14 验证记录为 175 项本地测试通过；7 项环境相关测试默认跳过。该记录对应此前版本；当前工作区新增的回归结果与未解决项见下方“当前前台恢复修复回归状态”。
+
+
+## 当前前台恢复修复回归状态（2026-09-15）
+
+本次针对“后台断网 → 回到前台联网 → 同步后最新助手消息部分重复”的稳定复现路径，新增了流式事件抵扣与恢复尾部合并逻辑，并添加了 `test/foreground_resume_test.dart` 的回归用例。新增用例通过，验证结果为：
+
+- `flutter test test/foreground_resume_test.dart test/resume_test.dart`：目标场景通过；
+- `flutter test`：174 项通过、8 项跳过、2 项失败；
+- 失败项为 `multi_conversation_test.dart` 的后台审批时序，以及 `resume_snapshot_test.dart` 中相同文本跨轮次保留；这两项尚未解决，不能将当前版本描述为完整回归通过；
+- Android Release APK 已成功构建：`build/app/outputs/flutter-apk/app-release.apk`；
+- 当前环境没有连接 Android 真机或模拟器，因此尚未完成真实断网/后台/前台操作验收。
+
+后续提交前必须先修复上述两项回归，再串行执行格式检查、静态分析、完整测试及 Release 构建。
