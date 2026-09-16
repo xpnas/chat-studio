@@ -81,6 +81,7 @@ class _ModelSheetState extends State<ModelSheet> {
                   )
                 : ListView.builder(
                     key: ValueKey(search),
+                    clipBehavior: Clip.hardEdge,
                     itemCount: rows.length,
                     itemBuilder: (context, index) {
                       final row = rows[index], model = row.model;
@@ -127,32 +128,61 @@ class _ModelSheetState extends State<ModelSheet> {
                         );
                       }
                       final selected = widget.selected?.key == model.key;
+                      // ListTile paints its selected/ink background on the
+                      // nearest Material, not on its own RenderBox. Give each
+                      // lazy row a clipped Material so paint cannot escape the
+                      // list viewport into the fixed title/search area.
                       return Padding(
-                        padding: const EdgeInsets.only(left: 38, right: 12),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(color: colors.outlineVariant),
+                        key: ValueKey('model-row:${model.key}'),
+                        padding: const EdgeInsets.only(
+                          left: 38,
+                          right: 12,
+                          bottom: 2,
+                        ),
+                        child: Material(
+                          key: ValueKey('model-surface:${model.key}'),
+                          color: selected
+                              ? colors.primaryContainer.withValues(alpha: .42)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          clipBehavior: Clip.antiAlias,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                left: BorderSide(color: colors.outlineVariant),
+                              ),
                             ),
-                          ),
-                          child: ListTile(
-                            key: ValueKey('model:${model.key}'),
-                            selected: selected,
-                            selectedTileColor: colors.primaryContainer
-                                .withValues(alpha: .35),
-                            title: Text(model.label),
-                            subtitle: Text(
-                              '${selected ? '当前使用 · ' : ''}${model.id}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            child: ListTile(
+                              key: ValueKey('model:${model.key}'),
+                              selected: selected,
+                              // Background belongs to the bounded Material.
+                              selectedTileColor: Colors.transparent,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              title: Text(
+                                model.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${selected ? '当前使用 · ' : ''}${model.id}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: selected
+                                  ? Icon(
+                                      Icons.check_circle_rounded,
+                                      color: colors.primary,
+                                    )
+                                  : null,
+                              onTap: () => Navigator.pop(context, model),
                             ),
-                            trailing: selected
-                                ? Icon(
-                                    Icons.check_circle_rounded,
-                                    color: colors.primary,
-                                  )
-                                : null,
-                            onTap: () => Navigator.pop(context, model),
                           ),
                         ),
                       );

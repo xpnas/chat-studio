@@ -1,3 +1,4 @@
+import 'package:chatstudio/ui/widgets/model_sheet.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -197,8 +198,41 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Reproduce the reported scroll position: selected row is above the
+      // list viewport while retained in its lazy cache, beneath fixed header.
+      final originalModels = h.controller.models;
+      h.controller.models = [
+        h.controller.selectedModel!,
+        for (var i = 0; i < 90; i++)
+          ModelChoice(
+            id: 'model-${i.toString().padLeft(3, '0')}',
+            label: 'Model ${i.toString().padLeft(3, '0')}',
+            provider: 'custom:openai',
+            providerLabel: 'OpenAI',
+          ),
+      ];
+      await tester.tap(find.byKey(const Key('model-button')));
+      await tester.pumpAndSettle();
+      final modelList = find.descendant(
+        of: find.byType(ModelSheet),
+        matching: find.byType(ListView),
+      );
+      tester
+          .state<ScrollableState>(
+            find
+                .descendant(of: modelList, matching: find.byType(Scrollable))
+                .first,
+          )
+          .position
+          .jumpTo(160);
+      await tester.pumpAndSettle();
+      await capture('models-scrolled');
       await h.controller.setTheme('dark');
       await tester.pumpAndSettle();
+      await capture('models-scrolled-dark');
+      Navigator.of(tester.element(find.byType(ModelSheet))).pop();
+      await tester.pumpAndSettle();
+      h.controller.models = originalModels;
       await capture('chat-dark');
       await h.controller.setTheme('light');
       h.controller.timeline.replace([

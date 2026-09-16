@@ -87,7 +87,7 @@ class MessageBubble extends StatelessWidget {
     if (!message.visible) return const SizedBox.shrink();
     if (message.taskPlan != null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         child: Align(
           alignment: Alignment.centerLeft,
           child: ConstrainedBox(
@@ -103,7 +103,7 @@ class MessageBubble extends StatelessWidget {
     final colors = Theme.of(context).colorScheme, user = message.role == 'user';
     return RepaintBoundary(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         child: Align(
           alignment: user ? Alignment.centerRight : Alignment.centerLeft,
           child: ConstrainedBox(
@@ -133,7 +133,7 @@ class MessageBubble extends StatelessWidget {
                 Container(
                   key: ValueKey('message-surface:${message.id}'),
                   padding: message.bodyText.isNotEmpty
-                      ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
+                      ? const EdgeInsets.symmetric(horizontal: 11, vertical: 8)
                       : EdgeInsets.zero,
                   decoration: message.bodyText.isNotEmpty
                       ? BoxDecoration(
@@ -142,7 +142,7 @@ class MessageBubble extends StatelessWidget {
                               : colors.surfaceContainerLow.withValues(
                                   alpha: .8,
                                 ),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(16),
                         )
                       : null,
                   child: Column(

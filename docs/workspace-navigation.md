@@ -48,7 +48,7 @@
 
 ### 正文字号
 
-旧实现只改用户 SelectableText，AI Markdown 的段落样式仍单独设为 16。现在共用 `chatBodyStyle`：14.5 字号、1.48 行高，Markdown 普通段落、列表标记、引用、表格正文使用统一基准；标题层级、粗体与 13 号等宽代码保留各自语义。遵从系统文字缩放，不固定 TextScaler。
+旧实现只改用户 SelectableText，AI Markdown 的段落样式仍单独设为 16。共用 `chatBodyStyle`（1.0.20 为 14.5，当前已按阅读反馈调为 15.5 字号、1.48 行高），Markdown 普通段落、列表标记、引用、表格正文使用统一基准；标题层级、粗体与 13 号等宽代码保留各自语义。遵从系统文字缩放，不固定 TextScaler。
 
 ## 验证
 

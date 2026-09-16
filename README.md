@@ -19,7 +19,7 @@ Android / iOS 上的轻量 Hermes Studio 客户端。面向 **hermes-studio v1.0
 - Agent 任务计划：轻量折叠卡片展示当前步骤、完成数量与进度，展开查看步骤状态；实时更新、历史恢复和断线重连按服务端版本去重，运行结束不会自动勾选未完成步骤。详见 [任务计划协议与实现](docs/task-plans.md)。
 - 新建页及聊天阅读区右滑打开对话记录、左滑打开服务器工作区；支持从正文开始滑动，输入框与长按选字不触发抽屉。
 - 服务器工作区：查看当前对话的远程绝对路径、浏览子目录、选择服务器文件夹；选择使用服务端 `fullPath`，不是手机存储路径。任务运行期间不能切换目录，目录错误在工作区内提示。详见 [工作区与手势说明](docs/workspace-navigation.md)。
-- 用户和 AI 普通正文统一 14.5 字号及 1.48 行高，Markdown 标题/代码保留语义层级。
+- 用户和 AI 普通正文统一 15.5 字号及 1.48 行高，Markdown 标题/代码保留语义层级；聊天内容两侧留白为 10，气泡内边距收紧，为正文提供更多空间。
 - 原生文件与相册选择、图片发送前预览、附件移除；最多 5 个，单个 20 MB、总计 40 MB，点击发送才上传。
 - 原生麦克风录音 → 当前 Profile 的服务端 STT → 可编辑草稿；最长 60 秒，取消/后台停止，不自动发送。
 - 工具授权/拒绝、澄清问题；审批失败保留卡片，过期或提交中防重复操作，永久授权按服务端能力显示并二次确认。
@@ -59,6 +59,7 @@ Android / iOS 上的轻量 Hermes Studio 客户端。面向 **hermes-studio v1.0
   <img src="docs/screenshots/attachments.png" width="230" alt="已发送附件及紧凑工具状态" />
   <img src="docs/screenshots/reading.png" width="230" alt="悬浮双线历史阅读模式" />
   <img src="docs/screenshots/models.png" width="230" alt="按提供商分组选择模型" />
+  <img src="docs/screenshots/models-scrolled.png" width="230" alt="长模型列表滚动时高亮不越界" />
   <img src="docs/screenshots/chat-dark.png" width="230" alt="深色对话页" />
 </p>
 

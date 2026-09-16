@@ -1,6 +1,6 @@
 # 界面截图与复现
 
-更新时间：2026-09-16。对应源码版本：`1.0.20+21`。
+更新时间：2026-09-16。对应源码版本：`1.0.21+22`。
 
 这些 PNG 由 `test/preview_test.dart` 直接渲染应用的真实 Flutter 组件，使用确定性测试数据。不是设计稿贴图，也不是真机截图。更新界面后应重新运行此测试，不能只替换 README 文案。
 
@@ -17,8 +17,9 @@
 | `workspace-folders.png` | 服务器文件夹分层浏览与绝对路径选择 |
 | `home.png` | 新对话、图标 Agent 选择入口，输入框内模型和思考入口 |
 | `agents.png` | 服务端已安装 Agent 的图标/名称选择面板、当前项置顶和刷新 |
-| `chat.png` / `chat-dark.png` | 会话标题、淡色用户/AI 气泡、紧凑 Markdown、浅深主题 |
-| `models.png` | 提供商父子分组、当前模型选中状态 |
+| `chat.png` / `chat-dark.png` | 会话标题、淡色用户/AI 气泡、10 侧边留白、统一 15.5 正文和浅深主题 |
+| `models.png` | 提供商父子分组、条目内的圆角选中背景 |
+| `models-scrolled.png` / `models-scrolled-dark.png` | 长模型列表上滑，选中项移出视口后标题和搜索框无高亮越界 |
 | `reasoning.png` | 思考深度选择及当前选项 |
 | `history-tasks.png` / `history-tasks-dark.png` | 紧凑历史列表、运行/待确认/完成状态 |
 | `attachments.png` | 图片、文件附件与折叠思考/工具状态 |
@@ -46,7 +47,7 @@ CHATSTUDIO_PREVIEW_FONT=/absolute/path/to/local-cjk-font.ttf \
   flutter test test/preview_test.dart --reporter expanded
 ```
 
-测试加载本地字体与应用 Material Icons，覆盖本目录的 21 张 PNG。没有配置 `CHATSTUDIO_PREVIEW_FONT` 时，此测试默认跳过，不影响普通单元测试。不同字体/Flutter 引擎可能带来字形或抗锯齿差异，不把跨机器像素完全一致作为验收条件。
+测试加载本地字体与应用 Material Icons，覆盖本目录的 23 张 PNG。没有配置 `CHATSTUDIO_PREVIEW_FONT` 时，此测试默认跳过，不影响普通单元测试。不同字体/Flutter 引擎可能带来字形或抗锯齿差异，不把跨机器像素完全一致作为验收条件。
 
 生成后检查中文是否完整、标题/模型是否合理、浅深主题对比度、弹层选中项、输入框和阅读入口是否被裁切。README 引用其中的主要场景，本目录保留完整浅深主题及错误状态预览。
 
