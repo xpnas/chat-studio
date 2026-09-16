@@ -43,8 +43,8 @@
 SHA-256：
 
 ```text
-d8ff0c4a74d9798feea4bc209c6065b0a8c421b17259a34000ad6b7bef787e03  chatstudio-1.0.19-android-release.apk
-d6d7638b2e92ccbcd71214e9efceccc9dc60c141ef82d166bc5bb823ac00839f  chatstudio-1.0.19-android-release.aab
+ce24d3d8def3f377e85f0f41e4831805db0ddc28926dcf01bd4cb02c9f521fcb  chatstudio-1.0.19-android-release.apk
+56e34308c017bc2df5ff2511dcecc0ff3af684d3375a35ac2af81ca795785d44  chatstudio-1.0.19-android-release.aab
 ```
 
 源码和文档仅本地 Git 提交，不推送远端。二进制、签名密钥、私有诊断日志及原有 `.codegraph/` 索引不提交，也不清理用户已有文件。
