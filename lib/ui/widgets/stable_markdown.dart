@@ -120,8 +120,8 @@ class _StableMarkdownState extends State<StableMarkdown> {
                           ),
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
                         p: TextStyle(
-                          fontSize: 16,
-                          height: 1.45,
+                          fontSize: 14.5,
+                          height: 1.48,
                           color: colors.onSurface,
                         ),
                         code: TextStyle(

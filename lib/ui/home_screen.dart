@@ -340,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   IconButton(
                     onPressed: c.workspaceLoading
                         ? null
-                        : () => c.refreshWorkspace(),
+                        : () => c.refreshWorkspaceFiles(),
                     icon: const Icon(Icons.refresh_rounded),
                   ),
                 ],
@@ -385,7 +385,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                     title: Text(text(folder['name'])),
                                     subtitle: Text(text(folder['path'])),
                                     onTap: () {
-                                      c.chooseWorkspace(text(folder['path']));
+                                      c.chooseWorkspace(
+                                        text(folder['fullPath']).isNotEmpty
+                                            ? text(folder['fullPath'])
+                                            : text(folder['path']),
+                                      );
                                       Navigator.pop(context);
                                     },
                                   ),
@@ -453,7 +457,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       key: _scaffold,
       drawer: _drawer(context),
+      drawerEnableOpenDragGesture: true,
+      drawerEdgeDragWidth: 72,
       endDrawer: _workspaceDrawer(context),
+      endDrawerEnableOpenDragGesture: true,
       onEndDrawerChanged: (open) {
         if (open && c.sessionId != null) c.refreshWorkspaceFiles();
       },
