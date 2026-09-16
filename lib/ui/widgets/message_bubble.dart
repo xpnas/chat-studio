@@ -1,3 +1,4 @@
+import 'chat_text_style.dart';
 import 'task_plan_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -210,13 +211,7 @@ class MessageBubble extends StatelessWidget {
                         ),
                       if (message.bodyText.isNotEmpty)
                         if (user)
-                          SelectableText(
-                            message.bodyText,
-                            style: const TextStyle(
-                              fontSize: 14.5,
-                              height: 1.48,
-                            ),
-                          )
+                          SelectableText(message.bodyText, style: chatBodyStyle)
                         else
                           StableMarkdown(
                             data: message.bodyText,

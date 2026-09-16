@@ -132,6 +132,61 @@ void main() {
       h.controller.dismissError();
       await tester.pumpAndSettle();
       await capture('chat');
+      h.override = (r) async {
+        if (r.url.path.endsWith('/workspace-files/list')) {
+          return http.Response(
+            jsonEncode({
+              'absolutePath': '/srv/agents/chat-studio',
+              'path': '',
+              'entries': [
+                {'name': 'src', 'path': 'src', 'isDir': true},
+                {'name': 'docs', 'path': 'docs', 'isDir': true},
+                {'name': 'README.md', 'path': 'README.md', 'isDir': false},
+                {
+                  'name': 'package.json',
+                  'path': 'package.json',
+                  'isDir': false,
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (r.url.path.endsWith('/workspace/folders')) {
+          return http.Response(
+            jsonEncode({
+              'base': '/srv/agents',
+              'current': '',
+              'folders': [
+                {
+                  'name': 'chat-studio',
+                  'path': 'chat-studio',
+                  'fullPath': '/srv/agents/chat-studio',
+                },
+                {
+                  'name': 'website',
+                  'path': 'website',
+                  'fullPath': '/srv/agents/website',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        return h.response(r);
+      };
+      await tester.tap(find.byTooltip('工作区'));
+      await tester.pumpAndSettle();
+      await capture('workspace');
+      await tester.tap(find.byKey(const Key('choose-server-workspace')));
+      await tester.pumpAndSettle();
+      await capture('workspace-folders');
+      Navigator.of(tester.element(find.text('使用此目录'))).pop();
+      await tester.pumpAndSettle();
+      tester.state<ScaffoldState>(find.byType(Scaffold).first).closeEndDrawer();
+      await tester.pumpAndSettle();
+      h.override = null;
+
       h.controller.dismissError();
       await tester.pumpAndSettle();
       await tester.tap(find.text('GPT-5'));

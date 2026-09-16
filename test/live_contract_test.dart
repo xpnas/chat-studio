@@ -19,6 +19,76 @@ import 'package:chatstudio/data/audio_transcription.dart';
 void main() {
   final server = Platform.environment['CHATSTUDIO_TEST_SERVER'];
   test(
+    'real remote workspace selection persists absolute path and lists files',
+    () async {
+      final c = AppController(
+        storage: _MultiDeviceStorage('workspace-contract'),
+      );
+      final sid = 'workspace-contract-${DateTime.now().microsecondsSinceEpoch}';
+      var created = false;
+      try {
+        await c.initialize();
+        expect(
+          await c.login(
+            server!,
+            'admin',
+            Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
+            true,
+          ),
+          true,
+        );
+        final api = c.api!;
+        // Runner scripts restrict browsing/creation to a disposable workspace.
+        final root = await api.workspaceFolders();
+        expect(text(root['base']), isNotEmpty);
+        final name = 'mobile-${DateTime.now().microsecondsSinceEpoch}';
+        await api.request(
+          '/api/studio/workspace/folders',
+          method: 'POST',
+          body: {'parentPath': '', 'name': name},
+        );
+        final folders = asList(
+          (await api.workspaceFolders())['folders'],
+        ).map(asMap);
+        final chosen = folders.singleWhere((f) => f['name'] == name);
+        final fullPath = text(chosen['fullPath']);
+        expect(fullPath, isNotEmpty);
+        expect(
+          text(chosen['path']),
+          name,
+        ); // WORKSPACE_BASE uses relative navigation even on Windows.
+        await api.setWorkspace(sid, fullPath);
+        created = true;
+        final detail = asMap(
+          (await api.request('/api/studio/sessions/$sid'))['session'],
+        );
+        expect(detail['workspace'], fullPath);
+        await api.request(
+          '/api/studio/sessions/$sid/workspace-file/write',
+          method: 'PUT',
+          body: {'path': 'note.txt', 'content': 'server workspace contract'},
+        );
+        c.sessionId = sid;
+        await c.refreshWorkspaceFiles();
+        expect(c.workspaceError, isNull);
+        expect(c.workspacePath, fullPath);
+        expect(c.workspaceFiles.any((f) => f['name'] == 'note.txt'), true);
+        // Persistence is observable through another REST read, not a local UI echo.
+        expect(
+          asList(
+            (await api.workspaceFiles(sid))['entries'],
+          ).map(asMap).any((f) => f['name'] == 'note.txt'),
+          true,
+        );
+      } finally {
+        if (created) await c.api?.delete(sid);
+        c.dispose();
+      }
+    },
+    skip: server == null,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+  test(
     'real authenticated availability matches mobile selectable Agent catalog',
     () async {
       final c = AppController(

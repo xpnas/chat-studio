@@ -2,7 +2,7 @@
 
 ## 工具链
 
-固定 Flutter 3.44.9（Dart 3.12.2），提交 pubspec.lock。当前版本为 1.0.6+7；本地 Gradle 堆上限 3 GB、metaspace 1 GB、worker 上限 2，避免低内存构建机过度并行。Android 使用 JDK 17、SDK 36，Flutter 插件按项目配置自动安装所需 NDK。iOS 使用 macOS-15 runner 与项目默认 Swift Package Manager 集成，不需要手写 Podfile。
+固定 Flutter 3.44.9（Dart 3.12.2），提交 pubspec.lock。版本以 `pubspec.yaml` 的 `version` 为准；本地 Gradle 堆上限 3 GB、metaspace 1 GB、worker 上限 2，避免低内存构建机过度并行。Android 使用 JDK 17、SDK 36，Flutter 插件按项目配置自动安装所需 NDK。iOS 使用 macOS-15 runner 与项目默认 Swift Package Manager 集成，不需要手写 Podfile。
 
 `Mobile CI` 在 Linux 检查格式、静态分析、单元/组件测试，再自动架设固定上游 SHA 的一次性 Studio 做真实契约测试，全部通过后分别构建 Android 和 iOS。Android 同时上传 Debug APK、arm64 Profile APK（debug 签名，性能验收用）以及未签名 Release APK/AAB（编译验收用）。正式分发使用 Signed packages。Actions 会安装工具链、解析锁定依赖，无需提交本地 SDK 和生成目录。
 
@@ -45,6 +45,18 @@ flutter build apk --release --target-platform android-arm64
 ```
 
 未提供签名文件时产物未签名。不会将 debug key 当生产签名。普通 CI 单独输出 debug APK，用于方便试装；评估性能应使用 profile / release，而非 debug。
+
+### 本地交付目录与命名
+
+Flutter 的 `build/app/outputs/` 是编译输出，不是最终交付目录。每次功能修复出包先递增 `pubspec.yaml` 中的版本号与构建号，完成 APK / AAB 构建和签名/manifest 校验后，复制到：
+
+```text
+dist/chatstudio-{version}-android-release.apk
+dist/chatstudio-{version}-android-release.aab
+dist/chatstudio-{version}-SHA256SUMS.txt
+```
+
+`{version}` 是 `+` 前的 versionName；内置 versionCode 使用 `+` 后的数字。校验清单基于 dist 中的最终文件生成；发布记录保存对应哈希，不将私钥、日志、二进制加入 Git。不要继续复用同一文件名覆盖不同修复版本，也不要仅提供 Flutter 的默认 `app-release.apk` 作为交付。
 
 ### GitHub 签名
 

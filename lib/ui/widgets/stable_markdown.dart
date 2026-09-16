@@ -1,3 +1,4 @@
+import 'chat_text_style.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -119,9 +120,14 @@ class _StableMarkdownState extends State<StableMarkdown> {
                             style: TextStyle(color: colors.onSurfaceVariant),
                           ),
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: TextStyle(
-                          fontSize: 14.5,
-                          height: 1.48,
+                        p: chatBodyStyle.copyWith(color: colors.onSurface),
+                        listBullet: chatBodyStyle.copyWith(
+                          color: colors.onSurface,
+                        ),
+                        blockquote: chatBodyStyle.copyWith(
+                          color: colors.onSurface,
+                        ),
+                        tableBody: chatBodyStyle.copyWith(
                           color: colors.onSurface,
                         ),
                         code: TextStyle(

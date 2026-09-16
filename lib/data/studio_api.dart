@@ -1,3 +1,4 @@
+import 'server_workspace.dart';
 import 'task_plan.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -672,10 +673,13 @@ class StudioApi {
         query: {'path': path},
       );
 
-  Future<Map<String, dynamic>> workspaceFolders() =>
-      request('/api/studio/workspace/folders');
+  Future<Map<String, dynamic>> workspaceFolders({String path = ''}) =>
+      request('/api/studio/workspace/folders', query: {'path': path});
 
   Future<void> setWorkspace(String id, String path) async {
+    if (!isAbsoluteServerPath(path)) {
+      throw const ApiException('请从服务器目录中选择有效的绝对路径');
+    }
     await request(
       '/api/studio/sessions/${Uri.encodeComponent(id)}/workspace',
       method: 'POST',

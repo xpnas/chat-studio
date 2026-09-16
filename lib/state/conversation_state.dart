@@ -31,6 +31,11 @@ class ConversationState {
   bool syncing = false, loading = false, hasMore = false;
   int offset = 0, revision = 0, loadRequest = 0;
   String? historyPageError;
+  String workspacePath = '', workspaceRelativePath = '';
+  List<Map<String, dynamic>> workspaceFiles = const [];
+  bool workspaceLoading = false, workspaceSaving = false;
+  int workspaceRequest = 0;
+  String? workspaceError;
   String? submittedInput, retryInput;
   List<Map<String, dynamic>> submittedAttachments = [], retryAttachments = [];
   DateTime? submittedAt;

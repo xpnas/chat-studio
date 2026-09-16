@@ -1,3 +1,5 @@
+import 'widgets/chat_swipe_region.dart';
+import 'widgets/workspace_drawer.dart';
 import 'widgets/agent_picker.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -314,153 +316,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _workspaceDrawer(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Drawer(
-      width: 340,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 12, 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.folder_copy_outlined),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      '工作区',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: c.workspaceLoading
-                        ? null
-                        : () => c.refreshWorkspaceFiles(),
-                    icon: const Icon(Icons.refresh_rounded),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                c.workspacePath.isEmpty ? '当前 Agent 工作路径未选择' : c.workspacePath,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (c.workspaceLoading) const LinearProgressIndicator(minHeight: 2),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: FilledButton.tonalIcon(
-                onPressed: c.sessionId == null
-                    ? null
-                    : () async {
-                        final folders = await c.workspaceFolders();
-                        if (!context.mounted) return;
-                        await showModalBottomSheet<void>(
-                          context: context,
-                          builder: (_) => SafeArea(
-                            child: ListView(
-                              shrinkWrap: true,
-                              children: [
-                                const ListTile(
-                                  title: Text(
-                                    '选择工作文件夹',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                for (final folder in folders)
-                                  ListTile(
-                                    leading: const Icon(Icons.folder_outlined),
-                                    title: Text(text(folder['name'])),
-                                    subtitle: Text(text(folder['path'])),
-                                    onTap: () {
-                                      c.chooseWorkspace(
-                                        text(folder['fullPath']).isNotEmpty
-                                            ? text(folder['fullPath'])
-                                            : text(folder['path']),
-                                      );
-                                      Navigator.pop(context);
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                icon: const Icon(Icons.folder_open_rounded),
-                label: const Text('选择工作文件夹'),
-              ),
-            ),
-            const Divider(height: 20),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                '当前工作文件',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            Expanded(
-              child: c.workspaceFiles.isEmpty
-                  ? Center(
-                      child: Text(
-                        '暂无文件',
-                        style: TextStyle(color: colors.onSurfaceVariant),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: c.workspaceFiles.length,
-                      itemBuilder: (_, i) {
-                        final f = c.workspaceFiles[i];
-                        final dir = f['isDir'] == true;
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(
-                            dir
-                                ? Icons.folder_outlined
-                                : Icons.insert_drive_file_outlined,
-                          ),
-                          title: Text(
-                            text(f['name']),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            text(f['path']),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       key: _scaffold,
       drawer: _drawer(context),
-      drawerEnableOpenDragGesture: true,
-      drawerEdgeDragWidth: 72,
-      endDrawer: _workspaceDrawer(context),
-      endDrawerEnableOpenDragGesture: true,
+      // The reading-region recognizer handles edge and center touches once.
+      drawerEnableOpenDragGesture: false,
+      endDrawer: WorkspaceDrawer(controller: c),
+      endDrawerEnableOpenDragGesture: false,
       onEndDrawerChanged: (open) {
         if (open && c.sessionId != null) c.refreshWorkspaceFiles();
       },
@@ -492,9 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             tooltip: '工作区',
-            onPressed: c.sessionId == null
-                ? null
-                : () => _scaffold.currentState!.openEndDrawer(),
+            onPressed: () => _scaffold.currentState!.openEndDrawer(),
             icon: const Icon(Icons.folder_copy_outlined, size: 21),
           ),
           IconButton(
@@ -570,6 +433,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _swipeRegion(Widget child) => ChatSwipeRegion(
+    onSwipe: (right) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      if (right) {
+        _scaffold.currentState?.openDrawer();
+      } else {
+        _scaffold.currentState?.openEndDrawer();
+      }
+    },
+    child: child,
+  );
+
   Widget _readingLayout(Widget editor, Widget? handle, Widget? stop) {
     final colors = Theme.of(context).colorScheme;
     final rows = c.timeline.displayMessages;
@@ -583,20 +458,22 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: NotificationListener<ScrollNotification>(
             onNotification: _chatScrolled,
-            child: SizedBox.expand(
-              key: const Key('reading-stage'),
-              child: Stack(
-                key: _stage,
-                children: [
-                  if (rows.isEmpty && !c.loadingMessages && !c.hasMoreMessages)
-                    _welcome(context)
-                  else if (c.loadingMessages &&
-                      rows.isEmpty &&
-                      !c.hasMoreMessages)
-                    const Center(child: CircularProgressIndicator.adaptive())
-                  else
-                    SelectionArea(
-                      child: ListView.builder(
+            child: _swipeRegion(
+              SizedBox.expand(
+                key: const Key('reading-stage'),
+                child: Stack(
+                  key: _stage,
+                  children: [
+                    if (rows.isEmpty &&
+                        !c.loadingMessages &&
+                        !c.hasMoreMessages)
+                      _welcome(context)
+                    else if (c.loadingMessages &&
+                        rows.isEmpty &&
+                        !c.hasMoreMessages)
+                      const Center(child: CircularProgressIndicator.adaptive())
+                    else
+                      ListView.builder(
                         key: const Key('message-list'),
                         controller: _scroll,
                         reverse: true,
@@ -673,66 +550,66 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         },
                       ),
-                    ),
-                  if (_showReadingHint && handle != null)
-                    Positioned(
-                      left: 45,
-                      right: 45,
-                      bottom: 72,
-                      child: IgnorePointer(
-                        child: Center(
-                          child: Material(
-                            color: colors.surfaceContainerHighest.withValues(
-                              alpha: .94,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                    if (_showReadingHint && handle != null)
+                      Positioned(
+                        left: 45,
+                        right: 45,
+                        bottom: 72,
+                        child: IgnorePointer(
+                          child: Center(
+                            child: Material(
+                              color: colors.surfaceContainerHighest.withValues(
+                                alpha: .94,
                               ),
-                              child: Text(
-                                '轻点底部线条，继续输入',
-                                style: TextStyle(fontSize: 12),
+                              borderRadius: BorderRadius.circular(14),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Text(
+                                  '轻点底部线条，继续输入',
+                                  style: TextStyle(fontSize: 12),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  if (handle != null)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 10,
-                      child: Center(child: RepaintBoundary(child: handle)),
-                    ),
-                  if (stop != null)
-                    Positioned(
-                      right: 20,
-                      bottom: _showJump ? 70 : 12,
-                      child: stop,
-                    ),
-                  if (_showJump)
-                    Positioned(
-                      bottom: 12,
-                      right: 20,
-                      child: FloatingActionButton.small(
-                        heroTag: 'jump',
-                        tooltip: '回到最新消息',
-                        onPressed: () => _scroll.animateTo(
-                          0,
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOut,
-                        ),
-                        child: Badge(
-                          isLabelVisible: _hasNewContent,
-                          label: const Text('新'),
-                          child: const Icon(Icons.arrow_downward_rounded),
+                    if (handle != null)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 10,
+                        child: Center(child: RepaintBoundary(child: handle)),
+                      ),
+                    if (stop != null)
+                      Positioned(
+                        right: 20,
+                        bottom: _showJump ? 70 : 12,
+                        child: stop,
+                      ),
+                    if (_showJump)
+                      Positioned(
+                        bottom: 12,
+                        right: 20,
+                        child: FloatingActionButton.small(
+                          heroTag: 'jump',
+                          tooltip: '回到最新消息',
+                          onPressed: () => _scroll.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                          ),
+                          child: Badge(
+                            isLabelVisible: _hasNewContent,
+                            label: const Text('新'),
+                            child: const Icon(Icons.arrow_downward_rounded),
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

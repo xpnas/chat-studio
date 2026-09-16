@@ -15,7 +15,7 @@ foreach ($port in @(18647, 18648)) {
 }
 $state = Join-Path $root ('.local/contract-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $state | Out-Null
-foreach ($name in @('hermes', 'studio', 'database', 'home')) {
+foreach ($name in @('hermes', 'studio', 'database', 'home', 'workspace')) {
   New-Item -ItemType Directory -Path (Join-Path $state $name) | Out-Null
 }
 $bytes = New-Object byte[] 24
@@ -24,6 +24,7 @@ try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
 $password = [Convert]::ToBase64String($bytes)
 $settings = @{
   CHATSTUDIO_TEST_MEDIA = '1'; CHATSTUDIO_TEST_SERVER = 'http://127.0.0.1:18647'; CHATSTUDIO_TEST_PASSWORD = $password
+  WORKSPACE_BASE = (Join-Path $state 'workspace')
   HERMES_HOME = (Join-Path $state 'hermes'); HERMES_WEB_UI_HOME = (Join-Path $state 'studio')
   HERMES_WEBUI_STATE_DIR = (Join-Path $state 'studio'); NODE_ENV = 'test'
   HERMES_WEB_UI_TEST_DB_DIR = (Join-Path $state 'database'); HERMES_RUNTIME_SOURCE = 'none'

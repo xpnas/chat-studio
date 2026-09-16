@@ -1,3 +1,4 @@
+import '../data/server_workspace.dart';
 import '../data/agent_catalog.dart';
 import '../data/studio_protocol.dart';
 import 'dart:async';
@@ -112,7 +113,12 @@ class AppController extends ChangeNotifier {
   }
 
   bool get canConfigure =>
-      authenticated && !busy && !working && !syncing && !loadingMessages;
+      authenticated &&
+      !busy &&
+      !working &&
+      !syncing &&
+      !loadingMessages &&
+      !workspaceSaving;
   void _disposeStates() {
     transcription.clear();
     unawaited(speech.stop());
@@ -146,44 +152,89 @@ class AppController extends ChangeNotifier {
   ModelChoice? _newChatModel;
   String _newChatEngine = StudioProtocol.builtInAgentId, _newChatReasoning = '';
   String? workspaceNotice;
-  String workspacePath = '';
-  List<Map<String, dynamic>> workspaceFiles = const [];
-  bool workspaceLoading = false;
+  String get workspacePath => _view.workspacePath;
+  String get workspaceRelativePath => _view.workspaceRelativePath;
+  List<Map<String, dynamic>> get workspaceFiles => _view.workspaceFiles;
+  bool get workspaceLoading => _view.workspaceLoading;
+  bool get workspaceSaving => _view.workspaceSaving;
+  String? get workspaceError => _view.workspaceError;
+  bool get canChooseWorkspace =>
+      sessionId != null &&
+      canConfigure &&
+      current?.canContinue != false &&
+      !working &&
+      !workspaceLoading &&
+      !workspaceSaving &&
+      !(current != null && taskStatus(current!).active);
+
   Future<void> refreshWorkspaceFiles({String? path}) async {
-    if (api == null || sessionId == null) return;
-    workspaceLoading = true;
+    final client = api, state = _view, id = sessionId;
+    if (client == null || id == null || state.workspaceSaving) return;
+    final epoch = _epoch, navigation = chatRevision;
+    final request = ++state.workspaceRequest;
+    bool valid() =>
+        _valid(epoch) &&
+        client == api &&
+        state == _view &&
+        state.id == id &&
+        chatRevision == navigation &&
+        request == state.workspaceRequest;
+    state.workspaceLoading = true;
+    state.workspaceError = null;
     _notify();
     try {
-      final data = await api!.workspaceFiles(sessionId!, path: path ?? '');
-      workspacePath = text(data['current']).isEmpty
-          ? (path ?? '')
-          : text(data['current']);
-      workspaceFiles = asList(
-        data['files'] ?? data['entries'],
-      ).map(asMap).toList();
+      final data = await client.workspaceFiles(
+        id,
+        path: path ?? state.workspaceRelativePath,
+      );
+      if (!valid()) return;
+      // These paths are returned by the SERVER; never resolve them with the
+      // phone's filesystem. The listing contract has no `current` field.
+      state.workspacePath = text(data['absolutePath']);
+      state.workspaceRelativePath = text(data['path']);
+      state.workspaceFiles = asList(data['entries']).map(asMap).toList();
     } catch (e) {
-      reportError(e);
+      if (valid()) {
+        state.workspaceFiles = const [];
+        state.workspaceError = serverWorkspaceError(e);
+      }
     } finally {
-      workspaceLoading = false;
-      _notify();
+      if (request == state.workspaceRequest) state.workspaceLoading = false;
+      if (valid()) _notify();
     }
   }
 
-  Future<void> chooseWorkspace(String path) async {
-    if (api == null || sessionId == null) return;
+  Future<bool> chooseWorkspace(String serverPath) async {
+    final client = api, state = _view, id = sessionId;
+    if (client == null || id == null || !canChooseWorkspace) return false;
+    final epoch = _epoch, navigation = chatRevision;
+    bool valid() =>
+        _valid(epoch) &&
+        client == api &&
+        state == _view &&
+        state.id == id &&
+        chatRevision == navigation;
+    state.workspaceSaving = true;
+    state.workspaceError = null;
+    _notify();
+    var saved = false;
     try {
-      await api!.setWorkspace(sessionId!, path);
-      await refreshWorkspaceFiles();
+      await client.setWorkspace(id, serverPath);
+      if (!valid()) return false;
+      state.workspacePath = serverPath;
+      state.workspaceRelativePath = '';
+      state.workspaceFiles = const [];
+      saved = true;
     } catch (e) {
-      reportError(e);
+      if (valid()) state.workspaceError = serverWorkspaceError(e);
+    } finally {
+      state.workspaceSaving = false;
+      if (valid()) _notify();
     }
+    if (saved && valid()) await refreshWorkspaceFiles(path: '');
+    return saved && valid();
   }
 
-  Future<List<Map<String, dynamic>>> workspaceFolders() async => api == null
-      ? const []
-      : (asList(
-          (await api!.workspaceFolders())['folders'],
-        ).map(asMap).toList());
   bool readingHintSeen = true;
   String? get retryInput => _view.retryInput;
   set retryInput(String? value) => _view.retryInput = value;
@@ -442,6 +493,7 @@ class AppController extends ChangeNotifier {
               ?.active ??
           false) &&
       !busy &&
+      !workspaceSaving &&
       current?.canContinue != false &&
       (sessionId != null || newChatAgentAvailable);
   String get profile => api?.profile ?? 'default';

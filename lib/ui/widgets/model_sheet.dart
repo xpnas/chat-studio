@@ -44,9 +44,7 @@ class _ModelSheetState extends State<ModelSheet> {
           return a.label.toLowerCase().compareTo(b.label.toLowerCase());
         });
       rows.add((provider: provider, model: null));
-      if (search.isNotEmpty ||
-          expanded.contains(provider) ||
-          provider == widget.selected?.provider) {
+      if (search.isNotEmpty || expanded.contains(provider)) {
         rows.addAll(items.map((m) => (provider: provider, model: m)));
       }
     }
