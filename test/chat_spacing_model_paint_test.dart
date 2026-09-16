@@ -176,7 +176,7 @@ void main() {
   });
   for (final scale in [1.0, 1.8]) {
     testWidgets(
-      'chat content has half outer gutter and shared larger font: scale=$scale',
+      'chat content has 15px outer gutter and shared larger font: scale=$scale',
       (tester) async {
         final width = scale == 1 ? 390.0 : 320.0;
         tester.view.physicalSize = Size(width, 900);
@@ -220,8 +220,8 @@ void main() {
         for (final id in ['u', 'a']) {
           final surface = find.byKey(ValueKey('message-surface:$id'));
           final rect = tester.getRect(surface);
-          expect(rect.left, 10);
-          expect(rect.right, width - 10);
+          expect(rect.left, 15);
+          expect(rect.right, width - 15);
           expect(
             tester.widget<Container>(surface).padding,
             const EdgeInsets.symmetric(horizontal: 11, vertical: 8),

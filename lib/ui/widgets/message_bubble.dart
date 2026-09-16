@@ -87,7 +87,7 @@ class MessageBubble extends StatelessWidget {
     if (!message.visible) return const SizedBox.shrink();
     if (message.taskPlan != null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
         child: Align(
           alignment: Alignment.centerLeft,
           child: ConstrainedBox(
@@ -103,7 +103,7 @@ class MessageBubble extends StatelessWidget {
     final colors = Theme.of(context).colorScheme, user = message.role == 'user';
     return RepaintBoundary(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
         child: Align(
           alignment: user ? Alignment.centerRight : Alignment.centerLeft,
           child: ConstrainedBox(
