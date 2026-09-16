@@ -16,24 +16,38 @@ class _ModelSheetState extends State<ModelSheet> {
   };
   @override
   Widget build(BuildContext context) {
-    final ordered = [
-      if (widget.selected != null) widget.selected!,
-      ...widget.models.where((m) => m.key != widget.selected?.key),
-    ];
-    final groups = <String, List<ModelChoice>>{};
+    final grouped = <String, List<ModelChoice>>{};
     final search = query.trim().toLowerCase();
-    for (final model in ordered) {
+    for (final model in widget.models) {
       if ('${model.label} ${model.id} ${model.providerLabel} ${model.provider}'
           .toLowerCase()
           .contains(search)) {
-        groups.putIfAbsent(model.provider, () => []).add(model);
+        grouped.putIfAbsent(model.provider, () => []).add(model);
       }
     }
+    // Keep the selected provider and model visible at the top without
+    // duplicating the model row when the list is long.
+    final providerOrder = grouped.keys.toList()
+      ..sort((a, b) {
+        final selectedProvider = widget.selected?.provider;
+        if (a == selectedProvider && b != selectedProvider) return -1;
+        if (b == selectedProvider && a != selectedProvider) return 1;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
     final rows = <({String provider, ModelChoice? model})>[];
-    for (final entry in groups.entries) {
-      rows.add((provider: entry.key, model: null));
-      if (search.isNotEmpty || expanded.contains(entry.key)) {
-        rows.addAll(entry.value.map((m) => (provider: entry.key, model: m)));
+    for (final provider in providerOrder) {
+      final items = grouped[provider]!
+        ..sort((a, b) {
+          final selected = widget.selected?.key;
+          if (a.key == selected && b.key != selected) return -1;
+          if (b.key == selected && a.key != selected) return 1;
+          return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+        });
+      rows.add((provider: provider, model: null));
+      if (search.isNotEmpty ||
+          expanded.contains(provider) ||
+          provider == widget.selected?.provider) {
+        rows.addAll(items.map((m) => (provider: provider, model: m)));
       }
     }
     final colors = Theme.of(context).colorScheme;
@@ -73,7 +87,7 @@ class _ModelSheetState extends State<ModelSheet> {
                     itemBuilder: (context, index) {
                       final row = rows[index], model = row.model;
                       if (model == null) {
-                        final first = groups[row.provider]!.first;
+                        final first = grouped[row.provider]!.first;
                         final open =
                             search.isNotEmpty ||
                             expanded.contains(row.provider);
@@ -95,7 +109,7 @@ class _ModelSheetState extends State<ModelSheet> {
                               ),
                             ),
                             subtitle: Text(
-                              '${row.provider} · ${groups[row.provider]!.length} 个模型',
+                              '${row.provider} · ${grouped[row.provider]!.length} 个模型',
                             ),
                             trailing: Icon(
                               open

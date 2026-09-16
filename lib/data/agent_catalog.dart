@@ -17,6 +17,7 @@ class AgentChoice {
     'pi',
     'grok',
     'opencode',
+    'dsh',
   };
   static String canonicalId(String id) => switch (id.trim().toLowerCase()) {
     StudioProtocol.builtInAgentAlias ||
@@ -37,6 +38,7 @@ class AgentChoice {
       'pi' => ('Pi', 'pi.svg'),
       'grok' => ('Grok', 'grok.svg'),
       'opencode' => ('OpenCode', 'opencode.png'),
+      'dsh' => ('DSH', null),
       _ => (input.trim(), null),
     };
     return AgentChoice(id, name, icon, installed: installed);

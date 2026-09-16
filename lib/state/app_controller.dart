@@ -146,6 +146,44 @@ class AppController extends ChangeNotifier {
   ModelChoice? _newChatModel;
   String _newChatEngine = StudioProtocol.builtInAgentId, _newChatReasoning = '';
   String? workspaceNotice;
+  String workspacePath = '';
+  List<Map<String, dynamic>> workspaceFiles = const [];
+  bool workspaceLoading = false;
+  Future<void> refreshWorkspaceFiles({String? path}) async {
+    if (api == null || sessionId == null) return;
+    workspaceLoading = true;
+    _notify();
+    try {
+      final data = await api!.workspaceFiles(sessionId!, path: path ?? '');
+      workspacePath = text(data['current']).isEmpty
+          ? (path ?? '')
+          : text(data['current']);
+      workspaceFiles = asList(
+        data['files'] ?? data['entries'],
+      ).map(asMap).toList();
+    } catch (e) {
+      reportError(e);
+    } finally {
+      workspaceLoading = false;
+      _notify();
+    }
+  }
+
+  Future<void> chooseWorkspace(String path) async {
+    if (api == null || sessionId == null) return;
+    try {
+      await api!.setWorkspace(sessionId!, path);
+      await refreshWorkspaceFiles();
+    } catch (e) {
+      reportError(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> workspaceFolders() async => api == null
+      ? const []
+      : (asList(
+          (await api!.workspaceFolders())['folders'],
+        ).map(asMap).toList());
   bool readingHintSeen = true;
   String? get retryInput => _view.retryInput;
   set retryInput(String? value) => _view.retryInput = value;
@@ -711,6 +749,7 @@ class AppController extends ChangeNotifier {
         data[search.isEmpty ? 'sessions' : 'results'],
       ).map((s) => Conversation.fromJson(asMap(s))).toList();
       _sessionOffset = (more ? _sessionOffset : 0) + rows.length;
+      if (!more) _sessionOffset = rows.length;
       final local = _states.values
           .where(
             (s) =>
@@ -724,6 +763,8 @@ class AppController extends ChangeNotifier {
                     )),
           )
           .map((s) => s.conversation!);
+      // A normal refresh is authoritative: do not retain deleted server rows.
+      // Only locally active runs are merged because they may not be indexed yet.
       final merged = [if (more) ...conversations, ...local, ...rows];
       conversations = {for (final s in merged) s.id: s}.values.toList();
       for (final row in rows) {

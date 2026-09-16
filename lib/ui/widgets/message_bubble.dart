@@ -166,8 +166,8 @@ class MessageBubble extends StatelessWidget {
                             SelectableText(
                               message.reasoning,
                               style: TextStyle(
-                                fontSize: 13,
-                                height: 1.45,
+                                fontSize: 12,
+                                height: 1.38,
                                 color: colors.onSurfaceVariant,
                               ),
                             ),
@@ -212,7 +212,10 @@ class MessageBubble extends StatelessWidget {
                         if (user)
                           SelectableText(
                             message.bodyText,
-                            style: const TextStyle(fontSize: 16, height: 1.5),
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              height: 1.48,
+                            ),
                           )
                         else
                           StableMarkdown(

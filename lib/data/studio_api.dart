@@ -666,6 +666,23 @@ class StudioApi {
     );
   }
 
+  Future<Map<String, dynamic>> workspaceFiles(String id, {String path = ''}) =>
+      request(
+        '/api/studio/sessions/${Uri.encodeComponent(id)}/workspace-files/list',
+        query: {'path': path},
+      );
+
+  Future<Map<String, dynamic>> workspaceFolders() =>
+      request('/api/studio/workspace/folders');
+
+  Future<void> setWorkspace(String id, String path) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/workspace',
+      method: 'POST',
+      body: {'workspace': path},
+    );
+  }
+
   Future<void> delete(String id) async {
     await request(
       '/api/studio/sessions/${Uri.encodeComponent(id)}',
