@@ -591,6 +591,274 @@ class StudioApi {
           .toList();
   Future<Map<String, dynamic>> models() =>
       request('/api/hermes/available-models', query: {'profile': profile});
+
+  // Management APIs mirror the v1.0.3 Studio web client. These methods keep
+  // credentials on the server and return only the fields needed by mobile UI.
+  Future<Map<String, dynamic>> codingAgents() => request('/api/coding-agents');
+
+  Future<Map<String, dynamic>> installCodingAgent(String id) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}/install',
+    method: 'POST',
+  );
+
+  Future<Map<String, dynamic>> checkCodingAgentUpdate(String id) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}/check-update',
+    method: 'POST',
+  );
+
+  Future<Map<String, dynamic>> deleteCodingAgent(String id) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}',
+    method: 'DELETE',
+  );
+
+  Future<Map<String, dynamic>> codingAgentConfig(
+    String id,
+    String key,
+  ) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}/config-files/${Uri.encodeComponent(key)}',
+  );
+
+  Future<Map<String, dynamic>> saveCodingAgentConfig(
+    String id,
+    String key,
+    String content,
+  ) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}/config-files/${Uri.encodeComponent(key)}',
+    method: 'PUT',
+    body: {'content': content},
+  );
+
+  Future<Map<String, dynamic>> refreshModelCache() =>
+      request('/api/hermes/provider-models/cache/refresh', method: 'POST');
+
+  Future<Map<String, dynamic>> providerEditor(String poolKey) => request(
+    '/api/hermes/config/providers/${Uri.encodeComponent(poolKey)}/editor',
+  );
+
+  Future<Map<String, dynamic>> patchProviderEditor(
+    String poolKey,
+    String revision,
+    Map<String, dynamic> values,
+  ) => request(
+    '/api/hermes/config/providers/${Uri.encodeComponent(poolKey)}/editor',
+    method: 'PATCH',
+    body: {...values, 'revision': revision},
+  );
+
+  Future<Map<String, dynamic>> testProviderEditor(
+    String poolKey,
+    Map<String, dynamic> values,
+  ) => request(
+    '/api/hermes/config/providers/${Uri.encodeComponent(poolKey)}/editor/test',
+    method: 'POST',
+    body: values,
+  );
+
+  Future<Map<String, dynamic>> refreshProviderModels(
+    String poolKey, {
+    bool confirm = false,
+  }) => request(
+    '/api/hermes/config/providers/${Uri.encodeComponent(poolKey)}/models/refresh',
+    method: 'POST',
+    body: {'confirm': confirm},
+  );
+
+  Future<Map<String, dynamic>> restoreProviderModels(String poolKey) => request(
+    '/api/hermes/config/providers/${Uri.encodeComponent(poolKey)}/models/restore',
+    method: 'POST',
+    body: const {},
+  );
+
+  Future<Map<String, dynamic>> codingAgentUpdatePolicies() =>
+      request('/api/coding-agents/update-policies');
+
+  Future<Map<String, dynamic>> setCodingAgentAutoUpdate(
+    String id,
+    bool enabled,
+  ) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}/update-policy',
+    method: 'PUT',
+    body: {'autoUpdate': enabled},
+  );
+
+  Future<Map<String, dynamic>> codingAgentMcpServers(String id) =>
+      request('/api/coding-agents/${Uri.encodeComponent(id)}/mcp/servers');
+
+  Future<Map<String, dynamic>> addCodingAgentMcpServer(
+    String id,
+    String name,
+    Map<String, dynamic> config,
+  ) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}/mcp/servers',
+    method: 'POST',
+    body: {'name': name, 'config': config},
+  );
+
+  Future<Map<String, dynamic>> testCodingAgentMcpServer(
+    String id,
+    String name,
+  ) => request(
+    '/api/coding-agents/${Uri.encodeComponent(id)}/mcp/servers/${Uri.encodeComponent(name)}/test',
+    method: 'POST',
+  );
+
+  Future<void> deleteCodingAgentMcpServer(String id, String name) async {
+    await request(
+      '/api/coding-agents/${Uri.encodeComponent(id)}/mcp/servers/${Uri.encodeComponent(name)}',
+      method: 'DELETE',
+    );
+  }
+
+  Future<void> setDefaultModel(String model, String provider) async {
+    await request(
+      '/api/hermes/config/model',
+      method: 'PUT',
+      body: {'default': model, 'provider': provider},
+    );
+  }
+
+  Future<void> addProvider({
+    required String name,
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    String apiMode = 'chat_completions',
+  }) async {
+    await request(
+      '/api/hermes/config/providers',
+      method: 'POST',
+      body: {
+        'name': name,
+        'base_url': baseUrl,
+        'api_key': apiKey,
+        'model': model,
+        'api_mode': apiMode,
+      },
+    );
+  }
+
+  Future<void> removeProvider(
+    String provider, {
+    String? source,
+    String? providerKey,
+  }) async {
+    await request(
+      '/api/hermes/config/providers/${Uri.encodeComponent(provider)}',
+      method: 'DELETE',
+      query: {
+        ...(source == null ? const <String, String>{} : {'source': source}),
+        ...(providerKey == null
+            ? const <String, String>{}
+            : {'providerKey': providerKey}),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> fetchConfig({List<String>? sections}) => request(
+    '/api/hermes/config',
+    query: {if (sections != null) 'sections': sections.join(',')},
+  );
+
+  Future<void> updateConfigSection(
+    String section,
+    Map<String, dynamic> values,
+  ) async {
+    await request(
+      '/api/hermes/config',
+      method: 'PUT',
+      body: {'section': section, 'values': values, 'restart': false},
+    );
+  }
+
+  Future<Map<String, dynamic>> auxiliaryModels() =>
+      request('/api/hermes/config/auxiliary-models');
+
+  Future<void> saveAuxiliaryModels(Map<String, dynamic> auxiliary) async {
+    await request(
+      '/api/hermes/config/auxiliary-models',
+      method: 'PUT',
+      body: {'auxiliary': auxiliary},
+    );
+  }
+
+  Future<Map<String, dynamic>> delegationModel() =>
+      request('/api/hermes/config/delegation-model');
+
+  Future<void> saveDelegationModel(Map<String, dynamic> delegation) async {
+    await request(
+      '/api/hermes/config/delegation-model',
+      method: 'PUT',
+      body: {'delegation': delegation},
+    );
+  }
+
+  Future<Map<String, dynamic>> combinationModels() =>
+      request('/api/hermes/config/moa');
+
+  Future<void> saveCombinationModels(Map<String, dynamic> moa) async {
+    await request('/api/hermes/config/moa', method: 'PUT', body: {'moa': moa});
+  }
+
+  Future<Map<String, dynamic>> usageStats({int days = 30}) =>
+      request('/api/studio/usage/stats', query: {'days': '$days'});
+
+  Future<List<Map<String, dynamic>>> logFiles() async =>
+      asList((await request('/api/studio/logs'))['files']).map(asMap).toList();
+
+  Future<List<Map<String, dynamic>>> logs(
+    String name, {
+    int lines = 100,
+    String level = '',
+  }) async => asList(
+    (await request(
+      '/api/studio/logs/${Uri.encodeComponent(name)}',
+      query: {'lines': '$lines', if (level.isNotEmpty) 'level': level},
+    ))['entries'],
+  ).map(asMap).toList();
+
+  Future<Map<String, dynamic>> performanceRuntime() =>
+      request('/api/studio/performance/runtime');
+
+  Future<Map<String, dynamic>> skillUsageStats({int days = 7}) =>
+      request('/api/hermes/skills/usage/stats', query: {'days': '$days'});
+
+  Future<Map<String, dynamic>> sttSettings() =>
+      request('/api/studio/stt/settings');
+
+  Future<Map<String, dynamic>> ttsSettings() =>
+      request('/api/studio/tts/settings');
+
+  Future<void> setActiveVoiceProvider(String kind, String provider) async {
+    await request(
+      '/api/studio/$kind/settings/active',
+      method: 'PUT',
+      body: {'provider': provider},
+    );
+  }
+
+  Future<void> deleteVoiceProvider(String kind, String provider) async {
+    await request(
+      '/api/studio/$kind/settings/${Uri.encodeComponent(provider)}',
+      method: 'DELETE',
+    );
+  }
+
+  Future<void> saveVoiceProvider(
+    String kind,
+    String provider,
+    Map<String, dynamic> settings, {
+    String apiKey = '',
+  }) async {
+    await request(
+      '/api/studio/$kind/settings/${Uri.encodeComponent(provider)}',
+      method: 'PUT',
+      body: {
+        'settings': settings,
+        if (apiKey.isNotEmpty) 'secrets': {'apiKey': apiKey},
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> sessions({int offset = 0, String search = ''}) =>
       search.isNotEmpty
       ? request(

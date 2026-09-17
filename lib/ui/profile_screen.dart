@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../state/app_controller.dart';
 import 'theme.dart';
 import 'server_screen.dart';
+import 'management_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.controller});
@@ -166,6 +167,17 @@ class ProfileScreen extends StatelessWidget {
                     subtitle: const Text('模型与密钥统一在 Studio 服务端管理'),
                     onTap: c.busy || c.working ? null : c.refreshWorkspace,
                     trailing: const Icon(Icons.chevron_right_rounded),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.admin_panel_settings_outlined),
+                    title: const Text('服务管理'),
+                    subtitle: const Text('Agent、模型、日志与服务配置'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ManagementScreen(controller: c),
+                      ),
+                    ),
                   ),
                 ]),
                 const SizedBox(height: 20),
