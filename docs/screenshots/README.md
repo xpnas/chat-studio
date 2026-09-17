@@ -1,6 +1,6 @@
 # 界面截图与复现
 
-更新时间：2026-09-16。对应源码版本：`1.0.22+23`。
+更新时间：2026-09-17。对应源码版本：`1.0.23+24`。
 
 这些 PNG 由 `test/preview_test.dart` 直接渲染应用的真实 Flutter 组件，使用确定性测试数据。不是设计稿贴图，也不是真机截图。更新界面后应重新运行此测试，不能只替换 README 文案。
 
@@ -12,7 +12,7 @@
 | `task-plan-dark.png` / `task-plan-completed.png` | 深色任务计划与全部步骤完成状态 |
 | `login.png` | Chat Studio 登录、自定义服务器、局域网 HTTP 提示 |
 | `servers.png` | 多服务器地址、Profile、登录状态与添加/删除入口 |
-| `image-preview.png` | 无标题近全屏图片、右下角轻量保存/关闭入口 |
+| `image-preview.png` | 无标题近全屏图片、右下角放大图标化下载/关闭入口 |
 | `workspace.png` | 当前服务器、绝对工作路径、远程文件与目录列表 |
 | `workspace-folders.png` | 服务器文件夹分层浏览与绝对路径选择 |
 | `home.png` | 新对话、图标 Agent 选择入口，输入框内模型和思考入口 |

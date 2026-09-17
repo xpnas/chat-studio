@@ -328,7 +328,7 @@ void main() {
         const Size(800, 600),
       );
       expect(find.byType(InteractiveViewer), findsOneWidget);
-      await tester.tap(find.text('保存'));
+      await tester.tap(find.byKey(const Key('image-preview-download')));
       await tester.pumpAndSettle();
       expect(saved, 1);
       await tester.tapAt(const Offset(400, 300));

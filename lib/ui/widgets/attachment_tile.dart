@@ -69,6 +69,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
             ? () => widget.controller.playAudioAttachment(widget.file)
             : () => showDialog<void>(
                 context: context,
+                useSafeArea: !widget.file.isImage,
                 builder: (_) => AttachmentViewer(
                   file: widget.file,
                   controller: widget.controller,
@@ -153,6 +154,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                     tooltip: '下载文件',
                     onPressed: () => showDialog<void>(
                       context: context,
+                      useSafeArea: !widget.file.isImage,
                       builder: (_) => AttachmentViewer(
                         file: widget.file,
                         controller: widget.controller,
@@ -324,9 +326,12 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
     super.dispose();
   }
 
-  Widget _imagePreview(BuildContext context) => Dialog.fullscreen(
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    child: SafeArea(
+  Widget _imagePreview(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    // The image canvas is edge-to-edge; only the floating controls observe
+    // system insets. Do not change global SystemChrome state for a dialog.
+    return Dialog.fullscreen(
+      backgroundColor: colors.surface,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -335,119 +340,156 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
               key: const Key('dismiss-image-preview'),
               behavior: HitTestBehavior.opaque,
               onTap: () => Navigator.pop(context),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 5,
-                  child: Center(
-                    child: _bytes == null
-                        ? const SizedBox.shrink()
-                        : Image.memory(
-                            _bytes!,
-                            cacheWidth: 2400,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, _, _) =>
-                                const Text('此格式暂不支持预览，可保存原文件'),
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: _bytes == null
+                      ? const SizedBox.shrink()
+                      : Image.memory(
+                          _bytes!,
+                          cacheWidth: 2400,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text('此格式暂不支持预览，可保存原文件'),
                           ),
-                  ),
+                        ),
                 ),
               ),
             ),
           ),
           if (_loading)
-            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            const IgnorePointer(
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
           if (_error != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+            IgnorePointer(
+              child: SafeArea(
+                minimum: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colors.errorContainer,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: colors.onErrorContainer),
+                    ),
+                  ),
                 ),
               ),
             ),
-          Positioned(
-            right: 8,
-            bottom: 6,
-            child: Material(
-              color: Theme.of(
-                context,
-              ).colorScheme.surface.withValues(alpha: .9),
-              borderRadius: BorderRadius.circular(24),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_saving)
-                      SizedBox(
-                        width: 130,
-                        child: LinearProgressIndicator(
-                          value: _total != null && _total! > 0
-                              ? (_received / _total!).clamp(0, 1)
-                              : null,
-                        ),
+          Positioned.fill(
+            child: SafeArea(
+              minimum: const EdgeInsets.all(16),
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.shadow.withValues(alpha: .12),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
                       ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_error != null)
-                          TextButton(
-                            onPressed: _loading ? null : _load,
-                            child: const Text(
-                              '重试',
-                              style: TextStyle(fontSize: 11),
-                            ),
-                          ),
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                          onPressed: _loading || _saving ? null : _save,
-                          icon: const Icon(Icons.download_outlined, size: 16),
-                          label: Text(
-                            _saving ? '保存中' : '保存',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        ),
-                        if (_saving && !_exporting)
-                          TextButton(
-                            onPressed: () {
-                              if (_downloadCancel?.isCompleted == false) {
-                                _downloadCancel!.complete();
-                              }
-                            },
-                            child: const Text(
-                              '取消',
-                              style: TextStyle(fontSize: 11),
-                            ),
-                          ),
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close_rounded, size: 16),
-                          label: const Text(
-                            '关闭',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                        ),
-                      ],
+                    ],
+                  ),
+                  child: Material(
+                    key: const Key('image-preview-actions'),
+                    color: colors.surfaceContainerHigh.withValues(alpha: .96),
+                    shape: StadiumBorder(
+                      side: BorderSide(
+                        color: colors.outlineVariant.withValues(alpha: .5),
+                      ),
                     ),
-                  ],
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_error != null && _bytes == null)
+                            IconButton(
+                              tooltip: '重试读取图片',
+                              onPressed: _loading ? null : _load,
+                              style: _previewButtonStyle(colors),
+                              icon: const Icon(Icons.refresh_rounded, size: 28),
+                            ),
+                          IconButton(
+                            key: const Key('image-preview-download'),
+                            tooltip: _saving
+                                ? (_exporting ? '请选择保存位置' : '取消下载')
+                                : '下载图片',
+                            style: _previewButtonStyle(colors),
+                            onPressed: _loading || _exporting
+                                ? null
+                                : _saving
+                                ? () {
+                                    if (_downloadCancel?.isCompleted == false) {
+                                      _downloadCancel!.complete();
+                                    }
+                                  }
+                                : _save,
+                            icon: _saving
+                                ? SizedBox.square(
+                                    dimension: 28,
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          value: _total != null && _total! > 0
+                                              ? (_received / _total!).clamp(
+                                                  0,
+                                                  1,
+                                                )
+                                              : null,
+                                        ),
+                                        if (!_exporting)
+                                          const Icon(
+                                            Icons.stop_rounded,
+                                            size: 14,
+                                          ),
+                                      ],
+                                    ),
+                                  )
+                                : const _PreviewGlyph(download: true),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 20,
+                            color: colors.outlineVariant.withValues(alpha: .6),
+                          ),
+                          IconButton(
+                            key: const Key('image-preview-close'),
+                            tooltip: '关闭预览',
+                            style: _previewButtonStyle(colors),
+                            onPressed: () => Navigator.pop(context),
+                            icon: const _PreviewGlyph(download: false),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         ],
       ),
-    ),
+    );
+  }
+
+  ButtonStyle _previewButtonStyle(ColorScheme colors) => IconButton.styleFrom(
+    foregroundColor: colors.primary,
+    minimumSize: const Size.square(52),
+    fixedSize: const Size.square(52),
+    padding: const EdgeInsets.all(12),
+    shape: const CircleBorder(),
   );
 
   @override
@@ -537,4 +579,65 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
             ),
           ],
         );
+}
+
+// Matching rounded 28px line icons, independent of platform glyph variants.
+class _PreviewGlyph extends StatelessWidget {
+  const _PreviewGlyph({required this.download});
+  final bool download;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    size: const Size.square(28),
+    painter: _PreviewGlyphPainter(
+      download: download,
+      color:
+          IconTheme.of(context).color ?? Theme.of(context).colorScheme.primary,
+    ),
+  );
+}
+
+class _PreviewGlyphPainter extends CustomPainter {
+  const _PreviewGlyphPainter({required this.download, required this.color});
+  final bool download;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 28, size.height / 28);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path();
+    if (download) {
+      path
+        ..moveTo(14, 4)
+        ..lineTo(14, 17)
+        ..moveTo(9, 12)
+        ..lineTo(14, 17)
+        ..lineTo(19, 12)
+        ..moveTo(5, 18)
+        ..lineTo(5, 21)
+        ..quadraticBezierTo(5, 24, 8, 24)
+        ..lineTo(20, 24)
+        ..quadraticBezierTo(23, 24, 23, 21)
+        ..lineTo(23, 18);
+    } else {
+      path
+        ..moveTo(7, 7)
+        ..lineTo(21, 21)
+        ..moveTo(21, 7)
+        ..lineTo(7, 21);
+    }
+    canvas.drawPath(path, paint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_PreviewGlyphPainter oldDelegate) =>
+      download != oldDelegate.download || color != oldDelegate.color;
 }
