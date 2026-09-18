@@ -910,9 +910,13 @@ class StudioApi {
   }
 
   Future<void> setConversationPinned(String id, bool value) async {
+    // The current Studio API uses one /pin endpoint for both operations and
+    // requires an actual JSON boolean in the request body. Do not use the
+    // legacy /unpin route: newer servers reject a missing is_pinned field.
     await request(
-      '/api/studio/sessions/${Uri.encodeComponent(id)}/${value ? 'pin' : 'unpin'}',
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/pin',
       method: 'POST',
+      body: {'is_pinned': value},
     );
   }
 

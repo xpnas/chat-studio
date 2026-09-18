@@ -65,10 +65,16 @@ void main() {
     'conversation pin and archive mutations use server-backed endpoints',
     () async {
       final requests = <http.BaseRequest>[];
+      final pinValues = <bool>[];
       final api = StudioApi(
         ServerAddress.parse('https://example.com'),
         client: MockClient((request) async {
           requests.add(request);
+          if (request.url.path.endsWith('/pin')) {
+            final payload = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(payload['is_pinned'], isA<bool>());
+            pinValues.add(payload['is_pinned'] as bool);
+          }
           return http.Response('{}', 200);
         }),
       );
@@ -83,11 +89,12 @@ void main() {
         requests.map((request) => '${request.method} ${request.url.path}'),
         [
           'POST /api/studio/sessions/session%2F1/pin',
-          'POST /api/studio/sessions/session%2F1/unpin',
+          'POST /api/studio/sessions/session%2F1/pin',
           'POST /api/studio/sessions/session%2F1/archive',
           'POST /api/studio/sessions/session%2F1/unarchive',
         ],
       );
+      expect(pinValues, [true, false]);
     },
   );
   test(
