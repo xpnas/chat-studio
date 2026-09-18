@@ -15,6 +15,7 @@ import 'widgets/chat_composer.dart';
 import 'widgets/reading_handle.dart';
 import 'widgets/reading_anchor.dart';
 import 'widgets/conversation_activity_mark.dart';
+import 'group_chat_screen.dart';
 
 class _ConnectionLine extends StatelessWidget {
   const _ConnectionLine({required this.controller});
@@ -84,6 +85,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _composerCollapsed = false, _userScrolling = false;
   String _historyFilter = 'all';
   String _historyCategory = '';
+  int _historyTab = 0;
+  List<GroupRoom> _groupRooms = const [];
+  bool _loadingGroupRooms = false;
+  String? _groupRoomsError;
   AppController get c => widget.controller;
   @override
   void initState() {
@@ -1005,11 +1010,137 @@ class _HomeScreenState extends State<HomeScreen> {
     layoutBuilder: _readingLayout,
   );
 
+  Future<void> _loadGroupRooms() async {
+    if (_loadingGroupRooms || c.api == null) return;
+    setState(() {
+      _loadingGroupRooms = true;
+      _groupRoomsError = null;
+    });
+    try {
+      final rooms = await c.api!.groupRooms();
+      if (mounted) setState(() => _groupRooms = rooms);
+    } catch (e) {
+      if (mounted) setState(() => _groupRoomsError = '$e');
+    } finally {
+      if (mounted) setState(() => _loadingGroupRooms = false);
+    }
+  }
+
+  Widget _groupRoomsView(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    if (_loadingGroupRooms && _groupRooms.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_groupRoomsError != null && _groupRooms.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_groupRoomsError!, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _loadGroupRooms,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_groupRooms.isEmpty) {
+      return Center(
+        child: Text(
+          '暂无群聊\n群聊配置请在 Web 端完成',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: colors.onSurfaceVariant, height: 1.7),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadGroupRooms,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+        itemCount: _groupRooms.length,
+        itemBuilder: (context, index) {
+          final room = _groupRooms[index];
+          return ListTile(
+            key: ValueKey('group-room:${room.id}'),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 3,
+            ),
+            leading: SizedBox(
+              width: 58,
+              height: 36,
+              child: Stack(
+                children: [
+                  for (var i = 0; i < room.agents.length && i < 3; i++)
+                    Positioned(
+                      left: i * 17,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: colors.surface,
+                          shape: BoxShape.circle,
+                        ),
+                        child: AgentAvatar(
+                          controller: c,
+                          agentId: room.agents[i].agent,
+                          size: 29,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            title: Text(
+              room.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              room.agents.isEmpty
+                  ? '群聊'
+                  : '${room.agents.length} 个 Agent · 仅支持聊天',
+              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GroupChatScreen(
+                    api: c.api!,
+                    room: room,
+                    appController: c,
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
   Widget _drawer(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    if (_historyTab == 1 && _groupRooms.isEmpty && !_loadingGroupRooms) {
+      unawaited(_loadGroupRooms());
+    }
+    if (_historyTab == 2 &&
+        !c.loadingSessions &&
+        c.conversations.every((item) => !c.isConversationArchived(item))) {
+      // History is the cross-device archive view; ask the server for archived rows too.
+      unawaited(c.refreshSessions(includeArchived: true));
+    }
     final visible = c.conversations.where((conversation) {
       final archived = c.isConversationArchived(conversation);
       final category = c.conversationCategory(conversation);
+      if (_historyTab == 0 && conversation.source == 'group_chat') return false;
+      if (_historyTab == 2) return true;
       return switch (_historyFilter) {
         'pinned' => c.isConversationPinned(conversation) && !archived,
         'archived' => archived,
@@ -1069,8 +1200,11 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _search,
+                enabled: _historyTab != 1,
                 decoration: InputDecoration(
-                  hintText: context.tr('搜索全部对话'),
+                  hintText: _historyTab == 1
+                      ? '群聊列表不支持搜索'
+                      : context.tr('搜索全部对话'),
                   prefixIcon: const Icon(Icons.search_rounded),
                   isDense: true,
                 ),
@@ -1087,12 +1221,39 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: DefaultTabController(
+                length: 3,
+                initialIndex: _historyTab,
+                child: TabBar(
+                  onTap: (value) {
+                    setState(() => _historyTab = value);
+                    if (value == 1) {
+                      unawaited(_loadGroupRooms());
+                    }
+                    if (value == 2) {
+                      unawaited(c.refreshSessions(includeArchived: true));
+                    }
+                  },
+                  tabs: const [
+                    Tab(text: '单聊'),
+                    Tab(text: '群聊'),
+                    Tab(text: '历史'),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 16, 0),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      context.tr('对话记录'),
+                      _historyTab == 1
+                          ? '群聊'
+                          : _historyTab == 2
+                          ? '全部历史'
+                          : context.tr('对话记录'),
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1100,97 +1261,105 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  PopupMenuButton<String>(
-                    tooltip: context.tr('筛选历史'),
-                    onSelected: (value) async {
-                      if (value == 'new-category') {
-                        final field = TextEditingController();
-                        final name = await showDialog<String>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text(context.tr('创建新分类')),
-                            content: TextField(
-                              controller: field,
-                              autofocus: true,
-                              maxLength: 30,
-                              decoration: InputDecoration(
-                                labelText: context.tr('分类名称'),
+                  if (_historyTab != 1)
+                    PopupMenuButton<String>(
+                      tooltip: context.tr('筛选历史'),
+                      onSelected: (value) async {
+                        if (value == 'new-category') {
+                          final field = TextEditingController();
+                          final name = await showDialog<String>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: Text(context.tr('创建新分类')),
+                              content: TextField(
+                                controller: field,
+                                autofocus: true,
+                                maxLength: 30,
+                                decoration: InputDecoration(
+                                  labelText: context.tr('分类名称'),
+                                ),
                               ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: Text(context.tr('取消')),
+                                ),
+                                FilledButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, field.text),
+                                  child: Text(context.tr('创建')),
+                                ),
+                              ],
                             ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: Text(context.tr('取消')),
-                              ),
-                              FilledButton(
-                                onPressed: () =>
-                                    Navigator.pop(context, field.text),
-                                child: Text(context.tr('创建')),
-                              ),
-                            ],
-                          ),
-                        );
-                        field.dispose();
-                        if (name != null) {
-                          await c.createConversationCategory(name);
-                        }
-                        return;
-                      }
-                      if (value.startsWith('category:')) {
-                        setState(() {
-                          _historyFilter = 'category';
-                          _historyCategory = value.substring(
-                            'category:'.length,
                           );
-                        });
-                      } else {
-                        setState(() {
-                          _historyFilter = value;
-                          _historyCategory = '';
-                        });
-                      }
-                      unawaited(
-                        c.refreshSessions(
-                          includeArchived: _historyFilter == 'archived',
-                        ),
-                      );
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'all',
-                        child: Text(context.tr('全部历史')),
-                      ),
-                      PopupMenuItem(
-                        value: 'pinned',
-                        child: Text(context.tr('置顶对话')),
-                      ),
-                      PopupMenuItem(
-                        value: 'archived',
-                        child: Text(context.tr('归档对话')),
-                      ),
-                      if (categories.isNotEmpty) const PopupMenuDivider(),
-                      for (final category in categories)
-                        PopupMenuItem(
-                          value: 'category:$category',
-                          child: Text(category),
-                        ),
-                      const PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: 'new-category',
-                        child: Text(context.tr('创建新分类')),
-                      ),
-                    ],
-                    icon: const Icon(Icons.filter_list_rounded, size: 20),
-                  ),
-                  IconButton(
-                    tooltip: context.tr('刷新记录'),
-                    onPressed: c.loadingSessions
-                        ? null
-                        : () => c.refreshSessions(
+                          field.dispose();
+                          if (name != null) {
+                            await c.createConversationCategory(name);
+                          }
+                          return;
+                        }
+                        if (value.startsWith('category:')) {
+                          setState(() {
+                            _historyFilter = 'category';
+                            _historyCategory = value.substring(
+                              'category:'.length,
+                            );
+                          });
+                        } else {
+                          setState(() {
+                            _historyFilter = value;
+                            _historyCategory = '';
+                          });
+                        }
+                        unawaited(
+                          c.refreshSessions(
                             includeArchived: _historyFilter == 'archived',
                           ),
-                    icon: const Icon(Icons.refresh_rounded, size: 20),
-                  ),
+                        );
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'all',
+                          child: Text(context.tr('全部历史')),
+                        ),
+                        PopupMenuItem(
+                          value: 'pinned',
+                          child: Text(context.tr('置顶对话')),
+                        ),
+                        PopupMenuItem(
+                          value: 'archived',
+                          child: Text(context.tr('归档对话')),
+                        ),
+                        if (categories.isNotEmpty) const PopupMenuDivider(),
+                        for (final category in categories)
+                          PopupMenuItem(
+                            value: 'category:$category',
+                            child: Text(category),
+                          ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'new-category',
+                          child: Text(context.tr('创建新分类')),
+                        ),
+                      ],
+                      icon: const Icon(Icons.filter_list_rounded, size: 20),
+                    ),
+                  if (_historyTab != 1)
+                    IconButton(
+                      tooltip: context.tr('刷新记录'),
+                      onPressed: c.loadingSessions
+                          ? null
+                          : () => c.refreshSessions(
+                              includeArchived: _historyFilter == 'archived',
+                            ),
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
+                    )
+                  else
+                    IconButton(
+                      tooltip: '刷新群聊',
+                      onPressed: _loadingGroupRooms ? null : _loadGroupRooms,
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
+                    ),
                 ],
               ),
             ),
@@ -1230,7 +1399,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             if (c.loadingSessions) const LinearProgressIndicator(minHeight: 2),
             Expanded(
-              child: visible.isEmpty
+              child: _historyTab == 1
+                  ? _groupRoomsView(context)
+                  : visible.isEmpty
                   ? Center(
                       child: Text(
                         c.conversations.isEmpty

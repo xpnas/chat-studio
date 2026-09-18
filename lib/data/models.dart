@@ -119,6 +119,188 @@ class ConversationCategory {
       );
 }
 
+class GroupAgentSummary {
+  const GroupAgentSummary({
+    required this.id,
+    required this.agentId,
+    required this.agent,
+    required this.name,
+    this.avatar = '',
+  });
+  final String id, agentId, agent, name, avatar;
+
+  factory GroupAgentSummary.fromJson(Map<String, dynamic> json) =>
+      GroupAgentSummary(
+        id: text(json['id']),
+        agentId: text(json['agentId'] ?? json['agent_id']),
+        agent: text(json['agent']).isEmpty
+            ? text(json['agentId'] ?? json['agent_id'])
+            : text(json['agent']),
+        name: text(json['name']).isEmpty
+            ? text(json['agent']).isEmpty
+                  ? text(json['agentId'] ?? json['agent_id'])
+                  : text(json['agent'])
+            : text(json['name']),
+        avatar: text(json['avatar']),
+      );
+}
+
+class GroupRoom {
+  const GroupRoom({
+    required this.id,
+    required this.name,
+    this.agents = const [],
+    this.workspace = '',
+    this.createdAt = 0,
+    this.lastActiveAt = 0,
+    this.totalTokens = 0,
+  });
+  final String id, name, workspace;
+  final List<GroupAgentSummary> agents;
+  final int createdAt, lastActiveAt, totalTokens;
+
+  factory GroupRoom.fromJson(Map<String, dynamic> json) => GroupRoom(
+    id: text(json['id']),
+    name: text(json['name']).isEmpty ? '未命名群聊' : text(json['name']),
+    workspace: text(json['workspace']),
+    createdAt: integer(json['createdAt'] ?? json['created_at']),
+    lastActiveAt: integer(json['lastActiveAt'] ?? json['last_active_at']),
+    totalTokens: integer(json['totalTokens'] ?? json['total_tokens']),
+    agents: asList(json['agents'])
+        .map((item) => GroupAgentSummary.fromJson(asMap(item)))
+        .where((item) => item.id.isNotEmpty || item.agent.isNotEmpty)
+        .toList(growable: false),
+  );
+}
+
+class GroupRoomDetail {
+  const GroupRoomDetail({
+    required this.room,
+    required this.agents,
+    required this.messages,
+    this.total = 0,
+    this.hasMore = false,
+  });
+  final GroupRoom room;
+  final List<GroupAgentSummary> agents;
+  final List<GroupChatMessage> messages;
+  final int total;
+  final bool hasMore;
+}
+
+class GroupChatMention {
+  const GroupChatMention({
+    required this.type,
+    required this.displayName,
+    this.participantId,
+  });
+  final String type, displayName;
+  final String? participantId;
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'displayName': displayName,
+    if (participantId != null && participantId!.isNotEmpty)
+      'participantId': participantId,
+  };
+}
+
+class GroupChatMessage {
+  const GroupChatMessage({
+    required this.id,
+    required this.roomId,
+    required this.senderId,
+    required this.senderName,
+    required this.content,
+    required this.timestamp,
+    this.senderType = '',
+    this.senderAgentId = '',
+    this.senderAgentType = '',
+    this.role = '',
+    this.reasoning = '',
+    this.finishReason = '',
+    this.mentions = const [],
+    this.isStreaming = false,
+  });
+  final String id, roomId, senderId, senderName, content;
+  final String senderType, senderAgentId, senderAgentType, role;
+  final String reasoning, finishReason;
+  final int timestamp;
+  final List<GroupChatMention> mentions;
+  final bool isStreaming;
+
+  bool get isAgent => senderType == 'agent' || role == 'assistant';
+
+  factory GroupChatMessage.fromJson(Map<String, dynamic> json) {
+    final rawMentions = asList(json['mentions']);
+    return GroupChatMessage(
+      id: text(json['id']),
+      roomId: text(json['roomId'] ?? json['room_id']),
+      senderId: text(json['senderId'] ?? json['sender_id']),
+      senderName: text(json['senderName'] ?? json['sender_name']).isEmpty
+          ? (text(json['role']) == 'assistant' ? 'Agent' : '我')
+          : text(json['senderName'] ?? json['sender_name']),
+      senderType: text(json['senderType'] ?? json['sender_type']),
+      senderAgentId: text(
+        json['senderAgentRecordId'] ?? json['sender_agent_record_id'],
+      ),
+      senderAgentType: text(
+        json['senderAgentType'] ?? json['sender_agent_type'],
+      ),
+      role: text(json['role']),
+      content: messageText(json['display_content'] ?? json['content']),
+      reasoning: messageText(
+        json['reasoning_content'] ??
+            json['reasoning'] ??
+            json['reasoning_details'],
+      ),
+      finishReason: text(json['finish_reason'] ?? json['finishReason']),
+      timestamp: integer(json['timestamp']),
+      mentions: rawMentions
+          .map((item) {
+            final mention = asMap(item);
+            return GroupChatMention(
+              type: text(mention['type']),
+              displayName: text(
+                mention['displayName'] ?? mention['display_name'],
+              ),
+              participantId:
+                  text(
+                    mention['participantId'] ?? mention['participant_id'],
+                  ).isEmpty
+                  ? null
+                  : text(mention['participantId'] ?? mention['participant_id']),
+            );
+          })
+          .toList(growable: false),
+      isStreaming:
+          text(json['finish_reason'] ?? json['finishReason']) == 'streaming',
+    );
+  }
+
+  GroupChatMessage copyWith({
+    String? content,
+    String? reasoning,
+    String? finishReason,
+    bool? isStreaming,
+  }) => GroupChatMessage(
+    id: id,
+    roomId: roomId,
+    senderId: senderId,
+    senderName: senderName,
+    content: content ?? this.content,
+    timestamp: timestamp,
+    senderType: senderType,
+    senderAgentId: senderAgentId,
+    senderAgentType: senderAgentType,
+    role: role,
+    reasoning: reasoning ?? this.reasoning,
+    finishReason: finishReason ?? this.finishReason,
+    mentions: mentions,
+    isStreaming: isStreaming ?? this.isStreaming,
+  );
+}
+
 class Conversation {
   const Conversation({
     required this.id,

@@ -885,6 +885,47 @@ class StudioApi {
             if (includeArchived) 'includeArchived': 'true',
           },
         );
+  Future<List<GroupRoom>> groupRooms() async {
+    final data = await request('/api/studio/group-chat/rooms');
+    return asList(data['rooms'])
+        .map((item) => GroupRoom.fromJson(asMap(item)))
+        .where((room) => room.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<GroupRoomDetail> groupRoomDetail(
+    String roomId, {
+    int offset = 0,
+    int limit = 150,
+    String? before,
+    bool history = false,
+  }) async {
+    final data = await request(
+      '/api/studio/group-chat/rooms/${Uri.encodeComponent(roomId)}',
+      query: {
+        'offset': '$offset',
+        'limit': '${limit.clamp(1, 150)}',
+        if (before != null && before.isNotEmpty) 'before': before,
+        if (history) 'history': '1',
+      },
+    );
+    final room = GroupRoom.fromJson(asMap(data['room']));
+    final agents = asList(data['agents'])
+        .map((item) => GroupAgentSummary.fromJson(asMap(item)))
+        .where((agent) => agent.id.isNotEmpty || agent.agent.isNotEmpty)
+        .toList(growable: false);
+    return GroupRoomDetail(
+      room: room,
+      agents: agents.isEmpty ? room.agents : agents,
+      messages: asList(data['messages'])
+          .map((item) => GroupChatMessage.fromJson(asMap(item)))
+          .where((message) => message.id.isNotEmpty)
+          .toList(growable: false),
+      total: integer(data['total']),
+      hasMore: flag(data['hasMore']),
+    );
+  }
+
   Future<List<ConversationCategory>> conversationCategories() async {
     final data = await request('/api/studio/session-categories');
     return asList(data['categories'])
