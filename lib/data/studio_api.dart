@@ -944,6 +944,24 @@ class StudioApi {
         query: {'path': path},
       );
 
+  Future<Map<String, dynamic>> readWorkspaceFile(String id, String path) =>
+      request(
+        '/api/studio/sessions/${Uri.encodeComponent(id)}/workspace-file/read',
+        query: {'path': path},
+      );
+
+  Future<void> writeWorkspaceFile(
+    String id,
+    String path,
+    String content,
+  ) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/workspace-file/write',
+      method: 'PUT',
+      body: {'path': path, 'content': content},
+    );
+  }
+
   Future<Map<String, dynamic>> workspaceFolders({String path = ''}) =>
       request('/api/studio/workspace/folders', query: {'path': path});
 

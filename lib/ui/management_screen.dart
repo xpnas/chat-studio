@@ -47,6 +47,7 @@ class _ManagementScreenState extends State<ManagementScreen>
   String _selectedLog = '';
   bool _refreshingCache = false;
   bool _saving = false;
+  final _providerRefreshing = <String>{};
 
   @override
   void initState() {
@@ -792,8 +793,21 @@ class _ManagementScreenState extends State<ManagementScreen>
             dense: true,
             contentPadding: const EdgeInsets.only(left: 72, right: 16),
             leading: const Icon(Icons.sync_rounded, size: 18),
-            title: Text(context.tr("刷新此 Provider 模型")),
-            onTap: () => _refreshProvider(group),
+            title: Text(
+              _providerRefreshing.contains(provider)
+                  ? context.tr("正在刷新此 Provider")
+                  : context.tr("刷新此 Provider 模型"),
+            ),
+            trailing: _providerRefreshing.contains(provider)
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _providerRefreshing.contains(provider)
+                ? null
+                : () => _refreshProvider(group),
           ),
         for (final model in models.take(80))
           ListTile(
@@ -860,10 +874,14 @@ class _ManagementScreenState extends State<ManagementScreen>
   Future<void> _refreshProvider(Map<String, dynamic> group) async {
     final api = _api;
     final poolKey = text(group['provider']);
-    if (api == null || poolKey.isEmpty) return;
-    final updatedMessage = context.tr("Provider 模型目录已更新");
+    if (api == null ||
+        poolKey.isEmpty ||
+        _providerRefreshing.contains(poolKey)) {
+      return;
+    }
+    setState(() => _providerRefreshing.add(poolKey));
     try {
-      final result = await api.refreshProviderModels(poolKey);
+      var result = await api.refreshProviderModels(poolKey);
       if (!mounted) return;
       if (flag(result['requires_confirmation'])) {
         final proceed = await showDialog<bool>(
@@ -888,13 +906,22 @@ class _ManagementScreenState extends State<ManagementScreen>
           ),
         );
         if (proceed != true) return;
-        await api.refreshProviderModels(poolKey, confirm: true);
+        result = await api.refreshProviderModels(poolKey, confirm: true);
+        if (!mounted) return;
       }
-      if (!mounted) return;
-      _message(updatedMessage);
-      await _loadAll();
+      final models = asList(result['models']).whereType<String>().toList();
+      if (models.isNotEmpty) {
+        final groups = _modelGroups.map((item) {
+          if (text(item['provider']) != poolKey) return item;
+          return {...item, 'models': models};
+        }).toList();
+        setState(() => _modelCatalog = {..._modelCatalog, 'groups': groups});
+      }
+      _message(context.tr("Provider 模型目录已更新"));
     } catch (error) {
       _message(_friendlyError(error), error: true);
+    } finally {
+      if (mounted) setState(() => _providerRefreshing.remove(poolKey));
     }
   }
 
@@ -919,6 +946,9 @@ class _ManagementScreenState extends State<ManagementScreen>
         : text(detail['api_mode']);
     final revision = text(detail['revision']);
     final editable = flag(detail['editable']);
+    String? testResult;
+    bool? testSucceeded;
+    bool testBusy = false;
     final result = await showSettingsSheet<String>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1008,6 +1038,23 @@ class _ManagementScreenState extends State<ManagementScreen>
                       ),
                     ),
                   ),
+                if (testResult != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        testResult!,
+                        style: TextStyle(
+                          color: testSucceeded == true
+                              ? Theme.of(context).colorScheme.primary
+                              : testSucceeded == false
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1018,29 +1065,43 @@ class _ManagementScreenState extends State<ManagementScreen>
             ),
             if (editable)
               OutlinedButton(
-                onPressed: () async {
-                  try {
-                    final response = await api.testProviderEditor(poolKey, {
-                      'label': label.text.trim(),
-                      'base_url': baseUrl.text.trim(),
-                      'preferred_model': model.text.trim(),
-                      'api_mode': mode,
-                      if (key.text.trim().isNotEmpty && key.text != '__CLEAR__')
-                        'api_key': key.text,
-                    });
-                    if (!context.mounted) return;
-                    _message(
-                      flag(response['success'])
-                          ? context.tr("Provider 连接测试成功")
-                          : text(response['error']).isEmpty
-                          ? context.tr("Provider 连接测试失败")
-                          : text(response['error']),
-                      error: !flag(response['success']),
-                    );
-                  } catch (error) {
-                    _message(_friendlyError(error), error: true);
-                  }
-                },
+                onPressed: testBusy
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          testBusy = true;
+                          testResult = context.tr("正在测试连接…");
+                        });
+                        try {
+                          final response = await api
+                              .testProviderEditor(poolKey, {
+                                'label': label.text.trim(),
+                                'base_url': baseUrl.text.trim(),
+                                'preferred_model': model.text.trim(),
+                                'api_mode': mode,
+                                if (key.text.trim().isNotEmpty &&
+                                    key.text != '__CLEAR__')
+                                  'api_key': key.text,
+                              });
+                          if (!context.mounted) return;
+                          setDialogState(() {
+                            testBusy = false;
+                            testSucceeded = flag(response['success']);
+                            testResult = flag(response['success'])
+                                ? context.tr("Provider 连接测试成功")
+                                : text(response['error']).isEmpty
+                                ? context.tr("Provider 连接测试失败")
+                                : text(response['error']);
+                          });
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          setDialogState(() {
+                            testBusy = false;
+                            testSucceeded = false;
+                            testResult = _friendlyError(error);
+                          });
+                        }
+                      },
                 child: Text(context.tr("测试连接")),
               ),
             FilledButton(
@@ -1555,53 +1616,53 @@ class _ManagementScreenState extends State<ManagementScreen>
       context.tr("用量"),
       context.tr("按当前 Profile 统计最近 30 天的模型、Agent 和 Token 使用情况。"),
       [
-        _metricRow(context.tr("会话"), integer(_usage['total_sessions'])),
-        _metricRow(
-          context.tr("输入 Token"),
-          integer(_usage['total_input_tokens']),
-        ),
-        _metricRow(
-          context.tr("输出 Token"),
-          integer(_usage['total_output_tokens']),
-        ),
-        _metricRow(context.tr("估算费用"), _number(_usage['total_cost'])),
+        _diagnosticChart([
+          (context.tr("会话"), _numeric(_usage['total_sessions'])),
+          (context.tr("输入 Token"), _numeric(_usage['total_input_tokens'])),
+          (context.tr("输出 Token"), _numeric(_usage['total_output_tokens'])),
+          (context.tr("估算费用"), _numeric(_usage['total_cost'])),
+        ]),
       ],
     ),
     _section(context.tr("技能用量"), context.tr("记录 Skill 加载与管理操作，不展开聊天正文。"), [
-      _metricRow(
-        context.tr("技能动作"),
-        integer(asMap(_skillsUsage['summary'])['total_skill_actions']),
-      ),
-      _metricRow(
-        context.tr("加载次数"),
-        integer(asMap(_skillsUsage['summary'])['total_skill_loads']),
-      ),
-      _metricRow(
-        context.tr("编辑次数"),
-        integer(asMap(_skillsUsage['summary'])['total_skill_edits']),
-      ),
-      _metricRow(
-        context.tr("使用过的技能"),
-        integer(asMap(_skillsUsage['summary'])['distinct_skills_used']),
-      ),
+      _diagnosticChart([
+        (
+          context.tr("技能动作"),
+          _numeric(asMap(_skillsUsage['summary'])['total_skill_actions']),
+        ),
+        (
+          context.tr("加载次数"),
+          _numeric(asMap(_skillsUsage['summary'])['total_skill_loads']),
+        ),
+        (
+          context.tr("编辑次数"),
+          _numeric(asMap(_skillsUsage['summary'])['total_skill_edits']),
+        ),
+        (
+          context.tr("使用过的技能"),
+          _numeric(asMap(_skillsUsage['summary'])['distinct_skills_used']),
+        ),
+      ]),
     ]),
     _section(context.tr("性能监控"), context.tr("需要超级管理员权限；数据来自服务端进程，不是手机性能。"), [
-      _metricRow(
-        context.tr("系统 CPU"),
-        _percent(asMap(_performance['system'])['cpuPercent']),
-      ),
-      _metricRow(
-        context.tr("系统内存"),
-        _percent(asMap(_performance['system'])['memoryPercent']),
-      ),
-      _metricRow(
-        context.tr("活动会话"),
-        integer(asMap(_performance['sessions'])['active']),
-      ),
-      _metricRow(
-        context.tr("运行会话"),
-        integer(asMap(_performance['sessions'])['running']),
-      ),
+      _diagnosticChart([
+        (
+          context.tr("系统 CPU"),
+          _numeric(asMap(_performance['system'])['cpuPercent']),
+        ),
+        (
+          context.tr("系统内存"),
+          _numeric(asMap(_performance['system'])['memoryPercent']),
+        ),
+        (
+          context.tr("活动会话"),
+          _numeric(asMap(_performance['sessions'])['active']),
+        ),
+        (
+          context.tr("运行会话"),
+          _numeric(asMap(_performance['sessions'])['running']),
+        ),
+      ], percent: true),
       ListTile(
         leading: const Icon(Icons.refresh_rounded),
         title: Text(context.tr("刷新性能数据")),
@@ -1614,6 +1675,57 @@ class _ManagementScreenState extends State<ManagementScreen>
       [_logSelector(), ..._logs.take(80).map(_logTile)],
     ),
   ]);
+
+  double _numeric(dynamic value) =>
+      value is num ? value.toDouble() : double.tryParse(text(value)) ?? 0;
+
+  Widget _diagnosticChart(
+    List<(String, double)> values, {
+    bool percent = false,
+  }) {
+    final maxValue = values.fold<double>(
+      0,
+      (max, item) => item.$2 > max ? item.$2 : max,
+    );
+    return Column(
+      children: [
+        for (final item in values)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 78,
+                  child: Text(item.$1, style: const TextStyle(fontSize: 11)),
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      minHeight: 10,
+                      value: maxValue <= 0
+                          ? 0
+                          : (item.$2 / maxValue).clamp(0, 1),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 68,
+                  child: Text(
+                    percent
+                        ? '${item.$2.toStringAsFixed(1)}%'
+                        : _number(item.$2),
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 
   Widget _logSelector() {
     if (_logFiles.isEmpty) {
@@ -1936,18 +2048,6 @@ class _ManagementScreenState extends State<ManagementScreen>
       ),
     );
   }
-
-  Widget _metricRow(String title, Object value) => ListTile(
-    dense: true,
-    title: Text(title),
-    trailing: Text(
-      '$value',
-      style: const TextStyle(fontWeight: FontWeight.w700),
-    ),
-  );
-
-  String _percent(dynamic value) =>
-      value is num ? '${value.toStringAsFixed(1)}%' : '-';
 
   String _number(dynamic value) => value is num
       ? value.toStringAsFixed(4)

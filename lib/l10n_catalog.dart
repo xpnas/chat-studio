@@ -386,6 +386,7 @@ const appEnglishCatalog = <String, String>{
       "Some older models will be removed from this provider's list. Continue?",
   "继续更新": "Continue updating",
   "Provider 模型目录已更新": "Provider model catalog updated",
+  "正在刷新此 Provider": "Refreshing this Provider",
   "显示名称": "Display name",
   "首选模型": "Preferred model",
   "替换 API Key（留空保持不变）": "Replace API key (leave blank to keep)",
@@ -688,6 +689,10 @@ const appEnglishCatalog = <String, String>{
   "独立 Python 运行时，安装与修复请使用 Studio Web 端 Runtime 管理":
       "Standalone Python runtime; install and repair it from Runtime management in Studio Web",
   "服务端内置，随 Studio 更新": "Built into the server and updated with Studio",
+  "暂不支持预览此文件类型": "This file type cannot be previewed yet",
+  "图片内容读取失败": "Failed to read image content",
+  "文件内容": "File content",
+  "复制": "Copy",
   "服务器工作区": "Server workspace",
   "刷新服务器文件": "Refresh server files",
   "尚未获取服务器工作路径": "Server working path not loaded yet",
@@ -711,4 +716,6 @@ const appEnglishCatalog = <String, String>{
   "语言": "Language",
   "语言已切换，但保存失败，重启后可能恢复原设置。":
       "Language changed, but could not be saved. It may reset after restarting.",
+  "正在测试连接…": "Testing connection…",
+  "成功": "Success",
 };

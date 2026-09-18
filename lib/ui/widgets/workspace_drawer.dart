@@ -1,5 +1,7 @@
 import '../../l10n.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
 import '../../data/models.dart';
 import '../../data/server_workspace.dart';
 import '../../data/studio_api.dart';
@@ -30,6 +32,91 @@ class WorkspaceDrawer extends StatelessWidget {
       return;
     }
     await c.chooseWorkspace(fullPath);
+  }
+
+  Future<void> _previewFile(
+    BuildContext context,
+    Map<String, dynamic> file,
+  ) async {
+    final id = controller.sessionId, api = controller.api;
+    final path = text(file['path']);
+    if (id == null || api == null || path.isEmpty) return;
+    final name = text(file['name']);
+    final mime = text(file['mime']).isNotEmpty
+        ? text(file['mime'])
+        : text(file['mimeType']);
+    final image = _isImage(name, mime);
+    final textFile = _isText(name, mime);
+    if (!image && !textFile) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.tr('暂不支持预览此文件类型'))));
+      return;
+    }
+    try {
+      final data = await api.readWorkspaceFile(id, path);
+      if (!context.mounted) return;
+      final content = text(data['content']).isNotEmpty
+          ? text(data['content'])
+          : text(data['text']);
+      if (image) {
+        final bytes = _decodeBytes(data);
+        if (bytes == null) throw StateError(context.tr('图片内容读取失败'));
+        await showDialog<void>(
+          context: context,
+          builder: (_) => Dialog(
+            child: InteractiveViewer(
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+          ),
+        );
+      } else {
+        await showDialog<void>(
+          context: context,
+          builder: (_) => _TextFileEditor(
+            title: name,
+            initialValue: content,
+            onSave: (value) => api.writeWorkspaceFile(id, path, value),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
+  bool _isImage(String name, String mime) =>
+      mime.startsWith('image/') ||
+      RegExp(
+        r'\.(png|jpe?g|gif|webp|bmp)$',
+        caseSensitive: false,
+      ).hasMatch(name);
+  bool _isText(String name, String mime) =>
+      mime.startsWith('text/') ||
+      const {
+        'application/json',
+        'application/xml',
+        'application/yaml',
+      }.contains(mime) ||
+      RegExp(
+        r'\.(txt|md|json|yaml|yml|xml|csv|log|dart|py|js|ts|html|css|sh|sql|toml|ini|conf)$',
+        caseSensitive: false,
+      ).hasMatch(name);
+
+  Uint8List? _decodeBytes(Map<String, dynamic> data) {
+    final value = text(data['base64']).isNotEmpty
+        ? text(data['base64'])
+        : text(data['content']);
+    try {
+      return base64Decode(value);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -180,11 +267,13 @@ class WorkspaceDrawer extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 11),
                           ),
-                          onTap: !dir || c.workspaceLoading || c.workspaceSaving
+                          onTap: c.workspaceLoading || c.workspaceSaving
                               ? null
-                              : () => c.refreshWorkspaceFiles(
+                              : dir
+                              ? () => c.refreshWorkspaceFiles(
                                   path: text(f['path']),
-                                ),
+                                )
+                              : () => _previewFile(context, f),
                         );
                       },
                     ),
@@ -194,6 +283,83 @@ class WorkspaceDrawer extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TextFileEditor extends StatefulWidget {
+  const _TextFileEditor({
+    required this.title,
+    required this.initialValue,
+    required this.onSave,
+  });
+  final String title, initialValue;
+  final Future<void> Function(String value) onSave;
+  @override
+  State<_TextFileEditor> createState() => _TextFileEditorState();
+}
+
+class _TextFileEditorState extends State<_TextFileEditor> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialValue,
+  );
+  bool _saving = false;
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await widget.onSave(_controller.text);
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: SizedBox(
+      width: 720,
+      height: 480,
+      child: TextField(
+        controller: _controller,
+        expands: true,
+        maxLines: null,
+        minLines: null,
+        textAlignVertical: TextAlignVertical.top,
+        decoration: InputDecoration(
+          border: const OutlineInputBorder(),
+          hintText: context.tr('文件内容'),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () =>
+            Clipboard.setData(ClipboardData(text: _controller.text)),
+        child: Text(context.tr('复制')),
+      ),
+      TextButton(
+        onPressed: _saving ? null : () => Navigator.pop(context),
+        child: Text(context.tr('取消')),
+      ),
+      FilledButton(
+        onPressed: _saving ? null : _save,
+        child: Text(context.tr('保存')),
+      ),
+    ],
+  );
 }
 
 /// `path` is an API navigation token, `fullPath` is the selected server path.
