@@ -6,6 +6,8 @@ import 'studio_api.dart';
 typedef SocketEvent = void Function(String event, Map<String, dynamic> data);
 
 abstract class ChatTransport {
+  /// Whether a socket has been created and may be reconnecting automatically.
+  bool get isStarted;
   void connect(StudioApi api, SocketEvent onEvent);
   void emit(String event, Map<String, dynamic> data);
   void dispose();
@@ -13,6 +15,8 @@ abstract class ChatTransport {
 
 class SocketChatTransport implements ChatTransport {
   io.Socket? _socket;
+  @override
+  bool get isStarted => _socket != null;
   @override
   void connect(StudioApi api, SocketEvent onEvent) {
     dispose();

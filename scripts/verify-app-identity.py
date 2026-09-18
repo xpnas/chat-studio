@@ -11,9 +11,20 @@ APP_ID = "ai.chatstudio.app"
 CHANNEL = APP_ID + "/file_export"
 SOURCE_ROOTS = {"lib", "test", "integration_test", "test_driver", "android", "ios", "scripts", "tools", ".github"}
 # These are real external protocol / repository values, never our app identity.
-PROTOCOL_VALUES = ("ekko-agent.png", "ekko-agent", "ekko_agent", "ekko", "Ekko")
+PROTOCOL_VALUES = (
+    "ekko-agent.png",
+    "ekko-agent",
+    "ekko_agent",
+    "ekko",
+    "Ekko",
+)
 EXTERNAL_FILES = {
     "lib/data/studio_protocol.dart": PROTOCOL_VALUES,
+    # These UI strings describe upstream wire/runtime names; they are not the
+    # Chat Studio client identity and must remain visible to users.
+    "lib/l10n_catalog.dart": PROTOCOL_VALUES,
+    "lib/ui/management_screen.dart": PROTOCOL_VALUES,
+    "lib/ui/widgets/settings_editors.dart": PROTOCOL_VALUES,
     "scripts/analyze-upstream.ps1": ("EKKOLearnAI/hermes-studio",),
     ".github/workflows/studio-contract.yml": ("EKKOLearnAI/hermes-studio",),
 }

@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -98,7 +99,7 @@ class _ChatComposerState extends State<ChatComposer>
           widget.input.text.isNotEmpty ||
           _attachments.isNotEmpty ||
           _remoteAttachments.isNotEmpty) {
-        setState(() => _inlineError = '请先完成当前操作或清空现有草稿，再恢复失败消息');
+        setState(() => _inlineError = context.tr("请先完成当前操作或清空现有草稿，再恢复失败消息"));
         return;
       }
       widget.input.text = c.retryInput ?? '';
@@ -118,7 +119,7 @@ class _ChatComposerState extends State<ChatComposer>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Permission prompts/pickers can be inactive; cancel active recording on background.
     if (state == AppLifecycleState.paused &&
-        (_phase == '录音中' || _phase == '准备录音')) {
+        (_phase == context.tr("录音中") || _phase == context.tr("准备录音"))) {
       _abort();
     }
   }
@@ -130,8 +131,13 @@ class _ChatComposerState extends State<ChatComposer>
     _levels = null;
     if (_cancel?.isCompleted == false) _cancel!.complete();
     _cancel = null;
-    final voice = ['录音中', '识别中', '准备录音', '取消中'].contains(_phase);
-    if (mounted) setState(() => _phase = voice ? '取消中' : '');
+    final voice = [
+      context.tr("录音中"),
+      context.tr("识别中"),
+      context.tr("准备录音"),
+      context.tr("取消中"),
+    ].contains(_phase);
+    if (mounted) setState(() => _phase = voice ? context.tr("取消中") : '');
     if (voice) {
       unawaited(
         _media.cancelRecording().catchError((Object _) {}).whenComplete(() {
@@ -189,14 +195,14 @@ class _ChatComposerState extends State<ChatComposer>
         height: MediaQuery.sizeOf(context).height * .7,
         child: Column(
           children: [
-            const Text(
-              '思考深度',
+            Text(
+              context.tr("思考深度"),
               style: TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
             ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
               child: Text(
-                '实际效果取决于服务端引擎与模型支持；更深的思考可能更慢。',
+                context.tr("实际效果取决于服务端引擎与模型支持；更深的思考可能更慢。"),
                 style: TextStyle(fontSize: 12),
               ),
             ),
@@ -207,9 +213,9 @@ class _ChatComposerState extends State<ChatComposer>
                     ListTile(
                       key: ValueKey('reasoning:${entry.key}'),
                       selected: c.reasoningEffort == entry.key,
-                      title: Text(entry.value),
+                      title: Text(context.tr(entry.value)),
                       subtitle: entry.key.isEmpty
-                          ? const Text('使用服务端 / 模型默认值')
+                          ? Text(context.tr("使用服务端 / 模型默认值"))
                           : null,
                       trailing: c.reasoningEffort == entry.key
                           ? const Icon(Icons.check_rounded)
@@ -230,7 +236,7 @@ class _ChatComposerState extends State<ChatComposer>
 
   Future<void> _pick() async {
     final operation = ++_operation;
-    setState(() => _phase = '选择附件');
+    setState(() => _phase = context.tr("选择附件"));
     try {
       final images = await showModalBottomSheet<bool>(
         context: context,
@@ -241,18 +247,18 @@ class _ChatComposerState extends State<ChatComposer>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const ListTile(
-                title: Text('添加附件'),
-                subtitle: Text('最多 5 个；单个 20 MB，总计 40 MB。发送时上传。'),
+              ListTile(
+                title: Text(context.tr("添加附件")),
+                subtitle: Text(context.tr("最多 5 个；单个 20 MB，总计 40 MB。发送时上传。")),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('图片'),
+                title: Text(context.tr("图片")),
                 onTap: () => Navigator.pop(context, true),
               ),
               ListTile(
                 leading: const Icon(Icons.attach_file_rounded),
-                title: const Text('文件'),
+                title: Text(context.tr("文件")),
                 onTap: () => Navigator.pop(context, false),
               ),
             ],
@@ -271,7 +277,7 @@ class _ChatComposerState extends State<ChatComposer>
           combined.fold<int>(0, (n, f) => n + f.size) +
                   _remoteAttachments.fold<int>(0, (n, f) => n + f.size) >
               LocalAttachment.maxTotalBytes) {
-        throw StateError('最多 5 个非空附件，单个不超过 20 MB，总计不超过 40 MB');
+        throw StateError(context.tr("最多 5 个非空附件，单个不超过 20 MB，总计不超过 40 MB"));
       }
       setState(() => _attachments.addAll(selected));
     } catch (e) {
@@ -283,7 +289,7 @@ class _ChatComposerState extends State<ChatComposer>
 
   Future<void> _voice() async {
     final operation = ++_operation;
-    setState(() => _phase = '准备录音');
+    setState(() => _phase = context.tr("准备录音"));
     try {
       await c.refreshCapabilities(includeAgents: false);
       if (!_valid(operation)) return;
@@ -291,7 +297,7 @@ class _ChatComposerState extends State<ChatComposer>
       await _media.startRecording();
       if (!_valid(operation)) return;
       setState(() {
-        _phase = '录音中';
+        _phase = context.tr("录音中");
         _seconds = 0;
         _level = 0;
         _lastAudibleSecond = 0;
@@ -300,7 +306,7 @@ class _ChatComposerState extends State<ChatComposer>
       if (_media is AudioLevelSource) {
         _levels = (_media as AudioLevelSource).audioLevels.listen(
           (level) {
-            if (!_valid(operation) || _phase != '录音中') return;
+            if (!_valid(operation) || _phase != context.tr("录音中")) return;
             setState(() {
               _level = level;
               if (level > .2) _lastAudibleSecond = _seconds;
@@ -328,13 +334,13 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   Future<void> _finishVoice() async {
-    if (_phase != '录音中') return;
+    if (_phase != context.tr("录音中")) return;
     final operation = _operation, client = c.api, provider = c.sttProvider;
     _timer?.cancel();
     _cancel = Completer<void>();
     _levels?.cancel();
     _levels = null;
-    setState(() => _phase = '识别中');
+    setState(() => _phase = context.tr("识别中"));
     try {
       final path = await _media.stopRecording();
       if (!_valid(operation) ||
@@ -351,7 +357,8 @@ class _ChatComposerState extends State<ChatComposer>
       if (!_valid(operation)) return;
       final previous = widget.input.text;
       final value = previous.isEmpty ? result : '$previous\n$result';
-      if (value.length > 64000) throw StateError('识别后文字超出输入上限，请缩短草稿');
+      if (value.length > 64000)
+        throw StateError(context.tr("识别后文字超出输入上限，请缩短草稿"));
       widget.input.value = TextEditingValue(
         text: value,
         selection: TextSelection.collapsed(offset: value.length),
@@ -372,7 +379,7 @@ class _ChatComposerState extends State<ChatComposer>
     if (c.working &&
         c.isBridgeCommand(widget.input.text) &&
         (_attachments.isNotEmpty || _remoteAttachments.isNotEmpty)) {
-      _error('运行中发送命令不能携带附件，请先移除附件');
+      _error(context.tr("运行中发送命令不能携带附件，请先移除附件"));
       return;
     }
     final operation = ++_operation, client = c.api;
@@ -380,11 +387,11 @@ class _ChatComposerState extends State<ChatComposer>
     _inlineError = null;
     _uploadProgress = 0;
     if (input.length > 64000) {
-      _error('消息不能超过 64000 字符');
+      _error(context.tr("消息不能超过 64000 字符"));
       return;
     }
     _cancel = Completer<void>();
-    setState(() => _phase = '上传中');
+    setState(() => _phase = context.tr("上传中"));
     try {
       final blocks = _attachments.isEmpty
           ? <Map<String, dynamic>>[]
@@ -408,7 +415,7 @@ class _ChatComposerState extends State<ChatComposer>
         _remoteAttachments.clear();
         HapticFeedback.lightImpact();
       } else {
-        _error('当前无法发送，草稿已保留。请恢复连接后重试。');
+        _error(context.tr("当前无法发送，草稿已保留。请恢复连接后重试。"));
       }
     } catch (e) {
       if (_valid(operation)) _error(e);
@@ -454,7 +461,7 @@ class _ChatComposerState extends State<ChatComposer>
     final stop = folded && c.working
         ? IconButton.filledTonal(
             key: const Key('collapsed-stop-button'),
-            tooltip: '停止生成',
+            tooltip: context.tr("停止生成"),
             onPressed: c.connected && c.current?.canContinue != false
                 ? () => c.stop(expectedSession: owner)
                 : null,
@@ -508,13 +515,15 @@ class _ChatComposerState extends State<ChatComposer>
                         child: Padding(
                           padding: const EdgeInsets.all(8),
                           child: Text(
-                            '$_inlineError · 草稿已保留',
+                            context.l10n.format("{0} · 草稿已保留", {
+                              '0': _inlineError,
+                            }),
                             style: TextStyle(fontSize: 12, color: colors.error),
                           ),
                         ),
                       ),
                       IconButton(
-                        tooltip: '关闭输入提示',
+                        tooltip: context.tr("关闭输入提示"),
                         onPressed: () => setState(() => _inlineError = null),
                         icon: const Icon(Icons.close, size: 16),
                       ),
@@ -582,9 +591,11 @@ class _ChatComposerState extends State<ChatComposer>
                                               File(file.path),
                                               cacheWidth: 1600,
                                               errorBuilder: (_, _, _) =>
-                                                  const Padding(
+                                                  Padding(
                                                     padding: EdgeInsets.all(24),
-                                                    child: Text('此图片格式暂不支持预览'),
+                                                    child: Text(
+                                                      context.tr("此图片格式暂不支持预览"),
+                                                    ),
                                                   ),
                                             ),
                                           ),
@@ -592,7 +603,7 @@ class _ChatComposerState extends State<ChatComposer>
                                         TextButton(
                                           onPressed: () =>
                                               Navigator.pop(context),
-                                          child: const Text('关闭预览'),
+                                          child: Text(context.tr("关闭预览")),
                                         ),
                                       ],
                                     ),
@@ -604,12 +615,15 @@ class _ChatComposerState extends State<ChatComposer>
                               : () => setState(
                                   () => _attachments.removeAt(index),
                                 ),
-                          deleteButtonTooltipMessage: '移除 ${file.name}',
+                          deleteButtonTooltipMessage: context.l10n.format(
+                            "移除 {0}",
+                            {'0': file.name},
+                          ),
                         );
                       },
                     ),
                   ),
-                if (_phase == '录音中' && _media is AudioLevelSource)
+                if (_phase == context.tr("录音中") && _media is AudioLevelSource)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Column(
@@ -621,14 +635,14 @@ class _ChatComposerState extends State<ChatComposer>
                           borderRadius: BorderRadius.circular(3),
                         ),
                         if (_seconds - _lastAudibleSecond >= 5)
-                          const Text(
-                            '暂未检测到声音，请靠近麦克风或检查权限',
+                          Text(
+                            context.tr("暂未检测到声音，请靠近麦克风或检查权限"),
                             style: TextStyle(fontSize: 11),
                           ),
                       ],
                     ),
                   ),
-                if (_phase == '上传中' && _attachments.isNotEmpty)
+                if (_phase == context.tr("上传中") && _attachments.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Column(
@@ -640,8 +654,10 @@ class _ChatComposerState extends State<ChatComposer>
                         ),
                         Text(
                           _uploadProgress >= 1
-                              ? '上传数据已发送 · 等待服务器保存'
-                              : '上传 ${(100 * _uploadProgress).floor()}%',
+                              ? context.tr("上传数据已发送 · 等待服务器保存")
+                              : context.l10n.format("上传 {0}%", {
+                                  '0': (100 * _uploadProgress).floor(),
+                                }),
                           style: const TextStyle(fontSize: 11),
                         ),
                       ],
@@ -650,7 +666,8 @@ class _ChatComposerState extends State<ChatComposer>
                 if (_busy)
                   Row(
                     children: [
-                      if (_phase != '录音中' && _phase != '选择附件')
+                      if (_phase != context.tr("录音中") &&
+                          _phase != context.tr("选择附件"))
                         const SizedBox(
                           width: 12,
                           height: 12,
@@ -659,8 +676,10 @@ class _ChatComposerState extends State<ChatComposer>
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _phase == '录音中'
-                              ? '录音 $_seconds / 60 秒 · 完成后可编辑'
+                          _phase == context.tr("录音中")
+                              ? context.l10n.format("录音 {0} / 60 秒 · 完成后可编辑", {
+                                  '0': _seconds,
+                                })
                               : _phase,
                           style: TextStyle(
                             fontSize: 12,
@@ -668,13 +687,13 @@ class _ChatComposerState extends State<ChatComposer>
                           ),
                         ),
                       ),
-                      if (_phase == '录音中')
+                      if (_phase == context.tr("录音中"))
                         TextButton(
                           onPressed: _finishVoice,
-                          child: const Text('完成'),
+                          child: Text(context.tr("完成")),
                         ),
                       IconButton(
-                        tooltip: '取消当前操作',
+                        tooltip: context.tr("取消当前操作"),
                         onPressed: _abort,
                         icon: const Icon(Icons.close_rounded, size: 18),
                       ),
@@ -692,8 +711,8 @@ class _ChatComposerState extends State<ChatComposer>
                     maxLength: 64000,
                     textCapitalization: TextCapitalization.sentences,
                     keyboardType: TextInputType.multiline,
-                    decoration: const InputDecoration(
-                      hintText: '发消息，输入 / 使用命令',
+                    decoration: InputDecoration(
+                      hintText: context.tr("发消息，输入 / 使用命令"),
                       counterText: '',
                       filled: false,
                       contentPadding: EdgeInsets.symmetric(vertical: 8),
@@ -713,7 +732,7 @@ class _ChatComposerState extends State<ChatComposer>
                       width: 44,
                       child: IconButton(
                         key: const Key('attachment-button'),
-                        tooltip: '添加文件或图片',
+                        tooltip: context.tr("添加文件或图片"),
                         onPressed: !_busy && (c.canSend || c.canQueue)
                             ? _pick
                             : null,
@@ -722,8 +741,9 @@ class _ChatComposerState extends State<ChatComposer>
                     ),
                     Expanded(
                       child: Tooltip(
-                        message:
-                            '选择模型 · ${c.selectedModel?.label ?? '服务端默认模型'}',
+                        message: context.l10n.format("选择模型 · {0}", {
+                          '0': c.selectedModel?.label ?? context.tr("服务端默认模型"),
+                        }),
                         child: TextButton(
                           key: const Key('model-button'),
                           onPressed: !_busy && c.canConfigure ? _models : null,
@@ -735,7 +755,7 @@ class _ChatComposerState extends State<ChatComposer>
                             children: [
                               Expanded(
                                 child: Text(
-                                  c.selectedModel?.label ?? '默认模型',
+                                  c.selectedModel?.label ?? context.tr("默认模型"),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 12),
@@ -748,8 +768,11 @@ class _ChatComposerState extends State<ChatComposer>
                       ),
                     ),
                     Tooltip(
-                      message:
-                          '思考深度 · ${reasoningEffortLabels[c.reasoningEffort] ?? '默认'}',
+                      message: context.l10n.format("思考深度 · {0}", {
+                        '0': context.tr(
+                          reasoningEffortLabels[c.reasoningEffort] ?? "默认",
+                        ),
+                      }),
                       child: SizedBox(
                         width: 64,
                         child: TextButton(
@@ -762,7 +785,12 @@ class _ChatComposerState extends State<ChatComposer>
                             minimumSize: const Size(0, 44),
                           ),
                           child: Text(
-                            '思考 · ${reasoningEffortLabels[c.reasoningEffort] ?? '默认'}',
+                            context.l10n.format("思考 · {0}", {
+                              '0': context.tr(
+                                reasoningEffortLabels[c.reasoningEffort] ??
+                                    "默认",
+                              ),
+                            }),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 11),
@@ -774,7 +802,9 @@ class _ChatComposerState extends State<ChatComposer>
                       width: 44,
                       child: IconButton(
                         key: const Key('voice-button'),
-                        tooltip: c.sttProvider == null ? '配置语音输入' : '语音输入',
+                        tooltip: c.sttProvider == null
+                            ? context.tr("配置语音输入")
+                            : context.tr("语音输入"),
                         onPressed: !_busy && (c.canSend || c.canQueue)
                             ? _voice
                             : null,
@@ -794,7 +824,7 @@ class _ChatComposerState extends State<ChatComposer>
                           ? SizedBox(
                               width: 40,
                               child: IconButton(
-                                tooltip: '停止生成',
+                                tooltip: context.tr("停止生成"),
                                 onPressed: c.connected
                                     ? () => c.stop(expectedSession: owner)
                                     : null,
@@ -819,10 +849,10 @@ class _ChatComposerState extends State<ChatComposer>
                                 value.text.trim().isEmpty &&
                                 _attachments.isEmpty &&
                                 _remoteAttachments.isEmpty
-                            ? '停止生成'
+                            ? context.tr("停止生成")
                             : c.working && !c.isBridgeCommand(value.text)
-                            ? '加入队列'
-                            : '发送消息',
+                            ? context.tr("加入队列")
+                            : context.tr("发送消息"),
                         onPressed:
                             c.working &&
                                 value.text.trim().isEmpty &&

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../state/conversation_state.dart';
+import '../../l10n.dart';
 
 class ConversationActivityMark extends StatelessWidget {
   const ConversationActivityMark({super.key, required this.status});
@@ -9,10 +10,11 @@ class ConversationActivityMark extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     if (status == ConversationTaskStatus.idle) return const SizedBox(width: 18);
     final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final label = context.tr(status.label);
     return Tooltip(
-      message: status.label,
+      message: label,
       child: Semantics(
-        label: status.label,
+        label: label,
         excludeSemantics: true,
         child: SizedBox(
           width: 18,

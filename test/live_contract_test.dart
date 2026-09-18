@@ -975,6 +975,9 @@ class _DisconnectableTransport implements ChatTransport {
   int runs = 0;
 
   @override
+  bool get isStarted => _listener != null;
+
+  @override
   void connect(StudioApi api, SocketEvent onEvent) {
     _listener = onEvent;
     _inner.connect(api, (event, data) {

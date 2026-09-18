@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'data/app_storage.dart';
+import 'l10n.dart';
 import 'state/app_controller.dart';
 import 'ui/home_screen.dart';
 import 'ui/login_screen.dart';
@@ -35,11 +36,12 @@ class _ChatStudioAppState extends State<ChatStudioApp>
     if (widget.initialize) unawaited(widget.controller.initialize());
   }
 
-  late (bool, bool, String) _shellState;
-  (bool, bool, String) _readShellState() => (
+  late (bool, bool, String, String) _shellState;
+  (bool, bool, String, String) _readShellState() => (
     widget.controller.booting,
     widget.controller.authenticated,
     widget.controller.theme,
+    widget.controller.language,
   );
 
   void _controllerChanged() {
@@ -79,9 +81,14 @@ class _ChatStudioAppState extends State<ChatStudioApp>
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
     },
-    locale: const Locale('zh', 'CN'),
-    supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+    locale: widget.controller.language == 'en'
+        ? const Locale('en')
+        : const Locale('zh', 'CN'),
+    supportedLocales: AppLocalizations.supportedLocales,
+    localizationsDelegates: const [
+      AppLocalizations.delegate,
+      ...GlobalMaterialLocalizations.delegates,
+    ],
     home: widget.controller.booting
         ? const Scaffold(body: Center(child: ChatStudioMark(size: 64)))
         : widget.controller.authenticated

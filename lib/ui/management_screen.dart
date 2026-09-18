@@ -1,3 +1,4 @@
+import '../l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -104,7 +105,7 @@ class _ManagementScreenState extends State<ManagementScreen>
           results[13] is Map<String, dynamic> &&
               _runtimeAgents['agents'] is List
           ? null
-          : '无法读取运行时状态，请刷新重试';
+          : context.tr("无法读取运行时状态，请刷新重试");
       _usage = _mapResult(results[9]);
       _skillsUsage = _mapResult(results[10]);
       _logFiles = _listResult(results[11]);
@@ -191,10 +192,10 @@ class _ManagementScreenState extends State<ManagementScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('服务管理'),
+      title: Text(context.tr("服务管理")),
       actions: [
         IconButton(
-          tooltip: '刷新全部数据',
+          tooltip: context.tr("刷新全部数据"),
           onPressed: _loading ? null : _loadAll,
           icon: const Icon(Icons.refresh_rounded),
         ),
@@ -202,11 +203,11 @@ class _ManagementScreenState extends State<ManagementScreen>
       bottom: TabBar(
         controller: _tabs,
         isScrollable: true,
-        tabs: const [
+        tabs: [
           Tab(icon: Icon(Icons.smart_toy_outlined), text: 'Agent'),
-          Tab(icon: Icon(Icons.hub_outlined), text: '模型'),
-          Tab(icon: Icon(Icons.monitor_heart_outlined), text: '诊断'),
-          Tab(icon: Icon(Icons.tune_rounded), text: '设置'),
+          Tab(icon: Icon(Icons.hub_outlined), text: context.tr("模型")),
+          Tab(icon: Icon(Icons.monitor_heart_outlined), text: context.tr("诊断")),
+          Tab(icon: Icon(Icons.tune_rounded), text: context.tr("设置")),
         ],
       ),
     ),
@@ -284,7 +285,7 @@ class _ManagementScreenState extends State<ManagementScreen>
   );
 
   Widget _agentsPage() => _page([
-    _section('运行时', '运行时状态与 Coding Agent 安装目录来自不同接口。', [
+    _section(context.tr("运行时"), context.tr("运行时状态与 Coding Agent 安装目录来自不同接口。"), [
       if (_runtimeError != null) ...[_EmptyRow(label: _runtimeError!)],
       if (_runtimeError == null)
         ...asList(_runtimeAgents['agents'])
@@ -301,28 +302,46 @@ class _ManagementScreenState extends State<ManagementScreen>
                   row['id'] == 'hermes' ? 'Hermes Runtime' : 'Ekko Agent',
                 ),
                 subtitle: Text(
-                  '${row['installed'] is! bool
-                      ? '状态未知'
-                      : row['installed'] == true && row['source'] != 'not-installed'
-                      ? '已安装'
-                      : '未安装或不可用'} · '
-                  '${row['id'] == 'hermes' ? '独立 Python 运行时，安装与修复请使用 Studio Web 端 Runtime 管理' : '服务端内置，随 Studio 更新'}',
+                  context.l10n.format('{0} · {1}', {
+                    '0': row['installed'] is! bool
+                        ? context.tr('状态未知')
+                        : row['installed'] == true &&
+                              row['source'] != 'not-installed'
+                        ? context.tr('已安装')
+                        : context.tr('未安装或不可用'),
+                    '1': row['id'] == 'hermes'
+                        ? context.tr(
+                            '独立 Python 运行时，安装与修复请使用 Studio Web 端 Runtime 管理',
+                          )
+                        : context.tr('服务端内置，随 Studio 更新'),
+                  }),
                 ),
               ),
             ),
     ]),
-    _section('Coding Agent 管理', '以下 CLI 的安装、更新和配置均在服务端执行；不包含 Hermes Runtime。', [
-      if (_agentsError != null) _EmptyRow(label: _agentsError!),
-      if (_agentRows.isEmpty) const _EmptyRow(label: '服务端未返回 Agent 管理数据'),
-      for (final agent in _agentRows) _agentTile(agent),
-    ]),
-    _section('移动端边界', '手机端只管理服务端运行环境，不会在手机上安装 CLI 或执行 Agent。', [
-      const ListTile(
-        leading: Icon(Icons.info_outline_rounded),
-        title: Text('配置文件与 MCP'),
-        subtitle: Text('配置文件使用全屏编辑；Hermes Runtime 与 CLI 使用不同的管理接口。'),
-      ),
-    ]),
+    _section(
+      context.tr("Coding Agent 管理"),
+      context.tr("以下 CLI 的安装、更新和配置均在服务端执行；不包含 Hermes Runtime。"),
+      [
+        if (_agentsError != null) _EmptyRow(label: _agentsError!),
+        if (_agentRows.isEmpty)
+          _EmptyRow(label: context.tr("服务端未返回 Agent 管理数据")),
+        for (final agent in _agentRows) _agentTile(agent),
+      ],
+    ),
+    _section(
+      context.tr("移动端边界"),
+      context.tr("手机端只管理服务端运行环境，不会在手机上安装 CLI 或执行 Agent。"),
+      [
+        ListTile(
+          leading: Icon(Icons.info_outline_rounded),
+          title: Text(context.tr("配置文件与 MCP")),
+          subtitle: Text(
+            context.tr("配置文件使用全屏编辑；Hermes Runtime 与 CLI 使用不同的管理接口。"),
+          ),
+        ),
+      ],
+    ),
   ]);
 
   Widget _agentTile(Map<String, dynamic> agent) {
@@ -335,7 +354,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       'grok' => 'Grok',
       'pi' => 'Pi',
       'hermes' => 'Hermes',
-      _ => id.isEmpty ? '未知 Agent' : id,
+      _ => id.isEmpty ? context.tr("未知 Agent") : id,
     };
     return ListTile(
       leading: AgentAvatar(
@@ -346,32 +365,32 @@ class _ManagementScreenState extends State<ManagementScreen>
       title: Text(name),
       subtitle: Text(
         installed
-            ? '${text(agent['version']).isEmpty ? '已安装' : text(agent['version'])} · ${text(agent['source'])}'
-            : '未安装',
+            ? '${text(agent['version']).isEmpty ? context.tr("已安装") : text(agent['version'])} · ${text(agent['source'])}'
+            : context.tr("未安装"),
       ),
       trailing: PopupMenuButton<String>(
-        tooltip: 'Agent 操作',
+        tooltip: context.tr("Agent 操作"),
         onSelected: (action) => _agentAction(id, action),
         itemBuilder: (_) => [
           if (!installed)
-            const PopupMenuItem(value: 'install', child: Text('安装')),
+            PopupMenuItem(value: 'install', child: Text(context.tr("安装"))),
           if (installed)
-            const PopupMenuItem(value: 'update', child: Text('检查更新')),
+            PopupMenuItem(value: 'update', child: Text(context.tr("检查更新"))),
           if (installed && id != 'hermes')
-            const PopupMenuItem(value: 'delete', child: Text('删除')),
+            PopupMenuItem(value: 'delete', child: Text(context.tr("删除"))),
           if (installed && id != 'hermes')
-            const PopupMenuItem(value: 'config', child: Text('编辑配置')),
+            PopupMenuItem(value: 'config', child: Text(context.tr("编辑配置"))),
           if (installed && id != 'hermes')
             PopupMenuItem(
               value: 'toggle-auto-update',
               child: Text(
                 flag(asMap(asMap(_agentPolicies['agents'])[id])['autoUpdate'])
-                    ? '关闭自动更新'
-                    : '开启自动更新',
+                    ? context.tr("关闭自动更新")
+                    : context.tr("开启自动更新"),
               ),
             ),
           if (installed && id != 'hermes')
-            const PopupMenuItem(value: 'mcp', child: Text('管理 MCP 服务')),
+            PopupMenuItem(value: 'mcp', child: Text(context.tr("管理 MCP 服务"))),
         ],
       ),
     );
@@ -389,7 +408,7 @@ class _ManagementScreenState extends State<ManagementScreen>
         asMap(asMap(_agentPolicies['agents'])[id])['autoUpdate'],
       );
       await _run(
-        current ? '自动更新已关闭' : '自动更新已开启',
+        current ? context.tr("自动更新已关闭") : context.tr("自动更新已开启"),
         () => api.setCodingAgentAutoUpdate(id, !current),
       );
       return;
@@ -402,33 +421,38 @@ class _ManagementScreenState extends State<ManagementScreen>
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('删除 Agent？'),
-          content: Text('将从服务端移除 $id，已存在的历史对话不会删除。'),
+          title: Text(context.tr("删除 Agent？")),
+          content: Text(
+            context.l10n.format("将从服务端移除 {0}，已存在的历史对话不会删除。", {'0': id}),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除'),
+              child: Text(context.tr("删除")),
             ),
           ],
         ),
       );
       if (confirmed != true) return;
-      await _run('Agent 已删除', () async {
+      await _run(context.tr("Agent 已删除"), () async {
         await api.deleteCodingAgent(id);
       });
       return;
     }
-    await _run(action == 'install' ? 'Agent 安装请求已完成' : '已完成更新检查', () async {
-      if (action == 'install') {
-        await api.installCodingAgent(id);
-      } else {
-        await api.checkCodingAgentUpdate(id);
-      }
-    });
+    await _run(
+      action == 'install' ? context.tr("Agent 安装请求已完成") : context.tr("已完成更新检查"),
+      () async {
+        if (action == 'install') {
+          await api.installCodingAgent(id);
+        } else {
+          await api.checkCodingAgentUpdate(id);
+        }
+      },
+    );
   }
 
   Future<void> _showAgentConfig(String id) async {
@@ -443,12 +467,12 @@ class _ManagementScreenState extends State<ManagementScreen>
     if (!mounted || data == null) return;
     final content = await showSettingsTextEditor(
       context: context,
-      title: '$id 配置',
+      title: context.l10n.format("{0} 配置", {'0': id}),
       label: text(data['path']).isEmpty ? key : text(data['path']),
       initialValue: text(data['content']),
     );
     if (!mounted || content == null) return;
-    await _run('Agent 配置已保存', () async {
+    await _run(context.tr("Agent 配置已保存"), () async {
       await api.saveCodingAgentConfig(id, key, content);
     });
   }
@@ -471,11 +495,11 @@ class _ManagementScreenState extends State<ManagementScreen>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => SettingsSheet(
-          title: Text('$id MCP 服务'),
+          title: Text(context.l10n.format("{0} MCP 服务", {'0': id})),
           content: SizedBox(
             width: 620,
             child: servers.isEmpty
-                ? const _EmptyRow(label: '暂无 MCP 服务')
+                ? _EmptyRow(label: context.tr("暂无 MCP 服务"))
                 : SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -490,13 +514,17 @@ class _ManagementScreenState extends State<ManagementScreen>
                               ),
                               title: Text(text(server['name'])),
                               subtitle: Text(
-                                '${text(server['transport'])} · ${integer(server['tools_registered'])}/${integer(server['tools'])} 个工具',
+                                context.l10n.format("{0} · {1}/{2} 个工具", {
+                                  '0': text(server['transport']),
+                                  '1': integer(server['tools_registered']),
+                                  '2': integer(server['tools']),
+                                }),
                               ),
                               trailing: Wrap(
                                 spacing: 0,
                                 children: [
                                   IconButton(
-                                    tooltip: '测试',
+                                    tooltip: context.tr("测试"),
                                     icon: const Icon(
                                       Icons.network_check_outlined,
                                     ),
@@ -509,9 +537,9 @@ class _ManagementScreenState extends State<ManagementScreen>
                                             );
                                         _message(
                                           flag(result['ok'])
-                                              ? 'MCP 测试成功'
+                                              ? context.tr("MCP 测试成功")
                                               : text(result['error']).isEmpty
-                                              ? 'MCP 测试失败'
+                                              ? context.tr("MCP 测试失败")
                                               : text(result['error']),
                                           error: !flag(result['ok']),
                                         );
@@ -524,7 +552,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                                     },
                                   ),
                                   IconButton(
-                                    tooltip: '删除',
+                                    tooltip: context.tr("删除"),
                                     icon: const Icon(
                                       Icons.delete_outline_rounded,
                                     ),
@@ -546,12 +574,12 @@ class _ManagementScreenState extends State<ManagementScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
+              child: Text(context.tr("关闭")),
             ),
             FilledButton.icon(
               onPressed: () => Navigator.pop(context, 'add'),
               icon: const Icon(Icons.add_rounded),
-              label: const Text('添加'),
+              label: Text(context.tr("添加")),
             ),
           ],
         ),
@@ -562,7 +590,10 @@ class _ManagementScreenState extends State<ManagementScreen>
       await _showMcpEditor(id);
     } else if (selected case final action? when action.startsWith('delete:')) {
       final name = action.substring('delete:'.length);
-      await _run('MCP 服务已删除', () => api.deleteCodingAgentMcpServer(id, name));
+      await _run(
+        context.tr("MCP 服务已删除"),
+        () => api.deleteCodingAgentMcpServer(id, name),
+      );
     }
   }
 
@@ -576,21 +607,21 @@ class _ManagementScreenState extends State<ManagementScreen>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => SettingsSheet(
-          title: const Text('添加 MCP 服务'),
+          title: Text(context.tr("添加 MCP 服务")),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: name,
                 decoration: InputDecoration(
-                  labelText: '服务名称',
+                  labelText: context.tr("服务名称"),
                   errorText: error,
                 ),
               ),
               const SizedBox(height: 12),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('编辑 MCP JSON 配置'),
+                title: Text(context.tr("编辑 MCP JSON 配置")),
                 subtitle: Text(
                   config,
                   maxLines: 3,
@@ -600,8 +631,8 @@ class _ManagementScreenState extends State<ManagementScreen>
                 onTap: () async {
                   final value = await showSettingsTextEditor(
                     context: context,
-                    title: 'MCP 配置',
-                    label: 'JSON 配置',
+                    title: context.tr("MCP 配置"),
+                    label: context.tr("JSON 配置"),
                     initialValue: config,
                     validator: validateJsonObject,
                   );
@@ -615,17 +646,17 @@ class _ManagementScreenState extends State<ManagementScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             FilledButton(
               onPressed: () {
                 if (name.text.trim().isEmpty) {
-                  update(() => error = '请输入服务名称');
+                  update(() => error = context.tr("请输入服务名称"));
                   return;
                 }
                 Navigator.pop(context, true);
               },
-              child: const Text('保存'),
+              child: Text(context.tr("保存")),
             ),
           ],
         ),
@@ -633,7 +664,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
     if (mounted && result == true) {
       await _run(
-        'MCP 服务已添加',
+        context.tr("MCP 服务已添加"),
         () => api.addCodingAgentMcpServer(
           id,
           name.text.trim(),
@@ -645,13 +676,13 @@ class _ManagementScreenState extends State<ManagementScreen>
   }
 
   Widget _modelsPage() => _page([
-    _section('通用模型', '按 Provider 分组展示，当前默认模型会固定在顶部。', [
+    _section(context.tr("通用模型"), context.tr("按 Provider 分组展示，当前默认模型会固定在顶部。"), [
       ListTile(
         leading: const Icon(Icons.cached_rounded),
-        title: const Text('刷新模型缓存'),
-        subtitle: const Text('重新读取已配置 Provider 的模型目录'),
+        title: Text(context.tr("刷新模型缓存")),
+        subtitle: Text(context.tr("重新读取已配置 Provider 的模型目录")),
         trailing: IconButton(
-          tooltip: '刷新模型缓存',
+          tooltip: context.tr("刷新模型缓存"),
           onPressed: _refreshingCache ? null : _refreshModelCache,
           icon: _refreshingCache
               ? const SizedBox.square(
@@ -664,56 +695,62 @@ class _ManagementScreenState extends State<ManagementScreen>
       for (final group in _modelGroups) _modelGroupTile(group),
       ListTile(
         leading: const Icon(Icons.add_link_rounded),
-        title: const Text('添加 Provider'),
-        subtitle: const Text('OpenAI 兼容、Anthropic 等接口由服务端保存凭据'),
+        title: Text(context.tr("添加 Provider")),
+        subtitle: Text(context.tr("OpenAI 兼容、Anthropic 等接口由服务端保存凭据")),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: _showProviderDialog,
       ),
     ]),
-    _section('辅助模型', '视觉、压缩、标题生成、委派等后台任务使用的模型。', [
-      _jsonSummary(_auxiliary['auxiliary'], empty: '暂无辅助模型配置'),
+    _section(context.tr("辅助模型"), context.tr("视觉、压缩、标题生成、委派等后台任务使用的模型。"), [
+      _jsonSummary(_auxiliary['auxiliary'], empty: context.tr("暂无辅助模型配置")),
       ListTile(
         leading: const Icon(Icons.edit_outlined),
-        title: const Text('编辑辅助模型配置'),
+        title: Text(context.tr("编辑辅助模型配置")),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _showJsonEditor(
-          '辅助模型',
+          context.tr("辅助模型"),
           _auxiliary['auxiliary'],
-          (value) =>
-              _run('辅助模型已保存', () async => _api!.saveAuxiliaryModels(value)),
+          (value) => _run(
+            context.tr("辅助模型已保存"),
+            () async => _api!.saveAuxiliaryModels(value),
+          ),
         ),
       ),
     ]),
-    _section('组合模型 / MoA', '多个参考模型协作后由聚合模型输出结果。', [
-      _jsonSummary(_combination['moa'], empty: '暂无组合模型配置'),
+    _section(context.tr("组合模型 / MoA"), context.tr("多个参考模型协作后由聚合模型输出结果。"), [
+      _jsonSummary(_combination['moa'], empty: context.tr("暂无组合模型配置")),
       ListTile(
         leading: const Icon(Icons.account_tree_outlined),
-        title: const Text('编辑组合模型'),
+        title: Text(context.tr("编辑组合模型")),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _showJsonEditor(
-          '组合模型',
+          context.tr("组合模型"),
           _combination['moa'],
-          (value) =>
-              _run('组合模型已保存', () async => _api!.saveCombinationModels(value)),
+          (value) => _run(
+            context.tr("组合模型已保存"),
+            () async => _api!.saveCombinationModels(value),
+          ),
         ),
       ),
     ]),
-    _section('委派模型', '需要把任务交给其他 Agent 时使用的服务端模型。', [
-      _jsonSummary(_delegation['delegation'], empty: '暂无委派模型配置'),
+    _section(context.tr("委派模型"), context.tr("需要把任务交给其他 Agent 时使用的服务端模型。"), [
+      _jsonSummary(_delegation['delegation'], empty: context.tr("暂无委派模型配置")),
       ListTile(
         leading: const Icon(Icons.alt_route_rounded),
-        title: const Text('编辑委派模型'),
+        title: Text(context.tr("编辑委派模型")),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _showJsonEditor(
-          '委派模型',
+          context.tr("委派模型"),
           _delegation['delegation'],
-          (value) =>
-              _run('委派模型已保存', () async => _api!.saveDelegationModel(value)),
+          (value) => _run(
+            context.tr("委派模型已保存"),
+            () async => _api!.saveDelegationModel(value),
+          ),
         ),
       ),
     ]),
-    _voiceSection('STT 语音识别', _stt, 'stt'),
-    _voiceSection('TTS 语音合成', _tts, 'tts'),
+    _voiceSection(context.tr("STT 语音识别"), _stt, 'stt'),
+    _voiceSection(context.tr("TTS 语音合成"), _tts, 'tts'),
   ]);
 
   Widget _modelGroupTile(Map<String, dynamic> group) {
@@ -732,7 +769,11 @@ class _ManagementScreenState extends State<ManagementScreen>
         text(group['label']).isEmpty ? provider : text(group['label']),
       ),
       subtitle: Text(
-        '$provider · ${models.length} 个模型${isDefault ? ' · 当前默认' : ''}',
+        context.l10n.format("{0} · {1} 个模型{2}", {
+          '0': provider,
+          '1': models.length,
+          '2': isDefault ? context.tr(" · 当前默认") : '',
+        }),
       ),
       children: [
         if (text(group['provider_key']).isNotEmpty || provider.isNotEmpty)
@@ -740,7 +781,7 @@ class _ManagementScreenState extends State<ManagementScreen>
             dense: true,
             contentPadding: const EdgeInsets.only(left: 72, right: 16),
             leading: const Icon(Icons.edit_outlined, size: 18),
-            title: const Text('编辑 Provider'),
+            title: Text(context.tr("编辑 Provider")),
             onTap: () => _showProviderEditor(group),
           ),
         if (flag(group['model_refreshable']))
@@ -748,7 +789,7 @@ class _ManagementScreenState extends State<ManagementScreen>
             dense: true,
             contentPadding: const EdgeInsets.only(left: 72, right: 16),
             leading: const Icon(Icons.sync_rounded, size: 18),
-            title: const Text('刷新此 Provider 模型'),
+            title: Text(context.tr("刷新此 Provider 模型")),
             onTap: () => _refreshProvider(group),
           ),
         for (final model in models.take(80))
@@ -765,7 +806,9 @@ class _ManagementScreenState extends State<ManagementScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(72, 4, 16, 12),
             child: Text(
-              '还有 ${models.length - 80} 个模型，请在 Web 端精细管理。',
+              context.l10n.format("还有 {0} 个模型，请在 Web 端精细管理。", {
+                '0': models.length - 80,
+              }),
               style: const TextStyle(fontSize: 12),
             ),
           ),
@@ -774,7 +817,7 @@ class _ManagementScreenState extends State<ManagementScreen>
             dense: true,
             contentPadding: const EdgeInsets.only(left: 72, right: 16),
             leading: const Icon(Icons.delete_outline_rounded, size: 18),
-            title: const Text('删除此 Provider'),
+            title: Text(context.tr("删除此 Provider")),
             onTap: () => _removeProvider(
               provider,
               text(group['provider_source']),
@@ -788,7 +831,10 @@ class _ManagementScreenState extends State<ManagementScreen>
   Future<void> _setDefaultModel(String model, String provider) async {
     final api = _api;
     if (api == null) return;
-    await _run('默认模型已更新', () => api.setDefaultModel(model, provider));
+    await _run(
+      context.tr("默认模型已更新"),
+      () => api.setDefaultModel(model, provider),
+    );
   }
 
   Future<void> _refreshModelCache() async {
@@ -797,7 +843,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     setState(() => _refreshingCache = true);
     try {
       await api.refreshModelCache();
-      _message('模型缓存刷新完成');
+      _message(context.tr("模型缓存刷新完成"));
       await _loadAll();
     } catch (error) {
       _message(_friendlyError(error), error: true);
@@ -817,20 +863,20 @@ class _ManagementScreenState extends State<ManagementScreen>
         final proceed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('确认更新模型目录'),
+            title: Text(context.tr("确认更新模型目录")),
             content: Text(
               text(result['message']).isEmpty
-                  ? '部分旧模型将从当前 Provider 列表中移除，是否继续？'
+                  ? context.tr("部分旧模型将从当前 Provider 列表中移除，是否继续？")
                   : text(result['message']),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
+                child: Text(context.tr("取消")),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('继续更新'),
+                child: Text(context.tr("继续更新")),
               ),
             ],
           ),
@@ -838,7 +884,7 @@ class _ManagementScreenState extends State<ManagementScreen>
         if (proceed != true) return;
         await api.refreshProviderModels(poolKey, confirm: true);
       }
-      _message('Provider 模型目录已更新');
+      _message(context.tr("Provider 模型目录已更新"));
       await _loadAll();
     } catch (error) {
       _message(_friendlyError(error), error: true);
@@ -879,7 +925,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                 TextField(
                   controller: label,
                   enabled: editable,
-                  decoration: const InputDecoration(labelText: '显示名称'),
+                  decoration: InputDecoration(labelText: context.tr("显示名称")),
                 ),
                 TextField(
                   controller: baseUrl,
@@ -889,7 +935,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                 TextField(
                   controller: model,
                   enabled: editable,
-                  decoration: const InputDecoration(labelText: '首选模型'),
+                  decoration: InputDecoration(labelText: context.tr("首选模型")),
                 ),
                 TextField(
                   controller: key,
@@ -897,7 +943,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                   obscureText: true,
                   decoration: InputDecoration(
                     labelText: flag(detail['credential_configured'])
-                        ? '替换 API Key（留空保持不变）'
+                        ? context.tr("替换 API Key（留空保持不变）")
                         : 'API Key',
                   ),
                 ),
@@ -905,7 +951,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                 DropdownButtonFormField<String>(
                   isExpanded: true,
                   initialValue: mode,
-                  decoration: const InputDecoration(labelText: '接口模式'),
+                  decoration: InputDecoration(labelText: context.tr("接口模式")),
                   items: const [
                     DropdownMenuItem(
                       value: 'chat_completions',
@@ -940,16 +986,16 @@ class _ManagementScreenState extends State<ManagementScreen>
                           ? () => setDialogState(() => key.text = '__CLEAR__')
                           : null,
                       icon: const Icon(Icons.key_off_outlined, size: 18),
-                      label: const Text('清除已保存的 API Key'),
+                      label: Text(context.tr("清除已保存的 API Key")),
                     ),
                   ),
                 if (!editable)
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
                       padding: EdgeInsets.only(top: 10),
                       child: Text(
-                        '此 Provider 由服务端环境变量管理，不能在此修改。',
+                        context.tr("此 Provider 由服务端环境变量管理，不能在此修改。"),
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
@@ -960,7 +1006,7 @@ class _ManagementScreenState extends State<ManagementScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             if (editable)
               OutlinedButton(
@@ -977,9 +1023,9 @@ class _ManagementScreenState extends State<ManagementScreen>
                     if (!context.mounted) return;
                     _message(
                       flag(response['success'])
-                          ? 'Provider 连接测试成功'
+                          ? context.tr("Provider 连接测试成功")
                           : text(response['error']).isEmpty
-                          ? 'Provider 连接测试失败'
+                          ? context.tr("Provider 连接测试失败")
                           : text(response['error']),
                       error: !flag(response['success']),
                     );
@@ -987,11 +1033,11 @@ class _ManagementScreenState extends State<ManagementScreen>
                     _message(_friendlyError(error), error: true);
                   }
                 },
-                child: const Text('测试连接'),
+                child: Text(context.tr("测试连接")),
               ),
             FilledButton(
               onPressed: editable ? () => Navigator.pop(context, 'save') : null,
-              child: const Text('保存'),
+              child: Text(context.tr("保存")),
             ),
           ],
         ),
@@ -1010,7 +1056,7 @@ class _ManagementScreenState extends State<ManagementScreen>
           'api_key': key.text,
         },
       };
-      await _run('Provider 已保存', () async {
+      await _run(context.tr("Provider 已保存"), () async {
         await api.patchProviderEditor(poolKey, revision, values);
       });
     }
@@ -1030,23 +1076,27 @@ class _ManagementScreenState extends State<ManagementScreen>
     final yes = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除 Provider？'),
-        content: Text('删除 $provider 后，服务端会切换到其他可用 Provider（如有）。'),
+        title: Text(context.tr("删除 Provider？")),
+        content: Text(
+          context.l10n.format("删除 {0} 后，服务端会切换到其他可用 Provider（如有）。", {
+            '0': provider,
+          }),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.tr("取消")),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
+            child: Text(context.tr("删除")),
           ),
         ],
       ),
     );
     if (yes != true) return;
     await _run(
-      'Provider 已删除',
+      context.tr("Provider 已删除"),
       () => api.removeProvider(
         provider,
         source: source.isEmpty ? null : source,
@@ -1065,14 +1115,14 @@ class _ManagementScreenState extends State<ManagementScreen>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => SettingsSheet(
-          title: const Text('添加 Provider'),
+          title: Text(context.tr("添加 Provider")),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: name,
-                  decoration: const InputDecoration(labelText: '名称'),
+                  decoration: InputDecoration(labelText: context.tr("名称")),
                 ),
                 TextField(
                   controller: url,
@@ -1085,13 +1135,13 @@ class _ManagementScreenState extends State<ManagementScreen>
                 ),
                 TextField(
                   controller: model,
-                  decoration: const InputDecoration(labelText: '默认模型'),
+                  decoration: InputDecoration(labelText: context.tr("默认模型")),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   isExpanded: true,
                   initialValue: mode,
-                  decoration: const InputDecoration(labelText: '接口模式'),
+                  decoration: InputDecoration(labelText: context.tr("接口模式")),
                   items: const [
                     DropdownMenuItem(
                       value: 'chat_completions',
@@ -1115,26 +1165,26 @@ class _ManagementScreenState extends State<ManagementScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             FilledButton(
               onPressed: () {
                 if (name.text.trim().isEmpty ||
                     url.text.trim().isEmpty ||
                     model.text.trim().isEmpty) {
-                  _message('名称、Base URL 和默认模型不能为空', error: true);
+                  _message(context.tr("名称、Base URL 和默认模型不能为空"), error: true);
                   return;
                 }
                 if (key.text.trim().isEmpty) {
                   _message(
-                    '请输入 API Key；无需密钥的 Provider 请在服务端 Web 端添加',
+                    context.tr("请输入 API Key；无需密钥的 Provider 请在服务端 Web 端添加"),
                     error: true,
                   );
                   return;
                 }
                 Navigator.pop(context, true);
               },
-              child: const Text('保存'),
+              child: Text(context.tr("保存")),
             ),
           ],
         ),
@@ -1144,7 +1194,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       final api = _api;
       if (api != null) {
         await _run(
-          'Provider 已添加',
+          context.tr("Provider 已添加"),
           () => api.addProvider(
             name: name.text.trim(),
             baseUrl: url.text.trim(),
@@ -1167,20 +1217,26 @@ class _ManagementScreenState extends State<ManagementScreen>
       rawProviders,
     ).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
     final active = text(data['activeProvider']);
-    return _section(title, '配置由服务端保存，移动端不保存 API Key。', [
+    return _section(title, context.tr("配置由服务端保存，移动端不保存 API Key。"), [
       ListTile(
         leading: Icon(
           kind == 'stt' ? Icons.mic_none_rounded : Icons.volume_up_outlined,
         ),
-        title: Text(active.isEmpty ? '未启用' : active),
-        subtitle: Text('${providers.length} 个已保存的 Provider'),
+        title: Text(active.isEmpty ? context.tr("未启用") : active),
+        subtitle: Text(
+          context.l10n.format("{0} 个已保存的 Provider", {'0': providers.length}),
+        ),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _showVoiceDialog(kind, providers, active),
       ),
       ListTile(
         leading: const Icon(Icons.add_circle_outline_rounded),
-        title: Text('添加或编辑${kind == 'stt' ? ' STT' : ' TTS'} Provider'),
-        subtitle: const Text('仅提交新的 API Key；已保存密钥不会回显'),
+        title: Text(
+          context.l10n.format("添加或编辑{0} Provider", {
+            '0': kind == 'stt' ? ' STT' : ' TTS',
+          }),
+        ),
+        subtitle: Text(context.tr("仅提交新的 API Key；已保存密钥不会回显")),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _showVoiceProviderEditor(kind, providers),
       ),
@@ -1198,7 +1254,9 @@ class _ManagementScreenState extends State<ManagementScreen>
         .toSet()
         .toList();
     if (options.isEmpty) {
-      _message('当前没有已配置的 $kind Provider，请在 Web 端先添加。');
+      _message(
+        context.l10n.format("当前没有已配置的 {0} Provider，请在 Web 端先添加。", {'0': kind}),
+      );
       return;
     }
     var selected = options.contains(active) ? active : options.first;
@@ -1206,7 +1264,11 @@ class _ManagementScreenState extends State<ManagementScreen>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => SettingsSheet(
-          title: Text(kind == 'stt' ? '选择 STT Provider' : '选择 TTS Provider'),
+          title: Text(
+            kind == 'stt'
+                ? context.tr("选择 STT Provider")
+                : context.tr("选择 TTS Provider"),
+          ),
           content: SizedBox(
             width: 440,
             child: Column(
@@ -1238,7 +1300,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                     trailing: text(provider['provider']) == 'edge'
                         ? null
                         : IconButton(
-                            tooltip: '删除 Provider',
+                            tooltip: context.tr("删除 Provider"),
                             icon: const Icon(Icons.delete_outline_rounded),
                             onPressed: () async {
                               final name = text(provider['provider']);
@@ -1255,11 +1317,11 @@ class _ManagementScreenState extends State<ManagementScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, selected),
-              child: const Text('启用'),
+              child: Text(context.tr("启用")),
             ),
           ],
         ),
@@ -1267,7 +1329,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
     if (result != null && _api != null) {
       await _run(
-        '语音 Provider 已切换',
+        context.tr("语音 Provider 已切换"),
         () => _api!.setActiveVoiceProvider(kind, result),
       );
     }
@@ -1280,7 +1342,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       text(settings['language']),
       text(settings['baseUrl']),
     ].where((value) => value.isNotEmpty);
-    return fields.isEmpty ? '使用服务端默认设置' : fields.join(' · ');
+    return fields.isEmpty ? context.tr("使用服务端默认设置") : fields.join(' · ');
   }
 
   Future<void> _deleteVoiceProvider(String kind, String provider) async {
@@ -1289,23 +1351,27 @@ class _ManagementScreenState extends State<ManagementScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除语音 Provider？'),
-        content: Text('将删除服务端 $provider 配置和该 Provider 保存的密钥。'),
+        title: Text(context.tr("删除语音 Provider？")),
+        content: Text(
+          context.l10n.format("将删除服务端 {0} 配置和该 Provider 保存的密钥。", {
+            '0': provider,
+          }),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.tr("取消")),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
+            child: Text(context.tr("删除")),
           ),
         ],
       ),
     );
     if (confirmed != true) return;
     await _run(
-      '语音 Provider 已删除',
+      context.tr("语音 Provider 已删除"),
       () => api.deleteVoiceProvider(kind, provider),
     );
   }
@@ -1359,7 +1425,11 @@ class _ManagementScreenState extends State<ManagementScreen>
             language.text = text(settings['language']);
           }
           return SettingsSheet(
-            title: Text(kind == 'stt' ? '配置 STT Provider' : '配置 TTS Provider'),
+            title: Text(
+              kind == 'stt'
+                  ? context.tr("配置 STT Provider")
+                  : context.tr("配置 TTS Provider"),
+            ),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1392,24 +1462,28 @@ class _ManagementScreenState extends State<ManagementScreen>
                   ),
                   TextField(
                     controller: baseUrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Base URL（可选）',
+                    decoration: InputDecoration(
+                      labelText: context.tr("Base URL（可选）"),
                     ),
                   ),
                   TextField(
                     controller: model,
-                    decoration: const InputDecoration(labelText: '模型（可选）'),
+                    decoration: InputDecoration(
+                      labelText: context.tr("模型（可选）"),
+                    ),
                   ),
                   if (kind == 'tts')
                     TextField(
                       controller: voice,
-                      decoration: const InputDecoration(
-                        labelText: '音色 / Voice（可选）',
+                      decoration: InputDecoration(
+                        labelText: context.tr("音色 / Voice（可选）"),
                       ),
                     ),
                   TextField(
                     controller: language,
-                    decoration: const InputDecoration(labelText: '语言（可选）'),
+                    decoration: InputDecoration(
+                      labelText: context.tr("语言（可选）"),
+                    ),
                   ),
                   if (provider != 'edge' && provider != 'local')
                     TextField(
@@ -1418,7 +1492,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                       decoration: InputDecoration(
                         labelText: existing == null
                             ? 'API Key'
-                            : '替换 API Key（留空保持不变）',
+                            : context.tr("替换 API Key（留空保持不变）"),
                       ),
                     ),
                 ],
@@ -1427,11 +1501,11 @@ class _ManagementScreenState extends State<ManagementScreen>
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
+                child: Text(context.tr("取消")),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('保存并启用'),
+                child: Text(context.tr("保存并启用")),
               ),
             ],
           );
@@ -1447,7 +1521,7 @@ class _ManagementScreenState extends State<ManagementScreen>
         if (language.text.trim().isNotEmpty) 'language': language.text.trim(),
       };
       await _run(
-        '语音 Provider 已保存并启用',
+        context.tr("语音 Provider 已保存并启用"),
         () => _api!.saveVoiceProvider(
           kind,
           provider,
@@ -1464,56 +1538,73 @@ class _ManagementScreenState extends State<ManagementScreen>
   }
 
   Widget _diagnosticsPage() => _page([
-    _section('用量', '按当前 Profile 统计最近 30 天的模型、Agent 和 Token 使用情况。', [
-      _metricRow('会话', integer(_usage['total_sessions'])),
-      _metricRow('输入 Token', integer(_usage['total_input_tokens'])),
-      _metricRow('输出 Token', integer(_usage['total_output_tokens'])),
-      _metricRow('估算费用', _number(_usage['total_cost'])),
-    ]),
-    _section('技能用量', '记录 Skill 加载与管理操作，不展开聊天正文。', [
+    _section(
+      context.tr("用量"),
+      context.tr("按当前 Profile 统计最近 30 天的模型、Agent 和 Token 使用情况。"),
+      [
+        _metricRow(context.tr("会话"), integer(_usage['total_sessions'])),
+        _metricRow(
+          context.tr("输入 Token"),
+          integer(_usage['total_input_tokens']),
+        ),
+        _metricRow(
+          context.tr("输出 Token"),
+          integer(_usage['total_output_tokens']),
+        ),
+        _metricRow(context.tr("估算费用"), _number(_usage['total_cost'])),
+      ],
+    ),
+    _section(context.tr("技能用量"), context.tr("记录 Skill 加载与管理操作，不展开聊天正文。"), [
       _metricRow(
-        '技能动作',
+        context.tr("技能动作"),
         integer(asMap(_skillsUsage['summary'])['total_skill_actions']),
       ),
       _metricRow(
-        '加载次数',
+        context.tr("加载次数"),
         integer(asMap(_skillsUsage['summary'])['total_skill_loads']),
       ),
       _metricRow(
-        '编辑次数',
+        context.tr("编辑次数"),
         integer(asMap(_skillsUsage['summary'])['total_skill_edits']),
       ),
       _metricRow(
-        '使用过的技能',
+        context.tr("使用过的技能"),
         integer(asMap(_skillsUsage['summary'])['distinct_skills_used']),
       ),
     ]),
-    _section('性能监控', '需要超级管理员权限；数据来自服务端进程，不是手机性能。', [
+    _section(context.tr("性能监控"), context.tr("需要超级管理员权限；数据来自服务端进程，不是手机性能。"), [
       _metricRow(
-        '系统 CPU',
+        context.tr("系统 CPU"),
         _percent(asMap(_performance['system'])['cpuPercent']),
       ),
       _metricRow(
-        '系统内存',
+        context.tr("系统内存"),
         _percent(asMap(_performance['system'])['memoryPercent']),
       ),
-      _metricRow('活动会话', integer(asMap(_performance['sessions'])['active'])),
-      _metricRow('运行会话', integer(asMap(_performance['sessions'])['running'])),
+      _metricRow(
+        context.tr("活动会话"),
+        integer(asMap(_performance['sessions'])['active']),
+      ),
+      _metricRow(
+        context.tr("运行会话"),
+        integer(asMap(_performance['sessions'])['running']),
+      ),
       ListTile(
         leading: const Icon(Icons.refresh_rounded),
-        title: const Text('刷新性能数据'),
+        title: Text(context.tr("刷新性能数据")),
         onTap: _loadAll,
       ),
     ]),
-    _section('服务日志', '按文件查看最近日志，便于定位断网、Agent 和 Provider 问题.', [
-      _logSelector(),
-      ..._logs.take(80).map(_logTile),
-    ]),
+    _section(
+      context.tr("服务日志"),
+      context.tr("按文件查看最近日志，便于定位断网、Agent 和 Provider 问题."),
+      [_logSelector(), ..._logs.take(80).map(_logTile)],
+    ),
   ]);
 
   Widget _logSelector() {
     if (_logFiles.isEmpty) {
-      return const _EmptyRow(label: '暂无可读日志或权限不足');
+      return _EmptyRow(label: context.tr("暂无可读日志或权限不足"));
     }
     final items = _logFiles
         .map(
@@ -1533,9 +1624,9 @@ class _ManagementScreenState extends State<ManagementScreen>
         initialValue: items.any((item) => item.value == _selectedLog)
             ? _selectedLog
             : null,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           prefixIcon: Icon(Icons.description_outlined),
-          labelText: '日志文件',
+          labelText: context.tr("日志文件"),
         ),
         items: items,
         onChanged: (value) {
@@ -1580,90 +1671,113 @@ class _ManagementScreenState extends State<ManagementScreen>
   }
 
   Widget _settingsPage() => _page([
-    _section('显示与聊天', '与 Web 端 Profile 配置同步，保存后由服务端生效。', [
-      _switchRow(
-        '流式输出',
-        'display',
-        'streaming',
-        flag(asMap(_config['display'])['streaming']),
-      ),
-      _switchRow(
-        '显示思考过程',
-        'display',
-        'show_reasoning',
-        flag(asMap(_config['display'])['show_reasoning']),
-      ),
-      _switchRow(
-        '显示费用',
-        'display',
-        'show_cost',
-        flag(asMap(_config['display'])['show_cost']),
-      ),
-      _switchRow(
-        '启用记忆',
-        'memory',
-        'memory_enabled',
-        flag(asMap(_config['memory'])['memory_enabled']),
-      ),
-      _switchRow(
-        '隐私脱敏',
-        'privacy',
-        'redact_pii',
-        flag(asMap(_config['privacy'])['redact_pii']),
-      ),
-    ]),
-    if (_configError != null)
-      ErrorNotice(message: '服务配置读取失败：$_configError', onDismiss: _loadAll),
-    _section('运行参数', '当前 Profile 的配置策略，不代表当前会话已经发生压缩。', [
-      ListTile(
-        leading: const Icon(Icons.speed_outlined),
-        title: const Text('最大运行步数'),
-        subtitle: Text('${integer(asMap(_config['agent'])['max_turns'])} 步'),
-        trailing: const Icon(Icons.edit_outlined),
-        onTap: _saving || _configError != null
-            ? null
-            : () => _showNumberConfig(
-                'agent',
-                'max_turns',
-                integer(asMap(_config['agent'])['max_turns']),
-              ),
-      ),
-      ListTile(
-        key: const Key('compression-settings'),
-        leading: const Icon(Icons.compress_outlined),
-        title: const Text('上下文自动压缩'),
-        subtitle: Text(
-          _configError != null
-              ? '状态未知 · 配置读取失败'
-              : CompressionSettings.fromConfig(_config).summary,
+    _section(
+      context.tr("显示与聊天"),
+      context.tr("与 Web 端 Profile 配置同步，保存后由服务端生效。"),
+      [
+        _switchRow(
+          context.tr("流式输出"),
+          'display',
+          'streaming',
+          flag(asMap(_config['display'])['streaming']),
         ),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: _saving || _configError != null
-            ? null
-            : _showCompressionSettings,
+        _switchRow(
+          context.tr("显示思考过程"),
+          'display',
+          'show_reasoning',
+          flag(asMap(_config['display'])['show_reasoning']),
+        ),
+        _switchRow(
+          context.tr("显示费用"),
+          'display',
+          'show_cost',
+          flag(asMap(_config['display'])['show_cost']),
+        ),
+        _switchRow(
+          context.tr("启用记忆"),
+          'memory',
+          'memory_enabled',
+          flag(asMap(_config['memory'])['memory_enabled']),
+        ),
+        _switchRow(
+          context.tr("隐私脱敏"),
+          'privacy',
+          'redact_pii',
+          flag(asMap(_config['privacy'])['redact_pii']),
+        ),
+      ],
+    ),
+    if (_configError != null)
+      ErrorNotice(
+        message: context.l10n.format("服务配置读取失败：{0}", {'0': _configError}),
+        onDismiss: _loadAll,
       ),
-    ]),
-    _section('高级服务配置', '完整配置仍由服务端保存；此处可编辑移动端未单独展开的字段。', [
+    _section(
+      context.tr("运行参数"),
+      context.tr("当前 Profile 的配置策略，不代表当前会话已经发生压缩。"),
+      [
+        ListTile(
+          leading: const Icon(Icons.speed_outlined),
+          title: Text(context.tr("最大运行步数")),
+          subtitle: Text(
+            context.l10n.format("{0} 步", {
+              '0': integer(asMap(_config['agent'])['max_turns']),
+            }),
+          ),
+          trailing: const Icon(Icons.edit_outlined),
+          onTap: _saving || _configError != null
+              ? null
+              : () => _showNumberConfig(
+                  'agent',
+                  'max_turns',
+                  integer(asMap(_config['agent'])['max_turns']),
+                ),
+        ),
+        ListTile(
+          key: const Key('compression-settings'),
+          leading: const Icon(Icons.compress_outlined),
+          title: Text(context.tr("上下文自动压缩")),
+          subtitle: Text(
+            _configError != null
+                ? context.tr("状态未知 · 配置读取失败")
+                : _compressionSummary(CompressionSettings.fromConfig(_config)),
+          ),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: _saving || _configError != null
+              ? null
+              : _showCompressionSettings,
+        ),
+      ],
+    ),
+    _section(
+      context.tr("高级服务配置"),
+      context.tr("完整配置仍由服务端保存；此处可编辑移动端未单独展开的字段。"),
+      [
+        ListTile(
+          leading: const Icon(Icons.data_object_rounded),
+          title: Text(context.tr("编辑完整服务配置")),
+          subtitle: Text(context.tr("显示、记忆、隐私、代理和平台配置等")),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: _saving || _configError != null
+              ? null
+              : () => _showJsonEditor(
+                  context.tr("完整服务配置"),
+                  _config,
+                  _saveFullConfig,
+                ),
+        ),
+      ],
+    ),
+    _section(context.tr("权限说明"), context.tr("以下能力由服务端角色控制。移动端不会绕过权限。"), [
       ListTile(
-        leading: const Icon(Icons.data_object_rounded),
-        title: const Text('编辑完整服务配置'),
-        subtitle: const Text('显示、记忆、隐私、代理和平台配置等'),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: _saving || _configError != null
-            ? null
-            : () => _showJsonEditor('完整服务配置', _config, _saveFullConfig),
-      ),
-    ]),
-    _section('权限说明', '以下能力由服务端角色控制。移动端不会绕过权限。', [
-      const ListTile(
         leading: Icon(Icons.admin_panel_settings_outlined),
-        title: Text('管理员'),
-        subtitle: Text('可写 Provider、模型和 Profile 配置，具体以服务端鉴权结果为准。'),
+        title: Text(context.tr("管理员")),
+        subtitle: Text(context.tr("可写 Provider、模型和 Profile 配置，具体以服务端鉴权结果为准。")),
       ),
-      const ListTile(
+      ListTile(
         leading: Icon(Icons.security_outlined),
-        title: Text('超级管理员'),
-        subtitle: Text('可查看服务性能与系统级诊断。'),
+        title: Text(context.tr("超级管理员")),
+        subtitle: Text(context.tr("可查看服务性能与系统级诊断。")),
       ),
     ]),
   ]);
@@ -1675,7 +1789,7 @@ class _ManagementScreenState extends State<ManagementScreen>
         onChanged: _saving || _configError != null
             ? null
             : (next) => _run(
-                '$title已更新',
+                context.l10n.format("{0}已更新", {'0': title}),
                 () => _api!.updateConfigSection(section, {key: next}),
               ),
       );
@@ -1683,7 +1797,7 @@ class _ManagementScreenState extends State<ManagementScreen>
   Future<void> _saveFullConfig(Map<String, dynamic> value) async {
     final api = _api;
     if (api == null) return;
-    await _run('完整服务配置已保存', () async {
+    await _run(context.tr("完整服务配置已保存"), () async {
       for (final entry in value.entries) {
         if (entry.value is Map) {
           await api.updateConfigSection(
@@ -1692,6 +1806,16 @@ class _ManagementScreenState extends State<ManagementScreen>
           );
         }
       }
+    });
+  }
+
+  String _compressionSummary(CompressionSettings settings) {
+    final enabled = context.tr(settings.enabled ? '已启用' : '已关闭');
+    final defaultText = settings.defaultEnabled ? context.tr('（服务端默认）') : '';
+    return context.l10n.format('{0}{1} · 阈值 {2}%', {
+      '0': enabled,
+      '1': defaultText,
+      '2': settings.percent,
     });
   }
 
@@ -1706,7 +1830,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
     if (!mounted || values == null) return;
     await _run(
-      '上下文压缩策略已保存',
+      context.tr("上下文压缩策略已保存"),
       () => api.updateConfigSection('compression', values),
     );
   }
@@ -1724,27 +1848,30 @@ class _ManagementScreenState extends State<ManagementScreen>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => SettingsSheet(
-          title: const Text('最大运行步数'),
+          title: Text(context.tr("最大运行步数")),
           content: TextField(
             controller: input,
             keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: '步数', errorText: error),
+            decoration: InputDecoration(
+              labelText: context.tr("步数"),
+              errorText: error,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             FilledButton(
               onPressed: () {
                 final value = int.tryParse(input.text.trim());
                 if (value == null || value <= 0) {
-                  update(() => error = '请输入大于 0 的整数');
+                  update(() => error = context.tr("请输入大于 0 的整数"));
                   return;
                 }
                 Navigator.pop(context, value);
               },
-              child: const Text('保存'),
+              child: Text(context.tr("保存")),
             ),
           ],
         ),
@@ -1752,7 +1879,10 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
     input.dispose();
     if (mounted && value != null) {
-      await _run('配置已保存', () => api.updateConfigSection(section, {key: value}));
+      await _run(
+        context.tr("配置已保存"),
+        () => api.updateConfigSection(section, {key: value}),
+      );
     }
   }
 
@@ -1764,7 +1894,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     final content = await showSettingsTextEditor(
       context: context,
       title: title,
-      label: 'JSON 配置',
+      label: context.tr("JSON 配置"),
       initialValue: _prettyJson(value),
       validator: validateJsonObject,
     );

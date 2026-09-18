@@ -1,3 +1,4 @@
+import '../l10n.dart';
 import 'package:flutter/material.dart';
 
 const chatstudioGreen = Color(0xFF285B4B);
@@ -162,7 +163,7 @@ class ErrorNotice extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: '关闭提示',
+              tooltip: context.tr("关闭提示"),
               onPressed: onDismiss,
               icon: const Icon(Icons.close_rounded, size: 18),
             ),

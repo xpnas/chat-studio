@@ -365,6 +365,7 @@ class AppController extends ChangeNotifier {
   String? sttProvider;
   String voiceHint = '请在服务端配置语音识别（STT）；仅配置 TTS 不能语音输入';
   int get chatRevision => _navigationRevision;
+  String language = 'zh';
   String theme = 'system';
   String serverInput = '';
   bool savedLocalHttp = false;
@@ -544,6 +545,8 @@ class AppController extends ChangeNotifier {
   Future<void> initialize() async {
     final epoch = ++_epoch;
     try {
+      final savedLanguage = await storage.readLanguage();
+      language = savedLanguage == 'en' ? 'en' : 'zh';
       theme = await storage.readTheme();
       servers = await storage.readServers();
       final saved = await storage.readSession();
@@ -1254,7 +1257,10 @@ class AppController extends ChangeNotifier {
     if (sessionId == null) unawaited(refreshAgents());
     if (connected) {
       _recoverSessions();
-    } else {
+    } else if (!transport.isStarted) {
+      // A started Socket.IO client already has automatic reconnect enabled;
+      // rebuilding it here causes needless disconnect/reconnect flashes when
+      // returning from the background.
       reconnect();
     }
   }
@@ -1292,13 +1298,14 @@ class AppController extends ChangeNotifier {
         state.cancelTimers();
         state.syncing = false;
       }
-      if (event == 'connection.error') {
-        if (text(data['error']).toLowerCase().contains('auth')) {
-          unawaited(logout(expired: true));
-          return;
-        }
-        error = '聊天连接失败，请检查 WebSocket 代理和 Profile 权限';
+      if (event == 'connection.error' &&
+          text(data['error']).toLowerCase().contains('auth')) {
+        unawaited(logout(expired: true));
+        return;
       }
+      // Socket.IO retries transient failures automatically. Keep the chat
+      // readable and let the thin AppBar line communicate the transient
+      // state instead of interrupting the conversation with a banner.
       _notify();
       return;
     }
@@ -1753,6 +1760,13 @@ class AppController extends ChangeNotifier {
       busy = false;
       _notify();
     }
+  }
+
+  Future<void> setLanguage(String value) async {
+    if (!const ['zh', 'en'].contains(value) || value == language) return;
+    language = value;
+    _notify();
+    await _writeStorage(() => storage.saveLanguage(value));
   }
 
   Future<void> setTheme(String value) async {

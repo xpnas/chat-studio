@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'package:flutter/material.dart';
 import '../../data/task_plan.dart';
 
@@ -33,15 +34,18 @@ class TaskPlanCard extends StatelessWidget {
               color: colors.onSurfaceVariant,
             ),
             const SizedBox(width: 7),
-            const Expanded(
+            Expanded(
               child: Text(
-                '任务计划',
+                context.tr("任务计划"),
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
             ),
             const SizedBox(width: 6),
             Text(
-              '${plan.completed}/${plan.steps.length} 已完成',
+              context.l10n.format("{0}/{1} 已完成", {
+                '0': plan.completed,
+                '1': plan.steps.length,
+              }),
               style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
             ),
           ],
@@ -57,15 +61,17 @@ class TaskPlanCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
                 color: colors.primary.withValues(alpha: .65),
                 backgroundColor: colors.onSurface.withValues(alpha: .06),
-                semanticsLabel: '计划完成进度',
+                semanticsLabel: context.tr("计划完成进度"),
                 semanticsValue:
                     '${(100 * plan.completed / plan.steps.length).round()}%',
               ),
               const SizedBox(height: 5),
               Text(
                 plan.currentStep == null
-                    ? plan.stateLabel
-                    : '进行中 · ${plan.currentStep!.title}',
+                    ? context.tr(plan.stateLabel)
+                    : context.l10n.format("进行中 · {0}", {
+                        '0': plan.currentStep!.title,
+                      }),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -112,10 +118,10 @@ class TaskPlanCard extends StatelessWidget {
                   const SizedBox(width: 7),
                   Text(
                     step.status == 'completed'
-                        ? '已完成'
+                        ? context.tr("已完成")
                         : step.status == 'in_progress' && plan.isRunning
-                        ? '进行中'
-                        : '未完成',
+                        ? context.tr("进行中")
+                        : context.tr("未完成"),
                     style: TextStyle(
                       fontSize: 10,
                       height: 1.6,

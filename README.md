@@ -1,5 +1,7 @@
 # Chat Studio
 
+[中文](README.md) | [English](README.en.md)
+
 Android / iOS 上的轻量 Hermes Studio 客户端。面向 **hermes-studio v1.0.3** 的真实协议实现，Flutter 独立 UI，**不是 WebView 套壳**。
 
 > 当前交付：双端源码、Android 已签名 Release APK、GitHub 双端构建及可选签名流程。Windows 本机已完成 Android 编译和真实服务协议联调；iOS 尚需 GitHub macOS Runner / Xcode 验证，不把未签名 `.app` 称为可安装 IPA。
@@ -70,7 +72,7 @@ Flutter **3.44.9** / Dart **3.12.2**，Material 3 + 平台输入法、系统安�
 
 - Android：**7.0+ / API 24+**，compile/target SDK 36，JDK 17。
 - iOS：项目设置 **15.0+**，Swift Package Manager，签名打包需要 macOS + Xcode 和 Apple 开发者资料。
-- 当前界面以简体中文为主；没有宣称完成真机帧率、能耗或全设备兼容性验证。
+- 界面支持简体中文和 English，可在登录页或「个人信息 → 偏好 → 语言」中切换并持久化；没有宣称完成真机帧率、能耗或全设备兼容性验证。
 
 ## 快速开始
 

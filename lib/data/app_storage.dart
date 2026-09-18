@@ -11,6 +11,8 @@ abstract class AppStorage {
   Future<List<Map<String, dynamic>>> readServers();
   Future<void> saveServers(List<Map<String, dynamic>> servers);
   Future<String> deviceId();
+  Future<String> readLanguage();
+  Future<void> saveLanguage(String language);
   Future<String> readTheme();
   Future<void> saveTheme(String theme);
   Future<Map<String, dynamic>?> readChoice(String scope);
@@ -21,6 +23,17 @@ abstract class AppStorage {
 
 class SecureAppStorage implements AppStorage {
   final _secure = const FlutterSecureStorage();
+  @override
+  Future<String> readLanguage() async =>
+      (await SharedPreferences.getInstance()).getString('language') ?? 'zh';
+  @override
+  Future<void> saveLanguage(String language) async {
+    await (await SharedPreferences.getInstance()).setString(
+      'language',
+      language,
+    );
+  }
+
   static const _session = 'chatstudio.session.v1';
   @override
   Future<List<Map<String, dynamic>>> readServers() async {

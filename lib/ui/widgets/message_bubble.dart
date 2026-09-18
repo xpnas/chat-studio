@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'chat_text_style.dart';
 import 'task_plan_card.dart';
 import 'package:flutter/material.dart';
@@ -47,16 +48,16 @@ class MessageBubble extends StatelessWidget {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('打开外部链接？'),
+        title: Text(context.tr("打开外部链接？")),
         content: SelectableText(uri.toString()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.tr("取消")),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('在浏览器打开'),
+            child: Text(context.tr("在浏览器打开")),
           ),
         ],
       ),
@@ -70,13 +71,13 @@ class MessageBubble extends StatelessWidget {
         if (!opened && context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('无法打开链接')));
+          ).showSnackBar(SnackBar(content: Text(context.tr("无法打开链接"))));
         }
       } catch (_) {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('无法打开链接')));
+          ).showSnackBar(SnackBar(content: Text(context.tr("无法打开链接"))));
         }
       }
     }
@@ -123,7 +124,7 @@ class MessageBubble extends StatelessWidget {
                         const SizedBox(width: 9),
                         Text(
                           message.role == 'command'
-                              ? '命令'
+                              ? context.tr("命令")
                               : AgentIdentity.current(controller).name,
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
@@ -157,7 +158,9 @@ class MessageBubble extends StatelessWidget {
                           collapsedShape: const Border(),
                           childrenPadding: const EdgeInsets.only(bottom: 4),
                           title: Text(
-                            message.pending ? '思考中…' : '思考过程',
+                            message.pending
+                                ? context.tr("思考中…")
+                                : context.tr("思考过程"),
                             style: TextStyle(
                               fontSize: 13,
                               color: colors.onSurfaceVariant,
@@ -183,8 +186,18 @@ class MessageBubble extends StatelessWidget {
                           collapsedShape: const Border(),
                           title: Text(
                             message.tools.every((t) => t.status == 'done')
-                                ? '${message.tools.length} 项操作已完成'
-                                : '${message.tools.length} 项工具操作${message.tools.any((t) => t.status == 'running') ? ' · 执行中' : ''}',
+                                ? context.l10n.format("{0} 项操作已完成", {
+                                    '0': message.tools.length,
+                                  })
+                                : context.l10n.format("{0} 项工具操作{1}", {
+                                    '0': message.tools.length,
+                                    '1':
+                                        message.tools.any(
+                                          (t) => t.status == 'running',
+                                        )
+                                        ? context.tr(" · 执行中")
+                                        : '',
+                                  }),
                             style: TextStyle(
                               fontSize: 12,
                               color: colors.onSurfaceVariant,
@@ -254,7 +267,11 @@ class MessageBubble extends StatelessWidget {
                                     _openLink(context, uri.toString()),
                                 icon: const Icon(Icons.image_outlined),
                                 label: Text(
-                                  '${alt?.isNotEmpty == true ? alt : '外部图片'} · 点击打开',
+                                  context.l10n.format("{0} · 点击打开", {
+                                    '0': alt?.isNotEmpty == true
+                                        ? alt
+                                        : context.tr("外部图片"),
+                                  }),
                                 ),
                               );
                             },
@@ -289,13 +306,15 @@ class MessageBubble extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   switch (message.delivery) {
-                                    'sending' => '正在发送 · 等待服务端确认',
-                                    'uncertain' => '正在核对发送状态 · 不会自动重发',
+                                    'sending' => context.tr("正在发送 · 等待服务端确认"),
+                                    'uncertain' => context.tr(
+                                      "正在核对发送状态 · 不会自动重发",
+                                    ),
                                     'failed' =>
                                       message.failure.isEmpty
-                                          ? '本次生成失败'
+                                          ? context.tr("本次生成失败")
                                           : message.failure,
-                                    'stopped' => '已停止生成',
+                                    'stopped' => context.tr("已停止生成"),
                                     _ => message.delivery,
                                   },
                                   style: TextStyle(
@@ -310,8 +329,8 @@ class MessageBubble extends StatelessWidget {
                                   onRetry != null)
                                 TextButton(
                                   onPressed: onRetry,
-                                  child: const Text(
-                                    '编辑后重试',
+                                  child: Text(
+                                    context.tr("编辑后重试"),
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ),
@@ -319,8 +338,8 @@ class MessageBubble extends StatelessWidget {
                                   controller != null)
                                 TextButton(
                                   onPressed: controller!.reconnect,
-                                  child: const Text(
-                                    '核对',
+                                  child: Text(
+                                    context.tr("核对"),
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ),
@@ -334,13 +353,13 @@ class MessageBubble extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
                     child: IconButton(
-                      tooltip: '复制回答',
+                      tooltip: context.tr("复制回答"),
                       visualDensity: VisualDensity.compact,
                       onPressed: () {
                         Clipboard.setData(ClipboardData(text: message.content));
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(const SnackBar(content: Text('已复制回答')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr("已复制回答"))),
+                        );
                       },
                       icon: Icon(
                         Icons.copy_outlined,

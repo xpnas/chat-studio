@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../data/server_workspace.dart';
@@ -47,9 +48,9 @@ class WorkspaceDrawer extends StatelessWidget {
                 children: [
                   const Icon(Icons.dns_outlined, size: 22),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      '服务器工作区',
+                      context.tr("服务器工作区"),
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -57,7 +58,7 @@ class WorkspaceDrawer extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: '刷新服务器文件',
+                    tooltip: context.tr("刷新服务器文件"),
                     onPressed:
                         c.sessionId == null ||
                             c.workspaceLoading ||
@@ -79,16 +80,18 @@ class WorkspaceDrawer extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
               child: SelectableText(
-                c.workspacePath.isEmpty ? '尚未获取服务器工作路径' : c.workspacePath,
+                c.workspacePath.isEmpty
+                    ? context.tr("尚未获取服务器工作路径")
+                    : c.workspacePath,
                 key: const Key('server-workspace-path'),
                 style: const TextStyle(fontSize: 12, height: 1.4),
               ),
             ),
             if (c.sessionId == null)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(20),
                 child: Text(
-                  '发送首条消息后，可查看和选择此对话在服务器上的工作目录。',
+                  context.tr("发送首条消息后，可查看和选择此对话在服务器上的工作目录。"),
                   style: TextStyle(fontSize: 12),
                 ),
               ),
@@ -100,13 +103,20 @@ class WorkspaceDrawer extends StatelessWidget {
                 key: const Key('choose-server-workspace'),
                 onPressed: c.canChooseWorkspace ? () => _choose(context) : null,
                 icon: const Icon(Icons.folder_open_rounded, size: 20),
-                label: Text(c.workspaceSaving ? '正在保存…' : '选择服务器文件夹'),
+                label: Text(
+                  c.workspaceSaving
+                      ? context.tr("正在保存…")
+                      : context.tr("选择服务器文件夹"),
+                ),
               ),
             ),
             if (c.working)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Text('任务执行期间不能切换工作目录', style: TextStyle(fontSize: 11)),
+                child: Text(
+                  context.tr("任务执行期间不能切换工作目录"),
+                  style: TextStyle(fontSize: 11),
+                ),
               ),
             if (c.workspaceError != null)
               Padding(
@@ -124,17 +134,17 @@ class WorkspaceDrawer extends StatelessWidget {
                     ? null
                     : () => c.refreshWorkspaceFiles(path: ''),
                 icon: const Icon(Icons.home_outlined, size: 18),
-                label: const Text('返回工作区根目录'),
+                label: Text(context.tr("返回工作区根目录")),
               ),
             Expanded(
               child: c.workspaceFiles.isEmpty
                   ? Center(
                       child: Text(
                         c.workspaceLoading
-                            ? '正在读取服务器文件…'
+                            ? context.tr("正在读取服务器文件…")
                             : c.workspaceError == null
-                            ? '暂无文件'
-                            : '读取失败，可刷新或重新选择目录',
+                            ? context.tr("暂无文件")
+                            : context.tr("读取失败，可刷新或重新选择目录"),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
@@ -251,17 +261,17 @@ class _ServerFolderPickerState extends State<ServerFolderPicker> {
       height: MediaQuery.sizeOf(context).height * .7,
       child: Column(
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              '选择服务器文件夹',
+              context.tr("选择服务器文件夹"),
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(20, 6, 20, 10),
             child: Text(
-              '目录来自当前 Agent 服务器，不是手机存储',
+              context.tr("目录来自当前 Agent 服务器，不是手机存储"),
               style: TextStyle(fontSize: 11),
             ),
           ),
@@ -283,7 +293,7 @@ class _ServerFolderPickerState extends State<ServerFolderPicker> {
                     : () =>
                           _load(_parents.last.$1, _parents.last.$2, back: true),
                 icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-                label: const Text('上一级'),
+                label: Text(context.tr("上一级")),
               ),
               const Spacer(),
               TextButton(
@@ -293,7 +303,7 @@ class _ServerFolderPickerState extends State<ServerFolderPicker> {
                         !isAbsoluteServerPath(_fullPath)
                     ? null
                     : () => Navigator.pop(context, _fullPath),
-                child: const Text('使用此目录'),
+                child: Text(context.tr("使用此目录")),
               ),
             ],
           ),
@@ -312,7 +322,7 @@ class _ServerFolderPickerState extends State<ServerFolderPicker> {
           if (_error != null)
             TextButton(
               onPressed: _loading ? null : () => _load(_path, _fullPath),
-              child: const Text('重试目录读取'),
+              child: Text(context.tr("重试目录读取")),
             ),
           Expanded(
             child: ListView.builder(
@@ -332,7 +342,7 @@ class _ServerFolderPickerState extends State<ServerFolderPicker> {
                     style: const TextStyle(fontSize: 13),
                   ),
                   subtitle: Text(
-                    fullPath.isEmpty ? '服务器未提供绝对路径，不能选择' : fullPath,
+                    fullPath.isEmpty ? context.tr("服务器未提供绝对路径，不能选择") : fullPath,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 11),
@@ -341,7 +351,9 @@ class _ServerFolderPickerState extends State<ServerFolderPicker> {
                       ? null
                       : () => _load(text(f['path']), fullPath, enter: true),
                   trailing: IconButton(
-                    tooltip: '使用 ${text(f['name'])}',
+                    tooltip: context.l10n.format("使用 {0}", {
+                      '0': text(f['name']),
+                    }),
                     onPressed: !valid
                         ? null
                         : () => Navigator.pop(context, fullPath),

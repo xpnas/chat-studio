@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
@@ -99,8 +100,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
                               snapshot.data!,
                               cacheWidth: 480,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) =>
-                                  const Center(child: Text('图片格式无法预览，点击查看详情')),
+                              errorBuilder: (_, _, _) => Center(
+                                child: Text(context.tr("图片格式无法预览，点击查看详情")),
+                              ),
                             ),
                           )
                         : snapshot.hasError
@@ -108,7 +110,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
                             child: TextButton(
                               onPressed: () => setState(_load),
                               child: Text(
-                                '${snapshot.error}\n点击重试',
+                                context.l10n.format("{0}\n点击重试", {
+                                  '0': snapshot.error,
+                                }),
                                 textAlign: TextAlign.center,
                               ),
                             ),
@@ -151,7 +155,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   ),
                   IconButton(
                     key: ValueKey('download:${widget.file.path}'),
-                    tooltip: '下载文件',
+                    tooltip: context.tr("下载文件"),
                     onPressed: () => showDialog<void>(
                       context: context,
                       useSafeArea: !widget.file.isImage,
@@ -299,7 +303,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
       if (mounted && _valid && result != null) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('附件已保存至你选择的位置')));
+        ).showSnackBar(SnackBar(content: Text(context.tr("附件已保存至你选择的位置"))));
       }
     } catch (e) {
       if (_valid) setState(() => _error = '$e');
@@ -350,9 +354,9 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                           _bytes!,
                           cacheWidth: 2400,
                           fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Padding(
+                          errorBuilder: (_, _, _) => Padding(
                             padding: EdgeInsets.all(24),
-                            child: Text('此格式暂不支持预览，可保存原文件'),
+                            child: Text(context.tr("此格式暂不支持预览，可保存原文件")),
                           ),
                         ),
                 ),
@@ -414,7 +418,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                         children: [
                           if (_error != null && _bytes == null)
                             IconButton(
-                              tooltip: '重试读取图片',
+                              tooltip: context.tr("重试读取图片"),
                               onPressed: _loading ? null : _load,
                               style: _previewButtonStyle(colors),
                               icon: const Icon(Icons.refresh_rounded, size: 28),
@@ -422,8 +426,10 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                           IconButton(
                             key: const Key('image-preview-download'),
                             tooltip: _saving
-                                ? (_exporting ? '请选择保存位置' : '取消下载')
-                                : '下载图片',
+                                ? (_exporting
+                                      ? context.tr("请选择保存位置")
+                                      : context.tr("取消下载"))
+                                : context.tr("下载图片"),
                             style: _previewButtonStyle(colors),
                             onPressed: _loading || _exporting
                                 ? null
@@ -466,7 +472,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                           ),
                           IconButton(
                             key: const Key('image-preview-close'),
-                            tooltip: '关闭预览',
+                            tooltip: context.tr("关闭预览"),
                             style: _previewButtonStyle(colors),
                             onPressed: () => Navigator.pop(context),
                             icon: const _PreviewGlyph(download: false),
@@ -515,8 +521,13 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                   const SizedBox(height: 8),
                   Text(
                     _exporting
-                        ? '请选择保存位置'
-                        : '已下载 ${(_received / 1024 / 1024).toStringAsFixed(1)} MB${_total == null ? '' : ' / ${(_total! / 1024 / 1024).toStringAsFixed(1)} MB'}',
+                        ? context.tr("请选择保存位置")
+                        : context.l10n.format("已下载 {0} MB{1}", {
+                            '0': (_received / 1024 / 1024).toStringAsFixed(1),
+                            '1': _total == null
+                                ? ''
+                                : ' / ${(_total! / 1024 / 1024).toStringAsFixed(1)} MB',
+                          }),
                   ),
                   if (!_exporting)
                     TextButton(
@@ -525,7 +536,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                           _downloadCancel!.complete();
                         }
                       },
-                      child: const Text('取消下载'),
+                      child: Text(context.tr("取消下载")),
                     ),
                 ],
                 if (_loading)
@@ -540,7 +551,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                         _bytes!,
                         cacheWidth: 1800,
                         errorBuilder: (_, _, _) =>
-                            const Text('此格式暂不支持预览，可保存原文件'),
+                            Text(context.tr("此格式暂不支持预览，可保存原文件")),
                       ),
                     ),
                   ),
@@ -551,7 +562,14 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
                   ),
                 if (!widget.file.isImage)
                   Text(
-                    '${widget.file.mimeType}\n${_bytes == null ? widget.file.sizeLabel : '${_bytes!.length} 字节'}\n文件不会自动执行，可保存后使用系统应用查看。',
+                    context.l10n.format("{0}\n{1}\n文件不会自动执行，可保存后使用系统应用查看。", {
+                      '0': widget.file.mimeType,
+                      '1': _bytes == null
+                          ? widget.file.sizeLabel
+                          : context.l10n.format("{0} 字节", {
+                              '0': _bytes!.length,
+                            }),
+                    }),
                   ),
                 if (_error != null)
                   Text(
@@ -566,16 +584,18 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
+              child: Text(context.tr("关闭")),
             ),
             if (_error != null)
               TextButton(
                 onPressed: _loading ? null : _load,
-                child: const Text('重试读取'),
+                child: Text(context.tr("重试读取")),
               ),
             FilledButton(
               onPressed: _loading || _saving ? null : _save,
-              child: Text(_saving ? '下载保存中' : '下载 / 保存附件'),
+              child: Text(
+                _saving ? context.tr("下载保存中") : context.tr("下载 / 保存附件"),
+              ),
             ),
           ],
         );

@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/app_controller.dart';
@@ -24,7 +25,11 @@ class AudioAttachmentControl extends StatelessWidget {
           size: 20,
         ),
         label: Text(
-          active ? (controller.speech.loading ? '取消加载语音' : '停止播放') : '播放语音',
+          active
+              ? (controller.speech.loading
+                    ? context.tr("取消加载语音")
+                    : context.tr("停止播放"))
+              : context.tr("播放语音"),
         ),
       );
     },

@@ -1,8 +1,10 @@
+import '../l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state/app_controller.dart';
 import 'theme.dart';
 import 'server_screen.dart';
+import 'widgets/language_picker.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.controller});
@@ -80,6 +82,11 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: LanguagePicker(controller: c),
+                  ),
+                  const SizedBox(height: 12),
                   const Row(
                     children: [
                       ChatStudioMark(size: 46),
@@ -101,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 54),
                   Text(
-                    '你的灵感，\n随时接续。',
+                    context.tr("你的灵感，\n随时接续。"),
                     style: TextStyle(
                       fontSize: 38,
                       fontWeight: FontWeight.w700,
@@ -112,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    '连接你的 Studio，让每一次好奇都有回应。',
+                    context.tr("连接你的 Studio，让每一次好奇都有回应。"),
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
                       fontSize: 15,
@@ -127,7 +134,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: TextButton.icon(
                         icon: const Icon(Icons.dns_outlined, size: 18),
-                        label: Text('已保存的服务器（${c.servers.length}）'),
+                        label: Text(
+                          context.l10n.format("已保存的服务器（{0}）", {
+                            '0': c.servers.length,
+                          }),
+                        ),
                         onPressed: c.busy
                             ? null
                             : () => Navigator.of(context).push(
@@ -149,13 +160,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             keyboardType: TextInputType.url,
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
-                            decoration: const InputDecoration(
-                              labelText: '服务地址',
+                            decoration: InputDecoration(
+                              labelText: context.tr("服务地址"),
                               hintText: 'https://studio.example.com',
                               prefixIcon: Icon(Icons.dns_outlined),
                             ),
                             validator: (v) => v == null || v.trim().isEmpty
-                                ? '请输入服务地址'
+                                ? context.tr("请输入服务地址")
                                 : null,
                           ),
                           const SizedBox(height: 16),
@@ -166,12 +177,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             autofillHints: const [AutofillHints.username],
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
-                            decoration: const InputDecoration(
-                              labelText: '用户名',
+                            decoration: InputDecoration(
+                              labelText: context.tr("用户名"),
                               prefixIcon: Icon(Icons.person_outline_rounded),
                             ),
-                            validator: (v) =>
-                                v == null || v.trim().isEmpty ? '请输入用户名' : null,
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? context.tr("请输入用户名")
+                                : null,
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -185,12 +197,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             enableSuggestions: false,
                             onFieldSubmitted: (_) => _submit(),
                             decoration: InputDecoration(
-                              labelText: '密码',
+                              labelText: context.tr("密码"),
                               prefixIcon: const Icon(
                                 Icons.lock_outline_rounded,
                               ),
                               suffixIcon: IconButton(
-                                tooltip: _obscure ? '显示密码' : '隐藏密码',
+                                tooltip: _obscure
+                                    ? context.tr("显示密码")
+                                    : context.tr("隐藏密码"),
                                 onPressed: () =>
                                     setState(() => _obscure = !_obscure),
                                 icon: Icon(
@@ -200,18 +214,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
-                            validator: (v) =>
-                                v == null || v.isEmpty ? '请输入密码' : null,
+                            validator: (v) => v == null || v.isEmpty
+                                ? context.tr("请输入密码")
+                                : null,
                           ),
                           const SizedBox(height: 10),
                           SwitchListTile.adaptive(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text(
-                              '允许局域网 HTTP',
+                            title: Text(
+                              context.tr("允许局域网 HTTP"),
                               style: TextStyle(fontSize: 14),
                             ),
-                            subtitle: const Text(
-                              '仅可信 Wi-Fi；公网始终要求 HTTPS',
+                            subtitle: Text(
+                              context.tr("仅可信 Wi-Fi；公网始终要求 HTTPS"),
                               style: TextStyle(fontSize: 12),
                             ),
                             value: _local,
@@ -223,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Padding(
                               padding: const EdgeInsets.only(bottom: 14),
                               child: Text(
-                                'HTTP 不加密账号、密码和聊天内容。请勿在公共网络使用。',
+                                context.tr("HTTP 不加密账号、密码和聊天内容。请勿在公共网络使用。"),
                                 style: TextStyle(
                                   color: colors.error,
                                   fontSize: 12,
@@ -244,12 +259,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                         strokeWidth: 2,
                                       ),
                                     )
-                                  : const Row(
+                                  : Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: [
                                         Text(
-                                          '连接并登录',
+                                          context.tr("连接并登录"),
                                           style: TextStyle(fontSize: 16),
                                         ),
                                         SizedBox(width: 10),
@@ -277,7 +292,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(width: 7),
                       Flexible(
                         child: Text(
-                          '直连你的服务器 · 凭据存储在系统安全区',
+                          context.tr("直连你的服务器 · 凭据存储在系统安全区"),
                           style: TextStyle(
                             color: colors.onSurfaceVariant,
                             fontSize: 12,

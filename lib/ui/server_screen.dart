@@ -1,3 +1,4 @@
+import '../l10n.dart';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../state/app_controller.dart';
@@ -14,16 +15,16 @@ class ServerScreen extends StatelessWidget {
     builder: (context, _) {
       final c = controller;
       return Scaffold(
-        appBar: AppBar(title: const Text('服务器')),
+        appBar: AppBar(title: Text(context.tr("服务器"))),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             if (c.error != null)
               ErrorNotice(message: c.error!, onDismiss: c.dismissError),
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(12),
               child: Text(
-                '登录记录仅保存在本机安全存储中，不保存密码。切换不会停止服务端任务，但会清空本机未发送的草稿。',
+                context.tr("登录记录仅保存在本机安全存储中，不保存密码。切换不会停止服务端任务，但会清空本机未发送的草稿。"),
                 style: TextStyle(fontSize: 13),
               ),
             ),
@@ -40,7 +41,7 @@ class ServerScreen extends StatelessWidget {
                     style: const TextStyle(fontSize: 14),
                   ),
                   subtitle: Text(
-                    '${text(record['profile']).isEmpty ? 'default' : record['profile']} · ${text(record['token']).isEmpty ? '需要登录' : '已保存登录'}',
+                    '${text(record['profile']).isEmpty ? 'default' : record['profile']} · ${text(record['token']).isEmpty ? context.tr("需要登录") : context.tr("已保存登录")}',
                   ),
                   onTap: c.busy
                       ? null
@@ -51,9 +52,9 @@ class ServerScreen extends StatelessWidget {
                   trailing:
                       c.authenticated &&
                           c.api?.address.value == record['server']
-                      ? const Text('当前', style: TextStyle(fontSize: 12))
+                      ? Text(context.tr("当前"), style: TextStyle(fontSize: 12))
                       : IconButton(
-                          tooltip: '删除记录',
+                          tooltip: context.tr("删除记录"),
                           icon: const Icon(Icons.close, size: 18),
                           onPressed: c.busy
                               ? null
@@ -61,18 +62,18 @@ class ServerScreen extends StatelessWidget {
                                   final remove = await showDialog<bool>(
                                     context: context,
                                     builder: (context) => AlertDialog(
-                                      title: const Text('删除服务器记录？'),
+                                      title: Text(context.tr("删除服务器记录？")),
                                       content: Text(text(record['server'])),
                                       actions: [
                                         TextButton(
                                           onPressed: () =>
                                               Navigator.pop(context, false),
-                                          child: const Text('取消'),
+                                          child: Text(context.tr("取消")),
                                         ),
                                         TextButton(
                                           onPressed: () =>
                                               Navigator.pop(context, true),
-                                          child: const Text('删除'),
+                                          child: Text(context.tr("删除")),
                                         ),
                                       ],
                                     ),
@@ -89,7 +90,7 @@ class ServerScreen extends StatelessWidget {
             const SizedBox(height: 16),
             OutlinedButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('添加服务器'),
+              label: Text(context.tr("添加服务器")),
               onPressed: c.busy
                   ? null
                   : () {

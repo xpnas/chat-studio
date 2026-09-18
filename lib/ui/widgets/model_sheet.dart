@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'package:flutter/material.dart';
 import '../../data/models.dart';
 
@@ -53,20 +54,20 @@ class _ModelSheetState extends State<ModelSheet> {
       height: MediaQuery.sizeOf(context).height * .78,
       child: Column(
         children: [
-          const Text(
-            '选择模型',
+          Text(
+            context.tr("选择模型"),
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Text(
-            '按提供商分组 · 当前模型优先',
+            context.tr("按提供商分组 · 当前模型优先"),
             style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
             child: TextField(
-              decoration: const InputDecoration(
-                hintText: '搜索模型或提供商',
+              decoration: InputDecoration(
+                hintText: context.tr("搜索模型或提供商"),
                 prefixIcon: Icon(Icons.search_rounded),
               ),
               onChanged: (v) => setState(() => query = v),
@@ -76,7 +77,9 @@ class _ModelSheetState extends State<ModelSheet> {
             child: rows.isEmpty
                 ? Center(
                     child: Text(
-                      search.isEmpty ? '没有可用模型，请在 Studio 中配置' : '没有匹配的提供商或模型',
+                      search.isEmpty
+                          ? context.tr("没有可用模型，请在 Studio 中配置")
+                          : context.tr("没有匹配的提供商或模型"),
                     ),
                   )
                 : ListView.builder(
@@ -108,7 +111,10 @@ class _ModelSheetState extends State<ModelSheet> {
                               ),
                             ),
                             subtitle: Text(
-                              '${row.provider} · ${grouped[row.provider]!.length} 个模型',
+                              context.l10n.format("{0} · {1} 个模型", {
+                                '0': row.provider,
+                                '1': grouped[row.provider]!.length,
+                              }),
                             ),
                             trailing: Icon(
                               open
@@ -171,7 +177,7 @@ class _ModelSheetState extends State<ModelSheet> {
                                 ),
                               ),
                               subtitle: Text(
-                                '${selected ? '当前使用 · ' : ''}${model.id}',
+                                '${selected ? context.tr("当前使用 · ") : ''}${model.id}',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),

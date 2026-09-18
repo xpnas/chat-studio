@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/agent_catalog.dart';
@@ -51,9 +52,9 @@ class AgentPickerButton extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(20, 0, 8, 4),
                     child: Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            '选择 Agent',
+                            context.tr("选择 Agent"),
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -61,7 +62,7 @@ class AgentPickerButton extends StatelessWidget {
                           ),
                         ),
                         IconButton(
-                          tooltip: '刷新 Agent',
+                          tooltip: context.tr("刷新 Agent"),
                           onPressed: c.agentsLoading || !valid()
                               ? null
                               : c.refreshAgents,
@@ -73,9 +74,9 @@ class AgentPickerButton extends StatelessWidget {
                   if (c.agentsLoading)
                     const LinearProgressIndicator(minHeight: 2),
                   if (!valid())
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.all(20),
-                      child: Text('会话已切换，请关闭后重新选择。'),
+                      child: Text(context.tr("会话已切换，请关闭后重新选择。")),
                     )
                   else if (c.agentsError != null)
                     Padding(
@@ -89,16 +90,16 @@ class AgentPickerButton extends StatelessWidget {
                           TextButton.icon(
                             onPressed: c.agentsLoading ? null : c.refreshAgents,
                             icon: const Icon(Icons.refresh_rounded, size: 18),
-                            label: const Text('重新加载'),
+                            label: Text(context.tr("重新加载")),
                           ),
                         ],
                       ),
                     )
                   else if (choices.isEmpty && !c.agentsLoading)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        '服务端没有可用的 Agent。\n请在服务端 Agent 管理页面安装或启用。',
+                        context.tr("服务端没有可用的 Agent。\n请在服务端 Agent 管理页面安装或启用。"),
                         textAlign: TextAlign.center,
                       ),
                     )
@@ -135,8 +136,8 @@ class AgentPickerButton extends StatelessWidget {
                                 ),
                                 subtitle: agent.supported
                                     ? null
-                                    : const Text(
-                                        '当前服务协议暂不支持此 Agent',
+                                    : Text(
+                                        context.tr("当前服务协议暂不支持此 Agent"),
                                         style: TextStyle(fontSize: 11),
                                       ),
                                 trailing: selected
@@ -162,7 +163,7 @@ class AgentPickerButton extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
                       child: Text(
-                        '来自当前服务器 · 仅显示已安装 Agent',
+                        context.tr("来自当前服务器 · 仅显示已安装 Agent"),
                         style: TextStyle(
                           fontSize: 11,
                           color: colors.onSurfaceVariant,
@@ -232,7 +233,9 @@ class AgentPickerButton extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              c.agentsError != null ? 'Agent 列表加载失败，点击重试' : '暂无可用 Agent，点击查看',
+              c.agentsError != null
+                  ? context.tr("Agent 列表加载失败，点击重试")
+                  : context.tr("暂无可用 Agent，点击查看"),
               style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
             ),
           ),

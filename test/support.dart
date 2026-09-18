@@ -20,6 +20,14 @@ class MemoryStorage implements AppStorage {
     servers = value;
   }
 
+  String language = 'zh';
+  @override
+  Future<String> readLanguage() async => language;
+  @override
+  Future<void> saveLanguage(String value) async {
+    language = value;
+  }
+
   String theme = 'system';
   final choices = <String, Map<String, dynamic>>{};
   bool hintSeen = false;
@@ -62,6 +70,8 @@ class MemoryStorage implements AppStorage {
 
 class FakeTransport implements ChatTransport {
   SocketEvent? listener;
+  @override
+  bool get isStarted => listener != null;
   final emitted = <(String, Map<String, dynamic>)>[];
   @override
   void connect(StudioApi api, SocketEvent onEvent) {

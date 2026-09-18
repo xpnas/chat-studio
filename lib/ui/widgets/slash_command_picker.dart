@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/models.dart';
@@ -322,10 +323,10 @@ class _CommandResourceSheetState extends State<CommandResourceSheet> {
           children: [
             Text(
               widget.create
-                  ? '创建 Skill Bundle'
+                  ? context.tr("创建 Skill Bundle")
                   : widget.bundles
                   ? 'Skill Bundles'
-                  : '选择技能',
+                  : context.tr("选择技能"),
               style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
             ),
             if (widget.create) ...[
@@ -333,17 +334,17 @@ class _CommandResourceSheetState extends State<CommandResourceSheet> {
                 controller: name,
                 maxLength: 120,
                 enabled: !saving,
-                decoration: const InputDecoration(labelText: 'Bundle 名称'),
+                decoration: InputDecoration(labelText: context.tr("Bundle 名称")),
               ),
               TextField(
                 controller: description,
                 enabled: !saving,
-                decoration: const InputDecoration(labelText: '描述（可选）'),
+                decoration: InputDecoration(labelText: context.tr("描述（可选）")),
               ),
             ],
             TextField(
-              decoration: const InputDecoration(
-                hintText: '搜索名称或描述',
+              decoration: InputDecoration(
+                hintText: context.tr("搜索名称或描述"),
                 prefixIcon: Icon(Icons.search),
               ),
               onChanged: (v) => setState(() => query = v),
@@ -356,13 +357,13 @@ class _CommandResourceSheetState extends State<CommandResourceSheet> {
             if (error != null)
               TextButton(
                 onPressed: saving ? null : _load,
-                child: const Text('重试'),
+                child: Text(context.tr("重试")),
               ),
             Expanded(
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : filtered.isEmpty
-                  ? const Center(child: Text('没有可用或匹配的项目'))
+                  ? Center(child: Text(context.tr("没有可用或匹配的项目")))
                   : ListView.builder(
                       itemCount: filtered.length,
                       itemBuilder: (context, i) {
@@ -413,7 +414,9 @@ class _CommandResourceSheetState extends State<CommandResourceSheet> {
             if (widget.create)
               FilledButton(
                 onPressed: saving || loading ? null : _create,
-                child: Text(saving ? '创建中…' : '创建并填入输入框'),
+                child: Text(
+                  saving ? context.tr("创建中…") : context.tr("创建并填入输入框"),
+                ),
               ),
             const SizedBox(height: 12),
           ],

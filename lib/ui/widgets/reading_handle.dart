@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -72,8 +73,12 @@ class _ReadingHandleState extends State<ReadingHandle> {
       valueListenable: widget.progress,
       builder: (context, raw, _) {
         final value = raw.isFinite ? raw.clamp(0.0, 1.0) : 0.0;
-        final label = widget.hasDraft ? '继续编辑草稿' : '展开输入框';
-        final description = '已加载历史回看 ${(value * 100).round()}%';
+        final label = widget.hasDraft
+            ? context.tr("继续编辑草稿")
+            : context.tr("展开输入框");
+        final description = context.l10n.format("已加载历史回看 {0}%", {
+          '0': (value * 100).round(),
+        });
         return Semantics(
           button: true,
           label: label,

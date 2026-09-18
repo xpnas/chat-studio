@@ -1,3 +1,4 @@
+import '../l10n.dart';
 import 'widgets/chat_swipe_region.dart';
 import 'widgets/workspace_drawer.dart';
 import 'widgets/agent_picker.dart';
@@ -14,6 +15,44 @@ import 'widgets/chat_composer.dart';
 import 'widgets/reading_handle.dart';
 import 'widgets/reading_anchor.dart';
 import 'widgets/conversation_activity_mark.dart';
+
+class _ConnectionLine extends StatelessWidget {
+  const _ConnectionLine({required this.controller});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = !controller.connected || controller.syncing;
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      container: true,
+      label: controller.syncing
+          ? context.tr('正在同步对话状态…')
+          : controller.connected
+          ? context.tr('聊天已连接')
+          : context.tr('正在连接聊天服务…'),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: controller.connected ? null : controller.reconnect,
+        child: LinearProgressIndicator(
+          // Keep the indicator finite so opening/resuming the app never
+          // leaves widget tests (or reduced-motion users) with a perpetual
+          // animation. The color and fill communicate the connection state.
+          value: active ? (controller.syncing ? .62 : .22) : 0,
+          minHeight: 2,
+          color: active
+              ? controller.syncing
+                    ? colors.primary
+                    : colors.tertiary
+              : colors.primary.withValues(alpha: .18),
+          backgroundColor: colors.surfaceContainerHighest.withValues(
+            alpha: .32,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
@@ -256,12 +295,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('重命名'),
+              title: Text(context.tr("重命名")),
               onTap: () => Navigator.pop(context, 'rename'),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline_rounded),
-              title: const Text('删除对话'),
+              title: Text(context.tr("删除对话")),
               onTap: () => Navigator.pop(context, 'delete'),
             ),
           ],
@@ -274,21 +313,21 @@ class _HomeScreenState extends State<HomeScreen> {
       final title = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('重命名对话'),
+          title: Text(context.tr("重命名对话")),
           content: TextField(
             controller: field,
             autofocus: true,
             maxLength: 100,
-            decoration: const InputDecoration(labelText: '对话名称'),
+            decoration: InputDecoration(labelText: context.tr("对话名称")),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, field.text),
-              child: const Text('保存'),
+              child: Text(context.tr("保存")),
             ),
           ],
         ),
@@ -300,16 +339,16 @@ class _HomeScreenState extends State<HomeScreen> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('删除这段对话？'),
-          content: const Text('会同时删除服务端的对话记录，无法撤销。'),
+          title: Text(context.tr("删除这段对话？")),
+          content: Text(context.tr("会同时删除服务端的对话记录，无法撤销。")),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
+              child: Text(context.tr("取消")),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除'),
+              child: Text(context.tr("删除")),
             ),
           ],
         ),
@@ -320,7 +359,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       key: _scaffold,
       drawer: _drawer(context),
@@ -333,7 +371,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       appBar: AppBar(
         leading: IconButton(
-          tooltip: '对话记录',
+          tooltip: context.tr("对话记录"),
           icon: const Icon(Icons.menu_rounded),
           onPressed: () => _scaffold.currentState!.openDrawer(),
         ),
@@ -356,14 +394,18 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(2),
+          child: _ConnectionLine(controller: c),
+        ),
         actions: [
           IconButton(
-            tooltip: '工作区',
+            tooltip: context.tr("工作区"),
             onPressed: () => _scaffold.currentState!.openEndDrawer(),
             icon: const Icon(Icons.folder_copy_outlined, size: 21),
           ),
           IconButton(
-            tooltip: '新建对话',
+            tooltip: context.tr("新建对话"),
             onPressed: c.busy ? null : c.newChat,
             icon: const Icon(Icons.edit_square, size: 22),
           ),
@@ -377,29 +419,6 @@ class _HomeScreenState extends State<HomeScreen> {
             constraints: const BoxConstraints(maxWidth: 840),
             child: Column(
               children: [
-                if (!c.connected || c.syncing)
-                  Material(
-                    color: colors.surfaceContainer,
-                    child: ListTile(
-                      dense: true,
-                      leading: Icon(
-                        c.connected
-                            ? Icons.sync_rounded
-                            : Icons.wifi_off_rounded,
-                        size: 18,
-                      ),
-                      title: Text(
-                        c.syncing && c.connected
-                            ? '正在同步对话状态…'
-                            : '聊天未连接 · 不会自动重发消息',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      trailing: TextButton(
-                        onPressed: c.reconnect,
-                        child: const Text('重连'),
-                      ),
-                    ),
-                  ),
                 if (c.workspaceNotice != null)
                   ErrorNotice(
                     message: c.workspaceNotice!,
@@ -411,10 +430,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (c.error != null)
                   ErrorNotice(message: c.error!, onDismiss: c.dismissError),
                 if (c.current?.canContinue == false)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.all(12),
                     child: Text(
-                      '此会话由工作流、群聊或其他 Agent 管理。移动端仅供查看，请新建普通对话。',
+                      context.tr("此会话由工作流、群聊或其他 Agent 管理。移动端仅供查看，请新建普通对话。"),
                       style: TextStyle(fontSize: 12),
                     ),
                   ),
@@ -509,7 +528,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ),
                                       )
                                     : c.loadingMessages
-                                    ? const Row(
+                                    ? Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           SizedBox(
@@ -521,15 +540,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                           SizedBox(width: 8),
                                           Text(
-                                            '正在加载更早的消息…',
+                                            context.tr("正在加载更早的消息…"),
                                             style: TextStyle(fontSize: 12),
                                           ),
                                         ],
                                       )
                                     : Text(
                                         c.connected
-                                            ? '继续上滑查看更早消息'
-                                            : '连接恢复后加载历史',
+                                            ? context.tr("继续上滑查看更早消息")
+                                            : context.tr("连接恢复后加载历史"),
                                         style: const TextStyle(fontSize: 12),
                                       ),
                               ),
@@ -564,13 +583,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 alpha: .94,
                               ),
                               borderRadius: BorderRadius.circular(14),
-                              child: const Padding(
+                              child: Padding(
                                 padding: EdgeInsets.symmetric(
                                   horizontal: 12,
                                   vertical: 8,
                                 ),
                                 child: Text(
-                                  '轻点底部线条，继续输入',
+                                  context.tr("轻点底部线条，继续输入"),
                                   style: TextStyle(fontSize: 12),
                                 ),
                               ),
@@ -597,7 +616,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         right: 20,
                         child: FloatingActionButton.small(
                           heroTag: 'jump',
-                          tooltip: '回到最新消息',
+                          tooltip: context.tr("回到最新消息"),
                           onPressed: () => _scroll.animateTo(
                             0,
                             duration: const Duration(milliseconds: 250),
@@ -605,7 +624,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           child: Badge(
                             isLabelVisible: _hasNewContent,
-                            label: const Text('新'),
+                            label: Text(context.tr("新")),
                             child: const Icon(Icons.arrow_downward_rounded),
                           ),
                         ),
@@ -626,11 +645,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Icon(Icons.audiotrack_rounded, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(c.speech.loading ? '正在加载语音…' : '正在播放语音'),
+                        child: Text(
+                          c.speech.loading
+                              ? context.tr("正在加载语音…")
+                              : context.tr("正在播放语音"),
+                        ),
                       ),
                       TextButton(
                         onPressed: () => c.speech.stop(),
-                        child: Text(c.speech.loading ? '取消' : '停止播放'),
+                        child: Text(
+                          c.speech.loading
+                              ? context.tr("取消")
+                              : context.tr("停止播放"),
+                        ),
                       ),
                     ],
                   ),
@@ -663,14 +690,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(switch (q.status) {
-                      'sending' => '正在加入队列',
-                      'canceling' => '正在取消排队',
-                      'uncertain' => '状态待同步',
-                      'failed' => '排队失败，消息已保留',
-                      _ => '排队中',
+                      'sending' => context.tr("正在加入队列"),
+                      'canceling' => context.tr("正在取消排队"),
+                      'uncertain' => context.tr("状态待同步"),
+                      'failed' => context.tr("排队失败，消息已保留"),
+                      _ => context.tr("排队中"),
                     }),
                     trailing: IconButton(
-                      tooltip: '取消排队',
+                      tooltip: context.tr("取消排队"),
                       icon: const Icon(Icons.close),
                       onPressed:
                           !c.connected || c.syncing || q.status != 'queued'
@@ -729,8 +756,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const ChatStudioMark(size: 68),
             const SizedBox(height: 24),
-            const Text(
-              '今天，想聊些什么？',
+            Text(
+              context.tr("今天，想聊些什么？"),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 27,
@@ -740,7 +767,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              '一个问题，一个念头，或者一个新的开始。',
+              context.tr("一个问题，一个念头，或者一个新的开始。"),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: colors.onSurfaceVariant,
@@ -756,16 +783,24 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _prompt(
                   Icons.lightbulb_outline_rounded,
-                  '激发灵感',
-                  '帮我为一个新项目进行头脑风暴，先问我几个问题。',
+                  context.tr("激发灵感"),
+                  context.tr("帮我为一个新项目进行头脑风暴，先问我几个问题。"),
                 ),
                 _prompt(
                   Icons.auto_stories_outlined,
-                  '学习新知',
-                  '用简单的语言解释一个有趣的科学概念。',
+                  context.tr("学习新知"),
+                  context.tr("用简单的语言解释一个有趣的科学概念。"),
                 ),
-                _prompt(Icons.edit_note_rounded, '帮我写作', '我想写一篇文章，请先帮我梳理写作思路。'),
-                _prompt(Icons.code_rounded, '一起编程', '帮我分析一个编程问题，我会提供背景和代码。'),
+                _prompt(
+                  Icons.edit_note_rounded,
+                  context.tr("帮我写作"),
+                  context.tr("我想写一篇文章，请先帮我梳理写作思路。"),
+                ),
+                _prompt(
+                  Icons.code_rounded,
+                  context.tr("一起编程"),
+                  context.tr("帮我分析一个编程问题，我会提供背景和代码。"),
+                ),
               ],
             ),
             const SizedBox(height: 26),
@@ -774,7 +809,9 @@ class _HomeScreenState extends State<HomeScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Text(
-                  '未发现可选模型，将使用服务端默认配置。\n请先在 Studio 配置模型提供商与 Agent 运行环境。',
+                  context.tr(
+                    "未发现可选模型，将使用服务端默认配置。\n请先在 Studio 配置模型提供商与 Agent 运行环境。",
+                  ),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
@@ -848,7 +885,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Navigator.pop(context);
                         },
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('新建对话'),
+                  label: Text(context.tr("新建对话")),
                 ),
               ),
             ),
@@ -857,8 +894,8 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _search,
-                decoration: const InputDecoration(
-                  hintText: '搜索全部对话',
+                decoration: InputDecoration(
+                  hintText: context.tr("搜索全部对话"),
                   prefixIcon: Icon(Icons.search_rounded),
                   isDense: true,
                 ),
@@ -877,7 +914,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      '对话记录',
+                      context.tr("对话记录"),
                       style: TextStyle(
                         fontSize: 12,
                         color: colors.onSurfaceVariant,
@@ -885,7 +922,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   IconButton(
-                    tooltip: '刷新记录',
+                    tooltip: context.tr("刷新记录"),
                     onPressed: c.loadingSessions
                         ? null
                         : () => c.refreshSessions(),
@@ -899,7 +936,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: c.conversations.isEmpty
                   ? Center(
                       child: Text(
-                        c.search.isEmpty ? '还没有对话\n从一个问题开始吧' : '没有找到相关对话',
+                        c.search.isEmpty
+                            ? context.tr("还没有对话\n从一个问题开始吧")
+                            : context.tr("没有找到相关对话"),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: colors.onSurfaceVariant,
@@ -920,7 +959,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               onPressed: c.loadingSessions
                                   ? null
                                   : () => c.refreshSessions(more: true),
-                              child: const Text('加载更多'),
+                              child: Text(context.tr("加载更多")),
                             );
                           }
                           final conversation = c.conversations[index];
@@ -975,7 +1014,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   const SizedBox(width: 6),
                                 ],
                                 IconButton(
-                                  tooltip: '管理对话',
+                                  tooltip: context.tr("管理对话"),
                                   visualDensity: VisualDensity.compact,
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(
@@ -1009,7 +1048,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       value: c.profiles.contains(c.profile) ? c.profile : null,
                       isExpanded: true,
                       underline: const SizedBox.shrink(),
-                      hint: const Text('无可用 Profile'),
+                      hint: Text(context.tr("无可用 Profile")),
                       items: c.profiles
                           .map(
                             (p) => DropdownMenuItem(
@@ -1046,7 +1085,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 c.account?.username ?? '',
                 style: const TextStyle(fontSize: 14),
               ),
-              subtitle: const Text('个人信息与设置', style: TextStyle(fontSize: 11)),
+              subtitle: Text(
+                context.tr("个人信息与设置"),
+                style: TextStyle(fontSize: 11),
+              ),
               trailing: const Icon(Icons.settings_outlined, size: 20),
               onTap: () {
                 Navigator.pop(context);
@@ -1113,7 +1155,7 @@ class _InteractionCardState extends State<_InteractionCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                approval ? '需要你的授权' : '需要你补充信息',
+                approval ? context.tr("需要你的授权") : context.tr("需要你补充信息"),
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
@@ -1143,22 +1185,22 @@ class _InteractionCardState extends State<_InteractionCard> {
                       !widget.controller.connected || widget.controller.syncing
                       ? null
                       : widget.controller.syncCurrentConversation,
-                  child: const Text('同步审批状态'),
+                  child: Text(context.tr("同步审批状态")),
                 ),
               if (widget.controller.timeline.interactionSubmitting)
-                const Text('等待服务器确认…'),
+                Text(context.tr("等待服务器确认…")),
               if (approval)
                 Wrap(
                   spacing: 8,
                   children: [
                     OutlinedButton(
                       onPressed: canRespond ? () => respond('deny') : null,
-                      child: const Text('拒绝'),
+                      child: Text(context.tr("拒绝")),
                     ),
                     if (choices.contains('once'))
                       FilledButton(
                         onPressed: canRespond ? () => respond('once') : null,
-                        child: const Text('仅允许本次'),
+                        child: Text(context.tr("仅允许本次")),
                       ),
                     if (choices.contains('always') &&
                         data['allow_permanent'] == true)
@@ -1169,20 +1211,28 @@ class _InteractionCardState extends State<_InteractionCard> {
                                 final confirmed = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
-                                    title: const Text('确认永久授权？'),
+                                    title: Text(context.tr("确认永久授权？")),
                                     content: Text(
-                                      '同类操作后续可能不再询问。授权范围与撤销方式由服务端控制。\n${text(data['permission_key'] ?? data['description'])}',
+                                      context.l10n.format(
+                                        "同类操作后续可能不再询问。授权范围与撤销方式由服务端控制。\n{0}",
+                                        {
+                                          '0': text(
+                                            data['permission_key'] ??
+                                                data['description'],
+                                          ),
+                                        },
+                                      ),
                                     ),
                                     actions: [
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.pop(ctx, false),
-                                        child: const Text('取消'),
+                                        child: Text(context.tr("取消")),
                                       ),
                                       FilledButton(
                                         onPressed: () =>
                                             Navigator.pop(ctx, true),
-                                        child: const Text('永久允许'),
+                                        child: Text(context.tr("永久允许")),
                                       ),
                                     ],
                                   ),
@@ -1191,7 +1241,7 @@ class _InteractionCardState extends State<_InteractionCard> {
                                   respond('always');
                                 }
                               },
-                        child: const Text('永久允许'),
+                        child: Text(context.tr("永久允许")),
                       ),
                   ],
                 )
@@ -1211,9 +1261,9 @@ class _InteractionCardState extends State<_InteractionCard> {
                 TextField(
                   controller: field,
                   decoration: InputDecoration(
-                    hintText: '补充说明',
+                    hintText: context.tr("补充说明"),
                     suffixIcon: IconButton(
-                      tooltip: '提交说明',
+                      tooltip: context.tr("提交说明"),
                       icon: const Icon(Icons.send_rounded),
                       onPressed: !canRespond
                           ? null

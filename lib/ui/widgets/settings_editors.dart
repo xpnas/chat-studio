@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../data/compression_settings.dart';
@@ -147,11 +148,11 @@ class _SettingsTextEditorState extends State<_SettingsTextEditor> {
       appBar: AppBar(
         title: Text(widget.title),
         leading: IconButton(
-          tooltip: '取消编辑',
+          tooltip: context.tr("取消编辑"),
           icon: const Icon(Icons.close_rounded),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [TextButton(onPressed: save, child: const Text('保存'))],
+        actions: [TextButton(onPressed: save, child: Text(context.tr("保存")))],
       ),
       body: SafeArea(
         top: false,
@@ -188,7 +189,7 @@ class _SettingsTextEditorState extends State<_SettingsTextEditor> {
                     fontSize: 14,
                     height: 1.5,
                   ),
-                  decoration: const InputDecoration(hintText: '输入配置内容'),
+                  decoration: InputDecoration(hintText: context.tr("输入配置内容")),
                 ),
               ),
             ],
@@ -219,19 +220,19 @@ class _CompressionSettingsSheetState extends State<CompressionSettingsSheet> {
 
   @override
   Widget build(BuildContext context) => SettingsSheet(
-    title: const Text('上下文自动压缩'),
+    title: Text(context.tr("上下文自动压缩")),
     content: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          '作用于当前 Profile 下 Hermes / Ekko 对话发送给模型的历史上下文：达到阈值后生成摘要并保留部分原始消息，不删除聊天记录。'
-          '\nCodex、Claude 等外部 CLI 的原生压缩不由此开关控制。'
-          '\n这里显示配置策略，不是当前会话的压缩进度或成功状态；已有摘要、手动 /compact 与运行时强制压缩是另外的机制。',
+        Text(
+          context.tr(
+            "作用于当前 Profile 下 Hermes / Ekko 对话发送给模型的历史上下文：达到阈值后生成摘要并保留部分原始消息，不删除聊天记录。\nCodex、Claude 等外部 CLI 的原生压缩不由此开关控制。\n这里显示配置策略，不是当前会话的压缩进度或成功状态；已有摘要、手动 /compact 与运行时强制压缩是另外的机制。",
+          ),
         ),
         const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('启用自动压缩'),
+          title: Text(context.tr("启用自动压缩")),
           value: enabled,
           onChanged: (value) => setState(() => enabled = value),
         ),
@@ -240,26 +241,26 @@ class _CompressionSettingsSheetState extends State<CompressionSettingsSheet> {
           controller: threshold,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
-            labelText: '触发阈值（上下文窗口占比）',
+            labelText: context.tr("触发阈值（上下文窗口占比）"),
             suffixText: '%',
-            helperText: '5%–95%，服务端默认 50%；不是 Token 数量',
+            helperText: context.tr("5%–95%，服务端默认 50%；不是 Token 数量"),
             errorText: error,
           ),
         ),
         const SizedBox(height: 12),
-        const Text('保存到当前 Profile，后续上下文组装读取新策略；不会立即压缩当前会话。'),
+        Text(context.tr("保存到当前 Profile，后续上下文组装读取新策略；不会立即压缩当前会话。")),
       ],
     ),
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
+        child: Text(context.tr("取消")),
       ),
       FilledButton(
         onPressed: () {
           final value = double.tryParse(threshold.text.trim());
           if (value == null || !value.isFinite || value < 5 || value > 95) {
-            setState(() => error = '请输入 5–95 之间的百分比');
+            setState(() => error = context.tr("请输入 5–95 之间的百分比"));
             return;
           }
           Navigator.pop(context, <String, dynamic>{
@@ -267,7 +268,7 @@ class _CompressionSettingsSheetState extends State<CompressionSettingsSheet> {
             'threshold': value / 100,
           });
         },
-        child: const Text('保存'),
+        child: Text(context.tr("保存")),
       ),
     ],
   );

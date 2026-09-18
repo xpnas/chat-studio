@@ -1,3 +1,4 @@
+import '../../l10n.dart';
 import 'chat_text_style.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -116,7 +117,7 @@ class _StableMarkdownState extends State<StableMarkdown> {
                       imageBuilder: (uri, title, alt) =>
                           widget.imageBuilder?.call(uri, title, alt) ??
                           Text(
-                            '[外部图片未自动加载]',
+                            context.tr("[外部图片未自动加载]"),
                             style: TextStyle(color: colors.onSurfaceVariant),
                           ),
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
