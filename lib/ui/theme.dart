@@ -10,8 +10,44 @@ ThemeData chatstudioTheme(Brightness brightness) {
     surface: dark ? const Color(0xFF141B18) : const Color(0xFFFAFAF6),
   );
   final base = ThemeData(useMaterial3: true, colorScheme: scheme);
+  final textTheme = base.textTheme.copyWith(
+    titleLarge: base.textTheme.titleLarge?.copyWith(
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+      letterSpacing: -.1,
+    ),
+    titleMedium: base.textTheme.titleMedium?.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+    ),
+    bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: 15, height: 1.45),
+    bodyMedium: base.textTheme.bodyMedium?.copyWith(fontSize: 13, height: 1.4),
+    bodySmall: base.textTheme.bodySmall?.copyWith(fontSize: 12, height: 1.35),
+    labelLarge: base.textTheme.labelLarge?.copyWith(fontSize: 13),
+  );
   return base.copyWith(
+    textTheme: textTheme,
     scaffoldBackgroundColor: scheme.surface,
+    cardTheme: CardThemeData(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: scheme.surfaceContainerLow,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    ),
+    dialogTheme: DialogThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+    ),
+    listTileTheme: ListTileThemeData(
+      minVerticalPadding: 7,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      titleTextStyle: textTheme.bodyLarge?.copyWith(
+        fontWeight: FontWeight.w500,
+      ),
+      subtitleTextStyle: textTheme.bodySmall,
+    ),
     appBarTheme: AppBarTheme(
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,

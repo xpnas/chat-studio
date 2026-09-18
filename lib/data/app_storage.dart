@@ -17,11 +17,41 @@ abstract class AppStorage {
   Future<void> saveTheme(String theme);
   Future<Map<String, dynamic>?> readChoice(String scope);
   Future<void> saveChoice(String scope, Map<String, dynamic> choice);
+
+  /// Local-only conversation organization (pins, archive state and categories).
+  /// Defaults live in shared preferences so test/in-memory storage
+  /// implementations do not need to persist this optional metadata.
+  Future<Map<String, dynamic>> readConversationOrganization(
+    String scope,
+  ) async {
+    final key =
+        'chatstudio.conversation-organization.v1.${base64Url.encode(utf8.encode(scope))}';
+    final raw = (await SharedPreferences.getInstance()).getString(key);
+    if (raw == null) return <String, dynamic>{};
+    try {
+      return asMap(jsonDecode(raw));
+    } on FormatException {
+      return <String, dynamic>{};
+    }
+  }
+
+  Future<void> saveConversationOrganization(
+    String scope,
+    Map<String, dynamic> organization,
+  ) async {
+    final key =
+        'chatstudio.conversation-organization.v1.${base64Url.encode(utf8.encode(scope))}';
+    await (await SharedPreferences.getInstance()).setString(
+      key,
+      jsonEncode(organization),
+    );
+  }
+
   Future<bool> readReadingHintSeen();
   Future<void> markReadingHintSeen();
 }
 
-class SecureAppStorage implements AppStorage {
+class SecureAppStorage extends AppStorage {
   final _secure = const FlutterSecureStorage();
   @override
   Future<String> readLanguage() async =>

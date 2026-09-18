@@ -82,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _hintTimer;
   bool _showJump = false;
   bool _composerCollapsed = false, _userScrolling = false;
+  String _historyFilter = 'all';
+  String _historyCategory = '';
   AppController get c => widget.controller;
   @override
   void initState() {
@@ -277,6 +279,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _manage(Conversation conversation) async {
+    final pinned = c.isConversationPinned(conversation);
+    final archived = c.isConversationArchived(conversation);
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -287,20 +291,43 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
               title: Text(
                 conversation.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+              subtitle: Text(
+                c.conversationCategory(conversation).isEmpty
+                    ? context.tr('未分类')
+                    : c.conversationCategory(conversation),
+              ),
+            ),
+            ListTile(
+              leading: Icon(pinned ? Icons.push_pin : Icons.push_pin_outlined),
+              title: Text(pinned ? context.tr('取消置顶') : context.tr('置顶对话')),
+              onTap: () => Navigator.pop(context, 'pin'),
+            ),
+            ListTile(
+              leading: Icon(
+                archived ? Icons.unarchive_outlined : Icons.archive_outlined,
+              ),
+              title: Text(archived ? context.tr('移出归档') : context.tr('归档对话')),
+              onTap: () => Navigator.pop(context, 'archive'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.drive_file_move_outlined),
+              title: Text(context.tr('移动到分类')),
+              onTap: () => Navigator.pop(context, 'category'),
             ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: Text(context.tr("重命名")),
+              title: Text(context.tr('重命名')),
               onTap: () => Navigator.pop(context, 'rename'),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline_rounded),
-              title: Text(context.tr("删除对话")),
+              title: Text(context.tr('删除对话')),
               onTap: () => Navigator.pop(context, 'delete'),
             ),
           ],
@@ -308,53 +335,186 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (!mounted) return;
+    if (action == 'pin') {
+      await c.setConversationPinned(conversation, !pinned);
+      return;
+    }
+    if (action == 'archive') {
+      await c.setConversationArchived(conversation, !archived);
+      return;
+    }
+    if (action == 'category') {
+      await _chooseConversationCategory(conversation);
+      return;
+    }
     if (action == 'rename') {
       final field = TextEditingController(text: conversation.title);
       final title = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(context.tr("重命名对话")),
+          title: Text(context.tr('重命名对话')),
           content: TextField(
             controller: field,
             autofocus: true,
             maxLength: 100,
-            decoration: InputDecoration(labelText: context.tr("对话名称")),
+            decoration: InputDecoration(labelText: context.tr('对话名称')),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(context.tr("取消")),
+              child: Text(context.tr('取消')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, field.text),
-              child: Text(context.tr("保存")),
+              child: Text(context.tr('保存')),
             ),
           ],
         ),
       );
       if (title != null) await c.renameConversation(conversation, title);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
       field.dispose();
     } else if (action == 'delete') {
       final ok = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(context.tr("删除这段对话？")),
-          content: Text(context.tr("会同时删除服务端的对话记录，无法撤销。")),
+          title: Text(context.tr('删除这段对话？')),
+          content: Text(context.tr('会同时删除服务端的对话记录，无法撤销。')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text(context.tr("取消")),
+              child: Text(context.tr('取消')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: Text(context.tr("删除")),
+              child: Text(context.tr('删除')),
             ),
           ],
         ),
       );
       if (ok == true) await c.deleteConversation(conversation);
     }
+  }
+
+  Future<void> _chooseConversationCategory(Conversation conversation) async {
+    final categories = c.conversationCategoryNames.toList()..sort();
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: Text(context.tr('移动到分类')),
+              subtitle: Text(context.tr('分类只在本机保存，不改变服务端历史')),
+            ),
+            ListTile(
+              leading: const Icon(Icons.create_new_folder_outlined),
+              title: Text(context.tr('创建新分类')),
+              onTap: () => Navigator.pop(context, '__create__'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_off_outlined),
+              title: Text(context.tr('取消分类')),
+              onTap: () => Navigator.pop(context, ''),
+            ),
+            for (final category in categories)
+              ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: Text(category),
+                trailing: c.conversationCategory(conversation) == category
+                    ? const Icon(Icons.check_rounded)
+                    : null,
+                onTap: () => Navigator.pop(context, category),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    var selected = choice;
+    if (choice == '__create__') {
+      final field = TextEditingController();
+      selected =
+          await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(context.tr('创建新分类')),
+              content: TextField(
+                controller: field,
+                autofocus: true,
+                maxLength: 30,
+                decoration: InputDecoration(labelText: context.tr('分类名称')),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(context.tr('取消')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, field.text),
+                  child: Text(context.tr('创建并移动')),
+                ),
+              ],
+            ),
+          ) ??
+          '';
+      field.dispose();
+      await c.createConversationCategory(selected);
+    }
+    if (selected.isNotEmpty || choice == '') {
+      await c.moveConversationToCategory(conversation, selected);
+    }
+  }
+
+  Future<void> _pickProfile() async {
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .62,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Text(
+                  context.tr('切换 Profile'),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final profile in c.profiles)
+                      ListTile(
+                        leading: const Icon(Icons.layers_outlined),
+                        title: Text(profile),
+                        subtitle: profile == c.profile
+                            ? Text(context.tr('当前 Profile'))
+                            : null,
+                        selected: profile == c.profile,
+                        trailing: profile == c.profile
+                            ? const Icon(Icons.check_rounded)
+                            : null,
+                        onTap: () => Navigator.pop(context, profile),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || chosen == null || chosen == c.profile || c.busy) return;
+    _search.clear();
+    c.search = '';
+    await c.switchProfile(chosen);
   }
 
   @override
@@ -846,29 +1006,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _drawer(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final visible = c.conversations.where((conversation) {
+      final archived = c.isConversationArchived(conversation);
+      final category = c.conversationCategory(conversation);
+      return switch (_historyFilter) {
+        'pinned' => c.isConversationPinned(conversation) && !archived,
+        'archived' => archived,
+        'category' => category == _historyCategory && !archived,
+        _ => !archived,
+      };
+    }).toList();
+    final categories = c.conversationCategoryNames.toList()..sort();
     return Drawer(
-      width: 330,
+      key: const Key('conversation-history-drawer'),
+      width: MediaQuery.sizeOf(context).width,
       child: SafeArea(
         child: Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(24, 20, 24, 20),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 18, 18),
               child: Row(
                 children: [
-                  ChatStudioMark(size: 34),
-                  SizedBox(width: 12),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        'Chat Studio',
-                        style: TextStyle(
-                          fontSize: 25,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -.8,
-                        ),
+                  const ChatStudioMark(size: 34),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      context.tr('Chat Studio'),
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -.5,
                       ),
                     ),
+                  ),
+                  IconButton(
+                    tooltip: context.tr('关闭'),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
                   ),
                 ],
               ),
@@ -885,18 +1059,18 @@ class _HomeScreenState extends State<HomeScreen> {
                           Navigator.pop(context);
                         },
                   icon: const Icon(Icons.add_rounded),
-                  label: Text(context.tr("新建对话")),
+                  label: Text(context.tr('新建对话')),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _search,
                 decoration: InputDecoration(
-                  hintText: context.tr("搜索全部对话"),
-                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: context.tr('搜索全部对话'),
+                  prefixIcon: const Icon(Icons.search_rounded),
                   isDense: true,
                 ),
                 onChanged: (value) {
@@ -909,36 +1083,148 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 10, 16, 0),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      context.tr("对话记录"),
+                      context.tr('对话记录'),
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                         color: colors.onSurfaceVariant,
                       ),
                     ),
                   ),
+                  PopupMenuButton<String>(
+                    tooltip: context.tr('筛选历史'),
+                    onSelected: (value) async {
+                      if (value == 'new-category') {
+                        final field = TextEditingController();
+                        final name = await showDialog<String>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text(context.tr('创建新分类')),
+                            content: TextField(
+                              controller: field,
+                              autofocus: true,
+                              maxLength: 30,
+                              decoration: InputDecoration(
+                                labelText: context.tr('分类名称'),
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text(context.tr('取消')),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.pop(context, field.text),
+                                child: Text(context.tr('创建')),
+                              ),
+                            ],
+                          ),
+                        );
+                        field.dispose();
+                        if (name != null) {
+                          await c.createConversationCategory(name);
+                        }
+                        return;
+                      }
+                      if (value.startsWith('category:')) {
+                        setState(() {
+                          _historyFilter = 'category';
+                          _historyCategory = value.substring(
+                            'category:'.length,
+                          );
+                        });
+                      } else {
+                        setState(() {
+                          _historyFilter = value;
+                          _historyCategory = '';
+                        });
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'all',
+                        child: Text(context.tr('全部历史')),
+                      ),
+                      PopupMenuItem(
+                        value: 'pinned',
+                        child: Text(context.tr('置顶对话')),
+                      ),
+                      PopupMenuItem(
+                        value: 'archived',
+                        child: Text(context.tr('归档对话')),
+                      ),
+                      if (categories.isNotEmpty) const PopupMenuDivider(),
+                      for (final category in categories)
+                        PopupMenuItem(
+                          value: 'category:$category',
+                          child: Text(category),
+                        ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: 'new-category',
+                        child: Text(context.tr('创建新分类')),
+                      ),
+                    ],
+                    icon: const Icon(Icons.filter_list_rounded, size: 20),
+                  ),
                   IconButton(
-                    tooltip: context.tr("刷新记录"),
+                    tooltip: context.tr('刷新记录'),
                     onPressed: c.loadingSessions
                         ? null
                         : () => c.refreshSessions(),
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
                   ),
                 ],
               ),
             ),
+            if (_historyFilter == 'category')
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 16,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _historyCategory,
+                        style: TextStyle(color: colors.primary, fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await c.removeConversationCategory(_historyCategory);
+                        if (mounted) {
+                          setState(() {
+                            _historyFilter = 'all';
+                            _historyCategory = '';
+                          });
+                        }
+                      },
+                      child: Text(context.tr('删除分类')),
+                    ),
+                  ],
+                ),
+              ),
             if (c.loadingSessions) const LinearProgressIndicator(minHeight: 2),
             Expanded(
-              child: c.conversations.isEmpty
+              child: visible.isEmpty
                   ? Center(
                       child: Text(
-                        c.search.isEmpty
-                            ? context.tr("还没有对话\n从一个问题开始吧")
-                            : context.tr("没有找到相关对话"),
+                        c.conversations.isEmpty
+                            ? (c.search.isEmpty
+                                  ? context.tr('还没有对话\n从一个问题开始吧')
+                                  : context.tr('没有找到相关对话'))
+                            : context.tr('此筛选下暂无对话'),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: colors.onSurfaceVariant,
@@ -949,56 +1235,88 @@ class _HomeScreenState extends State<HomeScreen> {
                   : RefreshIndicator(
                       onRefresh: c.refreshSessions,
                       child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        itemCount:
-                            c.conversations.length +
-                            (c.hasMoreSessions ? 1 : 0),
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
+                        itemCount: visible.length + (c.hasMoreSessions ? 1 : 0),
                         itemBuilder: (context, index) {
-                          if (index == c.conversations.length) {
+                          if (index == visible.length) {
                             return TextButton(
                               onPressed: c.loadingSessions
                                   ? null
                                   : () => c.refreshSessions(more: true),
-                              child: Text(context.tr("加载更多")),
+                              child: Text(context.tr('加载更多')),
                             );
                           }
-                          final conversation = c.conversations[index];
+                          final conversation = visible[index];
                           final task = c.taskStatus(conversation);
+                          final pinned = c.isConversationPinned(conversation);
+                          final category = c.conversationCategory(conversation);
                           return ListTile(
                             key: ValueKey('history:${conversation.id}'),
-                            dense: true,
                             minTileHeight: 54,
-                            visualDensity: const VisualDensity(
-                              horizontal: -2,
-                              vertical: -2,
-                            ),
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
-                              vertical: 0,
+                              vertical: 2,
                             ),
-                            horizontalTitleGap: 8,
+                            horizontalTitleGap: 10,
                             selected: conversation.id == c.sessionId,
                             selectedTileColor: colors.primaryContainer
                                 .withValues(alpha: .4),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
+                            leading: Icon(
+                              pinned
+                                  ? Icons.push_pin
+                                  : Icons.chat_bubble_outline_rounded,
+                              size: 19,
+                              color: pinned
+                                  ? colors.primary
+                                  : colors.onSurfaceVariant,
+                            ),
                             title: Text(
                               conversation.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 13, height: 1.2),
-                            ),
-                            subtitle: Text(
-                              conversation.preview.isNotEmpty
-                                  ? conversation.preview
-                                  : conversation.model,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 10.5,
-                                height: 1.15,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
+                            ),
+                            subtitle: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    conversation.preview.isNotEmpty
+                                        ? conversation.preview
+                                        : conversation.model,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                if (category.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    Icons.folder_outlined,
+                                    size: 13,
+                                    color: colors.primary,
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(
+                                      category,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: colors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             onTap: c.busy
                                 ? null
@@ -1014,16 +1332,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   const SizedBox(width: 6),
                                 ],
                                 IconButton(
-                                  tooltip: context.tr("管理对话"),
+                                  tooltip: context.tr('管理对话'),
                                   visualDensity: VisualDensity.compact,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 48,
-                                    minHeight: 48,
-                                  ),
                                   icon: const Icon(
                                     Icons.more_horiz_rounded,
-                                    size: 17,
+                                    size: 18,
                                   ),
                                   onPressed: task.active
                                       ? null
@@ -1037,39 +1350,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
             ),
             const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.layers_outlined, size: 19),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButton<String>(
-                      value: c.profiles.contains(c.profile) ? c.profile : null,
-                      isExpanded: true,
-                      underline: const SizedBox.shrink(),
-                      hint: Text(context.tr("无可用 Profile")),
-                      items: c.profiles
-                          .map(
-                            (p) => DropdownMenuItem(
-                              value: p,
-                              child: Text(p, overflow: TextOverflow.ellipsis),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: c.busy
-                          ? null
-                          : (v) {
-                              if (v != null) {
-                                _search.clear();
-                                c.search = '';
-                                c.switchProfile(v);
-                              }
-                            },
-                    ),
-                  ),
-                ],
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              leading: const Icon(Icons.layers_outlined),
+              title: Text(
+                c.profile,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
+              subtitle: Text(context.tr('切换当前 Profile')),
+              trailing: const Icon(Icons.keyboard_arrow_up_rounded),
+              enabled: !c.busy && c.profiles.isNotEmpty,
+              onTap: _pickProfile,
             ),
             ListTile(
               contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -1086,7 +1378,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(fontSize: 14),
               ),
               subtitle: Text(
-                context.tr("个人信息与设置"),
+                context.tr('个人信息与设置'),
                 style: TextStyle(fontSize: 11),
               ),
               trailing: const Icon(Icons.settings_outlined, size: 20),

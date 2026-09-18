@@ -64,19 +64,21 @@ class WorkspaceDrawer extends StatelessWidget {
         if (bytes == null) throw StateError(context.tr('图片内容读取失败'));
         await showDialog<void>(
           context: context,
-          builder: (_) => Dialog(
-            child: InteractiveViewer(
-              child: Image.memory(bytes, fit: BoxFit.contain),
-            ),
+          useSafeArea: false,
+          builder: (_) => Dialog.fullscreen(
+            child: _ImageFilePreview(title: name, bytes: bytes),
           ),
         );
       } else {
         await showDialog<void>(
           context: context,
-          builder: (_) => _TextFileEditor(
-            title: name,
-            initialValue: content,
-            onSave: (value) => api.writeWorkspaceFile(id, path, value),
+          useSafeArea: false,
+          builder: (_) => Dialog.fullscreen(
+            child: _TextFileEditor(
+              title: name,
+              initialValue: content,
+              onSave: (value) => api.writeWorkspaceFile(id, path, value),
+            ),
           ),
         );
       }
@@ -124,7 +126,7 @@ class WorkspaceDrawer extends StatelessWidget {
     final c = controller, colors = Theme.of(context).colorScheme;
     return Drawer(
       key: const Key('server-workspace-drawer'),
-      width: 340,
+      width: MediaQuery.sizeOf(context).width,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,6 +287,36 @@ class WorkspaceDrawer extends StatelessWidget {
   }
 }
 
+class _ImageFilePreview extends StatelessWidget {
+  const _ImageFilePreview({required this.title, required this.bytes});
+  final String title;
+  final Uint8List bytes;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      leading: IconButton(
+        tooltip: context.tr('关闭'),
+        onPressed: () => Navigator.pop(context),
+        icon: const Icon(Icons.close_rounded),
+      ),
+    ),
+    body: ColoredBox(
+      color: Theme.of(
+        context,
+      ).colorScheme.surfaceContainerHighest.withValues(alpha: .25),
+      child: Center(
+        child: InteractiveViewer(
+          minScale: .5,
+          maxScale: 5,
+          child: Image.memory(bytes, fit: BoxFit.contain),
+        ),
+      ),
+    ),
+  );
+}
+
 class _TextFileEditor extends StatefulWidget {
   const _TextFileEditor({
     required this.title,
@@ -308,6 +340,14 @@ class _TextFileEditorState extends State<_TextFileEditor> {
     super.dispose();
   }
 
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: _controller.text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(context.tr('已复制'))));
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
@@ -327,43 +367,61 @@ class _TextFileEditorState extends State<_TextFileEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: SizedBox(
-      width: 720,
-      height: 480,
-      child: TextField(
-        controller: _controller,
-        expands: true,
-        maxLines: null,
-        minLines: null,
-        textAlignVertical: TextAlignVertical.top,
-        decoration: InputDecoration(
-          border: const OutlineInputBorder(),
-          hintText: context.tr('文件内容'),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      leading: IconButton(
+        tooltip: context.tr('关闭'),
+        onPressed: _saving ? null : () => Navigator.pop(context),
+        icon: const Icon(Icons.close_rounded),
+      ),
+      actions: [
+        IconButton(
+          tooltip: context.tr('复制'),
+          onPressed: _saving ? null : _copy,
+          icon: const Icon(Icons.copy_outlined),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: FilledButton.tonalIcon(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_outlined, size: 18),
+            label: Text(context.tr('保存')),
+          ),
+        ),
+      ],
+    ),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: TextField(
+          controller: _controller,
+          expands: true,
+          maxLines: null,
+          minLines: null,
+          textAlignVertical: TextAlignVertical.top,
+          keyboardType: TextInputType.multiline,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 13,
+            height: 1.5,
+          ),
+          decoration: InputDecoration(
+            hintText: context.tr('请输入文本'),
+            contentPadding: const EdgeInsets.all(16),
+          ),
         ),
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () =>
-            Clipboard.setData(ClipboardData(text: _controller.text)),
-        child: Text(context.tr('复制')),
-      ),
-      TextButton(
-        onPressed: _saving ? null : () => Navigator.pop(context),
-        child: Text(context.tr('取消')),
-      ),
-      FilledButton(
-        onPressed: _saving ? null : _save,
-        child: Text(context.tr('保存')),
-      ),
-    ],
   );
 }
 
-/// `path` is an API navigation token, `fullPath` is the selected server path.
-/// In particular Linux returns relative `path` and absolute `fullPath`.
 class ServerFolderPicker extends StatefulWidget {
   const ServerFolderPicker({super.key, required this.api});
   final StudioApi api;

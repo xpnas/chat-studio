@@ -135,6 +135,16 @@ class AppController extends ChangeNotifier {
   List<String> profiles = [];
   List<ModelChoice> models = [];
   List<Conversation> conversations = [];
+
+  // Conversation organization is intentionally local to this client. The
+  // upstream session contract currently exposes history, rename and delete,
+  // but not pin/archive/category mutations. Keep it scoped by server,
+  // account and profile so local organization never leaks across workspaces.
+  final pinnedConversationIds = <String>{};
+  final archivedConversationIds = <String>{};
+  final conversationCategories = <String, String>{};
+  final conversationCategoryNames = <String>{};
+  bool _organizationLoaded = false;
   ModelChoice? get selectedModel => _view.model;
   set selectedModel(ModelChoice? value) => _view.model = value;
   Conversation? get current => _view.conversation;
@@ -686,6 +696,8 @@ class AppController extends ChangeNotifier {
       }
       await refreshCapabilities();
       if (!_valid(epoch)) return;
+      await _loadConversationOrganization();
+      if (!_valid(epoch)) return;
       await _persistSession();
       if (!_valid(epoch)) return;
       reconnect();
@@ -787,6 +799,122 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  String get _organizationScope =>
+      '${api?.address.value ?? ''}|${account?.id ?? ''}|$profile';
+
+  Future<void> _loadConversationOrganization() async {
+    if (api == null || account == null) return;
+    try {
+      final saved = await storage.readConversationOrganization(
+        _organizationScope,
+      );
+      pinnedConversationIds
+        ..clear()
+        ..addAll(asList(saved['pinned']).whereType<String>());
+      archivedConversationIds
+        ..clear()
+        ..addAll(asList(saved['archived']).whereType<String>());
+      conversationCategories
+        ..clear()
+        ..addAll(
+          asMap(saved['categories']).map(
+            (key, value) => MapEntry(key, text(value)),
+          )..removeWhere((key, value) => value.isEmpty),
+        );
+      conversationCategoryNames
+        ..clear()
+        ..addAll(asList(saved['categoryNames']).whereType<String>());
+      _organizationLoaded = true;
+    } catch (_) {
+      _organizationLoaded = false;
+    }
+  }
+
+  void _saveConversationOrganization() {
+    if (!_organizationLoaded || api == null || account == null) return;
+    unawaited(
+      storage.saveConversationOrganization(_organizationScope, {
+        'pinned': pinnedConversationIds.toList(),
+        'archived': archivedConversationIds.toList(),
+        'categories': conversationCategories,
+        'categoryNames': conversationCategoryNames.toList(),
+      }),
+    );
+  }
+
+  bool isConversationPinned(Conversation conversation) =>
+      pinnedConversationIds.contains(conversation.id);
+  bool isConversationArchived(Conversation conversation) =>
+      archivedConversationIds.contains(conversation.id);
+  String conversationCategory(Conversation conversation) =>
+      conversationCategories[conversation.id] ?? '';
+
+  void _sortConversations() {
+    conversations.sort((a, b) {
+      final pin =
+          (isConversationPinned(b) ? 1 : 0) - (isConversationPinned(a) ? 1 : 0);
+      if (pin != 0) return pin;
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+  }
+
+  Future<void> setConversationPinned(
+    Conversation conversation,
+    bool value,
+  ) async {
+    if (value) {
+      pinnedConversationIds.add(conversation.id);
+    } else {
+      pinnedConversationIds.remove(conversation.id);
+    }
+    _sortConversations();
+    _saveConversationOrganization();
+    _notify();
+  }
+
+  Future<void> setConversationArchived(
+    Conversation conversation,
+    bool value,
+  ) async {
+    if (value) {
+      archivedConversationIds.add(conversation.id);
+    } else {
+      archivedConversationIds.remove(conversation.id);
+    }
+    _saveConversationOrganization();
+    _notify();
+  }
+
+  Future<void> moveConversationToCategory(
+    Conversation conversation,
+    String? category,
+  ) async {
+    final value = category?.trim() ?? '';
+    if (value.isEmpty) {
+      conversationCategories.remove(conversation.id);
+    } else {
+      conversationCategories[conversation.id] = value;
+      conversationCategoryNames.add(value);
+    }
+    _saveConversationOrganization();
+    _notify();
+  }
+
+  Future<void> createConversationCategory(String category) async {
+    final value = category.trim();
+    if (value.isEmpty) return;
+    conversationCategoryNames.add(value);
+    _saveConversationOrganization();
+    _notify();
+  }
+
+  Future<void> removeConversationCategory(String category) async {
+    conversationCategoryNames.remove(category);
+    conversationCategories.removeWhere((_, value) => value == category);
+    _saveConversationOrganization();
+    _notify();
+  }
+
   Future<void> refreshSessions({String? query, bool more = false}) async {
     if (!authenticated || (more && loadingSessions)) return;
     final client = api!;
@@ -822,6 +950,7 @@ class AppController extends ChangeNotifier {
       // Only locally active runs are merged because they may not be indexed yet.
       final merged = [if (more) ...conversations, ...local, ...rows];
       conversations = {for (final s in merged) s.id: s}.values.toList();
+      _sortConversations();
       for (final row in rows) {
         final state = _findState(row.id);
         if (state != null) state.conversation = row;
@@ -1805,6 +1934,11 @@ class AppController extends ChangeNotifier {
     _newChatReasoning = '';
     workspaceNotice = null;
     conversations = [];
+    pinnedConversationIds.clear();
+    archivedConversationIds.clear();
+    conversationCategories.clear();
+    conversationCategoryNames.clear();
+    _organizationLoaded = false;
     selectedModel = null;
     sttProvider = null;
     _clearAgents();

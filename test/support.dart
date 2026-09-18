@@ -8,7 +8,7 @@ import 'package:chatstudio/data/chat_transport.dart';
 import 'package:chatstudio/data/studio_api.dart';
 import 'package:chatstudio/state/app_controller.dart';
 
-class MemoryStorage implements AppStorage {
+class MemoryStorage extends AppStorage {
   Map<String, dynamic>? session;
   List<Map<String, dynamic>> servers = [];
   bool failServerWrites = false;
@@ -30,7 +30,20 @@ class MemoryStorage implements AppStorage {
 
   String theme = 'system';
   final choices = <String, Map<String, dynamic>>{};
+  final organizations = <String, Map<String, dynamic>>{};
   bool hintSeen = false;
+  @override
+  Future<Map<String, dynamic>> readConversationOrganization(
+    String scope,
+  ) async => organizations[scope] ?? <String, dynamic>{};
+  @override
+  Future<void> saveConversationOrganization(
+    String scope,
+    Map<String, dynamic> organization,
+  ) async {
+    organizations[scope] = organization;
+  }
+
   @override
   Future<Map<String, dynamic>?> readChoice(String scope) async =>
       choices[scope];

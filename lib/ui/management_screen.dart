@@ -46,8 +46,10 @@ class _ManagementScreenState extends State<ManagementScreen>
   Map<String, dynamic> _performance = const {};
   String _selectedLog = '';
   bool _refreshingCache = false;
+  bool _refreshingTab = false;
   bool _saving = false;
   final _providerRefreshing = <String>{};
+  final _agentRefreshing = <String>{};
 
   @override
   void initState() {
@@ -127,6 +129,108 @@ class _ManagementScreenState extends State<ManagementScreen>
     if (_selectedLog.isNotEmpty) unawaited(_loadLogs());
   }
 
+  Future<void> _refreshCurrentTab() async {
+    if (_refreshingTab || _api == null) return;
+    setState(() => _refreshingTab = true);
+    try {
+      switch (_tabs.index) {
+        case 0:
+          await _refreshAgentsData();
+        case 1:
+          await _refreshModelsData();
+        case 2:
+          await _refreshDiagnosticsData();
+        case 3:
+          await _refreshSettingsData();
+      }
+    } finally {
+      if (mounted) setState(() => _refreshingTab = false);
+    }
+  }
+
+  Future<void> _refreshAgentsData() async {
+    final api = _api;
+    if (api == null) return;
+    final results = await Future.wait<Object?>([
+      _attempt(() => api.codingAgents()),
+      _attempt(() => api.codingAgentUpdatePolicies()),
+      _attempt(() => api.agentAvailability()),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _agents = _mapResult(results[0]);
+      _agentPolicies = _mapResult(results[1]);
+      _agentsError = results[0] is Map<String, dynamic>
+          ? null
+          : _friendlyError(results[0]!);
+      _runtimeAgents = _mapResult(results[2]);
+      _runtimeError =
+          results[2] is Map<String, dynamic> && _runtimeAgents['agents'] is List
+          ? null
+          : context.tr('无法读取运行时状态，请刷新重试');
+    });
+  }
+
+  Future<void> _refreshModelsData() async {
+    final api = _api;
+    if (api == null) return;
+    final result = await _attempt(() => api.models());
+    if (!mounted) return;
+    if (result is Map<String, dynamic>) {
+      setState(() => _modelCatalog = result);
+    } else {
+      _message(_friendlyError(result!), error: true);
+    }
+  }
+
+  Future<void> _refreshDiagnosticsData() async {
+    final api = _api;
+    if (api == null) return;
+    final results = await Future.wait<Object?>([
+      _attempt(() => api.usageStats()),
+      _attempt(() => api.skillUsageStats()),
+      _attempt(() => api.logFiles()),
+      _attempt(() => api.performanceRuntime()),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _usage = _mapResult(results[0]);
+      _skillsUsage = _mapResult(results[1]);
+      _logFiles = _listResult(results[2]);
+      _performance = _mapResult(results[3]);
+      final available = _logFiles.map((f) => text(f['name'])).toSet();
+      _selectedLog = available.contains(_selectedLog)
+          ? _selectedLog
+          : (available.isEmpty ? '' : available.first);
+    });
+    if (_selectedLog.isNotEmpty) await _loadLogs();
+  }
+
+  Future<void> _refreshSettingsData() async {
+    final api = _api;
+    if (api == null) return;
+    final results = await Future.wait<Object?>([
+      _attempt(() => api.auxiliaryModels()),
+      _attempt(() => api.delegationModel()),
+      _attempt(() => api.combinationModels()),
+      _attempt(() => api.sttSettings()),
+      _attempt(() => api.ttsSettings()),
+      _attempt(() => api.fetchConfig()),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _auxiliary = _mapResult(results[0]);
+      _delegation = _mapResult(results[1]);
+      _combination = _mapResult(results[2]);
+      _stt = _mapResult(results[3]);
+      _tts = _mapResult(results[4]);
+      _config = _mapResult(results[5]);
+      _configError = results[5] is Map<String, dynamic>
+          ? null
+          : _friendlyError(results[5]!);
+    });
+  }
+
   Future<Object?> _attempt(Future<Object?> Function() action) async {
     try {
       return await action();
@@ -159,13 +263,17 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
   }
 
-  Future<void> _run(String success, Future<void> Function() action) async {
+  Future<void> _run(
+    String success,
+    Future<void> Function() action, {
+    Future<void> Function()? refresh,
+  }) async {
     if (_saving) return;
     setState(() => _saving = true);
     try {
       await action();
       _message(success);
-      await _loadAll();
+      await (refresh ?? _refreshCurrentTab)();
     } catch (error) {
       _message(_friendlyError(error), error: true);
     } finally {
@@ -196,8 +304,8 @@ class _ManagementScreenState extends State<ManagementScreen>
       title: Text(context.tr("服务管理")),
       actions: [
         IconButton(
-          tooltip: context.tr("刷新全部数据"),
-          onPressed: _loading ? null : _loadAll,
+          tooltip: context.tr("刷新当前页面数据"),
+          onPressed: _loading || _refreshingTab ? null : _refreshCurrentTab,
           icon: const Icon(Icons.refresh_rounded),
         ),
       ],
@@ -445,16 +553,25 @@ class _ManagementScreenState extends State<ManagementScreen>
       });
       return;
     }
-    await _run(
-      action == 'install' ? context.tr("Agent 安装请求已完成") : context.tr("已完成更新检查"),
-      () async {
-        if (action == 'install') {
-          await api.installCodingAgent(id);
-        } else {
-          await api.checkCodingAgentUpdate(id);
-        }
-      },
-    );
+    if (_agentRefreshing.contains(id)) return;
+    setState(() => _agentRefreshing.add(id));
+    try {
+      await _run(
+        action == 'install'
+            ? context.tr("Agent 安装请求已完成")
+            : context.tr("已完成更新检查"),
+        () async {
+          if (action == 'install') {
+            await api.installCodingAgent(id);
+          } else {
+            await api.checkCodingAgentUpdate(id);
+          }
+        },
+        refresh: _refreshAgentsData,
+      );
+    } finally {
+      if (mounted) setState(() => _agentRefreshing.remove(id));
+    }
   }
 
   Future<void> _showAgentConfig(String id) async {
@@ -863,7 +980,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       await api.refreshModelCache();
       if (!mounted) return;
       _message(refreshedMessage);
-      await _loadAll();
+      await _refreshModelsData();
     } catch (error) {
       _message(_friendlyError(error), error: true);
     } finally {
