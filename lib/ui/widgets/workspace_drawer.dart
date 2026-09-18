@@ -16,12 +16,10 @@ class WorkspaceDrawer extends StatelessWidget {
     final c = controller, client = controller.api;
     if (client == null || !c.canChooseWorkspace) return;
     final navigation = c.chatRevision, id = c.sessionId, profile = c.profile;
-    final fullPath = await showModalBottomSheet<String>(
+    final fullPath = await showDialog<String>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (_) => ServerFolderPicker(api: client),
+      useSafeArea: false,
+      builder: (_) => Dialog.fullscreen(child: ServerFolderPicker(api: client)),
     );
     if (fullPath == null ||
         !context.mounted ||
@@ -480,115 +478,106 @@ class _ServerFolderPickerState extends State<ServerFolderPicker> {
 
   @override
   Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: SizedBox(
-      height: MediaQuery.sizeOf(context).height * .7,
-      child: Column(
-        children: [
+    child: Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20),
+          child: Text(
+            context.tr("选择服务器文件夹"),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(20, 6, 20, 10),
+          child: Text(
+            context.tr("目录来自当前 Agent 服务器，不是手机存储"),
+            style: TextStyle(fontSize: 11),
+          ),
+        ),
+        if (_fullPath.isNotEmpty)
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              context.tr("选择服务器文件夹"),
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              _fullPath,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(20, 6, 20, 10),
-            child: Text(
-              context.tr("目录来自当前 Agent 服务器，不是手机存储"),
-              style: TextStyle(fontSize: 11),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: _loading || _parents.isEmpty
+                  ? null
+                  : () => _load(_parents.last.$1, _parents.last.$2, back: true),
+              icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+              label: Text(context.tr("上一级")),
             ),
-          ),
-          if (_fullPath.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                _fullPath,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: _loading || _parents.isEmpty
-                    ? null
-                    : () =>
-                          _load(_parents.last.$1, _parents.last.$2, back: true),
-                icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-                label: Text(context.tr("上一级")),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed:
-                    _loading ||
-                        _error != null ||
-                        !isAbsoluteServerPath(_fullPath)
-                    ? null
-                    : () => Navigator.pop(context, _fullPath),
-                child: Text(context.tr("使用此目录")),
-              ),
-            ],
-          ),
-          if (_loading) const LinearProgressIndicator(minHeight: 2),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                _error!,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          if (_error != null)
+            const Spacer(),
             TextButton(
-              onPressed: _loading ? null : () => _load(_path, _fullPath),
-              child: Text(context.tr("重试目录读取")),
+              onPressed:
+                  _loading || _error != null || !isAbsoluteServerPath(_fullPath)
+                  ? null
+                  : () => Navigator.pop(context, _fullPath),
+              child: Text(context.tr("使用此目录")),
             ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _folders.length,
-              itemBuilder: (_, i) {
-                final f = _folders[i], fullPath = text(_folders[i]['fullPath']);
-                final valid =
-                    !_loading &&
-                    _error == null &&
-                    isAbsoluteServerPath(fullPath);
-                return ListTile(
-                  key: ValueKey('server-folder:${f['path']}'),
-                  dense: true,
-                  leading: const Icon(Icons.folder_outlined, size: 22),
-                  title: Text(
-                    text(f['name']),
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                  subtitle: Text(
-                    fullPath.isEmpty ? context.tr("服务器未提供绝对路径，不能选择") : fullPath,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  onTap: !valid
-                      ? null
-                      : () => _load(text(f['path']), fullPath, enter: true),
-                  trailing: IconButton(
-                    tooltip: context.l10n.format("使用 {0}", {
-                      '0': text(f['name']),
-                    }),
-                    onPressed: !valid
-                        ? null
-                        : () => Navigator.pop(context, fullPath),
-                    icon: const Icon(Icons.check_rounded, size: 20),
-                  ),
-                );
-              },
+          ],
+        ),
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
             ),
           ),
-        ],
-      ),
+        if (_error != null)
+          TextButton(
+            onPressed: _loading ? null : () => _load(_path, _fullPath),
+            child: Text(context.tr("重试目录读取")),
+          ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _folders.length,
+            itemBuilder: (_, i) {
+              final f = _folders[i], fullPath = text(_folders[i]['fullPath']);
+              final valid =
+                  !_loading && _error == null && isAbsoluteServerPath(fullPath);
+              return ListTile(
+                key: ValueKey('server-folder:${f['path']}'),
+                dense: true,
+                leading: const Icon(Icons.folder_outlined, size: 22),
+                title: Text(
+                  text(f['name']),
+                  style: const TextStyle(fontSize: 13),
+                ),
+                subtitle: Text(
+                  fullPath.isEmpty ? context.tr("服务器未提供绝对路径，不能选择") : fullPath,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onTap: !valid
+                    ? null
+                    : () => _load(text(f['path']), fullPath, enter: true),
+                trailing: IconButton(
+                  tooltip: context.l10n.format("使用 {0}", {
+                    '0': text(f['name']),
+                  }),
+                  onPressed: !valid
+                      ? null
+                      : () => Navigator.pop(context, fullPath),
+                  icon: const Icon(Icons.check_rounded, size: 20),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     ),
   );
 }

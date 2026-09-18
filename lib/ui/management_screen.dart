@@ -46,6 +46,7 @@ class _ManagementScreenState extends State<ManagementScreen>
   Map<String, dynamic> _performance = const {};
   String _selectedLog = '';
   bool _refreshingCache = false;
+  bool _refreshingPerformance = false;
   bool _refreshingTab = false;
   bool _saving = false;
   final _providerRefreshing = <String>{};
@@ -127,6 +128,22 @@ class _ManagementScreenState extends State<ManagementScreen>
           : null;
     });
     if (_selectedLog.isNotEmpty) unawaited(_loadLogs());
+  }
+
+  Future<void> _refreshPerformanceData() async {
+    final api = _api;
+    if (api == null || _refreshingPerformance) return;
+    setState(() => _refreshingPerformance = true);
+    final result = await _attempt(() => api.performanceRuntime());
+    if (!mounted) return;
+    setState(() {
+      if (result is Map<String, dynamic>) {
+        _performance = result;
+      } else {
+        _message(_friendlyError(result!), error: true);
+      }
+      _refreshingPerformance = false;
+    });
   }
 
   Future<void> _refreshCurrentTab() async {
@@ -1783,7 +1800,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       ListTile(
         leading: const Icon(Icons.refresh_rounded),
         title: Text(context.tr("刷新性能数据")),
-        onTap: _loadAll,
+        onTap: _refreshingPerformance ? null : _refreshPerformanceData,
       ),
     ]),
     _section(

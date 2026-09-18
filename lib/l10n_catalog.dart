@@ -733,8 +733,8 @@ const appEnglishCatalog = <String, String>{
   "此筛选下暂无对话": "No chats in this filter",
   "切换 Profile": "Switch profile",
   "切换当前 Profile": "Switch current profile",
-  "分类只在本机保存，不改变服务端历史":
-      "Categories are stored on this device and do not change server history",
+  "分类会同步到服务器，网页端也会立即显示":
+      "Categories sync to the server and appear on the web immediately",
   "刷新当前页面数据": "Refresh current page data",
   "已复制": "Copied",
   "请输入文本": "Enter text",

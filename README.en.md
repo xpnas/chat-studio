@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [中文](README.md)
 
-A lightweight Hermes Studio client for Android and iOS. It implements the real **hermes-studio v1.0.3** protocol with a standalone Flutter UI — **not a WebView wrapper**.
+A lightweight Hermes Studio client for Android and iOS. It implements the real Hermes Studio-compatible protocol with a standalone Flutter UI — **not a WebView wrapper**.
 
 > Current delivery: source for both platforms, a signed Android Release APK, GitHub builds for both platforms, and optional signing workflows. Android has been built and tested locally on Windows against the real service protocol. iOS still requires validation on a GitHub macOS runner with Xcode; an unsigned `.app` is not presented as an installable IPA.
 
@@ -101,7 +101,7 @@ android/  ios/            platform projects and icons
 test/                     unit, widget, and optional live contract tests
 tools/mock-provider/      offline OpenAI-compatible test fixture
 scripts/                  CI signing, icon generation, source-analysis tools
-docs/analysis/            v1.0.3 source analysis and CodeGraph output
+docs/analysis/            source analysis and CodeGraph output
 .github/workflows/        CI and packaging workflows
 ```
 

@@ -99,6 +99,26 @@ class ModelChoice {
   }).toList();
 }
 
+class ConversationCategory {
+  const ConversationCategory({
+    required this.id,
+    required this.name,
+    this.createdAt = 0,
+    this.updatedAt = 0,
+  });
+  final int id;
+  final String name;
+  final int createdAt, updatedAt;
+
+  factory ConversationCategory.fromJson(Map<String, dynamic> json) =>
+      ConversationCategory(
+        id: integer(json['id']),
+        name: text(json['name']),
+        createdAt: integer(json['created_at']),
+        updatedAt: integer(json['updated_at']),
+      );
+}
+
 class Conversation {
   const Conversation({
     required this.id,
@@ -111,10 +131,15 @@ class Conversation {
     this.provider = '',
     this.updatedAt = 0,
     this.reasoningEffort = '',
+    this.categoryId,
+    this.isPinned = false,
+    this.isArchived = false,
   });
   final String reasoningEffort;
   final String id, title, preview, profile, agent, source, model, provider;
   final int updatedAt;
+  final int? categoryId;
+  final bool isPinned, isArchived;
   bool get canContinue =>
       (agent.isEmpty ||
           AgentChoice.supportedIds.contains(AgentChoice.canonicalId(agent))) &&
@@ -130,6 +155,11 @@ class Conversation {
     provider: text(json['provider']),
     reasoningEffort: text(json['reasoning_effort']),
     updatedAt: integer(json['last_active'] ?? json['started_at']),
+    categoryId: json['category_id'] == null
+        ? null
+        : integer(json['category_id']),
+    isPinned: flag(json['is_pinned']),
+    isArchived: flag(json['is_archived']),
   );
 }
 

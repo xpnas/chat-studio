@@ -18,9 +18,8 @@ abstract class AppStorage {
   Future<Map<String, dynamic>?> readChoice(String scope);
   Future<void> saveChoice(String scope, Map<String, dynamic> choice);
 
-  /// Local-only conversation organization (pins, archive state and categories).
-  /// Defaults live in shared preferences so test/in-memory storage
-  /// implementations do not need to persist this optional metadata.
+  /// Legacy compatibility storage for local conversation preferences.
+  /// Categories are server-backed and are not persisted through this API.
   Future<Map<String, dynamic>> readConversationOrganization(
     String scope,
   ) async {

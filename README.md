@@ -2,7 +2,7 @@
 
 [中文](README.md) | [English](README.en.md)
 
-Android / iOS 上的轻量 Hermes Studio 客户端。面向 **hermes-studio v1.0.3** 的真实协议实现，Flutter 独立 UI，**不是 WebView 套壳**。
+Android / iOS 上的轻量 Hermes Studio 客户端。面向 Hermes Studio 兼容接口的真实协议实现，Flutter 独立 UI，**不是 WebView 套壳**。
 
 > 当前交付：双端源码、Android 已签名 Release APK、GitHub 双端构建及可选签名流程。Windows 本机已完成 Android 编译和真实服务协议联调；iOS 尚需 GitHub macOS Runner / Xcode 验证，不把未签名 `.app` 称为可安装 IPA。
 
@@ -125,7 +125,7 @@ flutter build appbundle --release
 | `Mobile CI` | push / PR / 手动 | 测试覆盖率、可安装 debug APK、iOS 模拟器 app、iOS 未签名设备 app |
 | `Signed packages` | 手动选择 android / ios / both | 签名 Release APK + AAB / IPA，需 `release` 环境 Secrets |
 | `Branch releases` | 非 `main`/`master` 分支 push / 手动 | GitHub Release 下的独立 APK + AAB；配置 iOS 签名后追加独立 IPA |
-| `Studio contract` | 手动 | 固定源码版本的真实 REST + Socket.IO 联调，使用本地模型夹具 |
+| `Studio contract` | 手动 | 真实 REST + Socket.IO 联调，使用本地模型夹具 |
 
 普通 PR 不读取生产签名密钥。建议为 GitHub 的 `release` Environment 配置审核人及允许发布的分支。这里提供可执行配置，**不表示已经在远端 Actions 上运行通过**；本地 Git 提交不会自动等同于推送。
 
@@ -142,7 +142,7 @@ android/  ios/            平台工程与图标
 test/                    单元、组件、可选真实服务契约测试
 tools/mock-provider/     不调用外网模型的 OpenAI 兼容测试夹具
 scripts/                 CI 签名、图标生成、源码分析工具
-docs/analysis/           v1.0.3 源码分析及 CodeGraph 原始结果
+docs/analysis/           源码分析及 CodeGraph 原始结果
 .github/workflows/       双端质量检查及打包
 ```
 

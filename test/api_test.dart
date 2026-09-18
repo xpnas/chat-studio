@@ -62,6 +62,35 @@ void main() {
     },
   );
   test(
+    'conversation pin and archive mutations use server-backed endpoints',
+    () async {
+      final requests = <http.BaseRequest>[];
+      final api = StudioApi(
+        ServerAddress.parse('https://example.com'),
+        client: MockClient((request) async {
+          requests.add(request);
+          return http.Response('{}', 200);
+        }),
+      );
+      addTearDown(api.close);
+
+      await api.setConversationPinned('session/1', true);
+      await api.setConversationPinned('session/1', false);
+      await api.setConversationArchived('session/1', true);
+      await api.setConversationArchived('session/1', false);
+
+      expect(
+        requests.map((request) => '${request.method} ${request.url.path}'),
+        [
+          'POST /api/studio/sessions/session%2F1/pin',
+          'POST /api/studio/sessions/session%2F1/unpin',
+          'POST /api/studio/sessions/session%2F1/archive',
+          'POST /api/studio/sessions/session%2F1/unarchive',
+        ],
+      );
+    },
+  );
+  test(
     'HTML proxy errors produce useful messages instead of JSON crashes',
     () async {
       final api = StudioApi(

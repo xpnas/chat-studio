@@ -407,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             ListTile(
               title: Text(context.tr('移动到分类')),
-              subtitle: Text(context.tr('分类只在本机保存，不改变服务端历史')),
+              subtitle: Text(context.tr('分类会同步到服务器，网页端也会立即显示')),
             ),
             ListTile(
               leading: const Icon(Icons.create_new_folder_outlined),
@@ -461,7 +461,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ) ??
           '';
       field.dispose();
-      await c.createConversationCategory(selected);
+      final created = await c.createConversationCategory(selected);
+      if (!created) return;
     }
     if (selected.isNotEmpty || choice == '') {
       await c.moveConversationToCategory(conversation, selected);
@@ -476,7 +477,7 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       builder: (context) => SafeArea(
         child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * .62,
+          height: MediaQuery.sizeOf(context).height * .78,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1077,7 +1078,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   _searchTimer?.cancel();
                   _searchTimer = Timer(
                     const Duration(milliseconds: 350),
-                    () => c.refreshSessions(query: value),
+                    () => c.refreshSessions(
+                      query: value,
+                      includeArchived: _historyFilter == 'archived',
+                    ),
                   );
                 },
               ),
@@ -1145,6 +1149,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           _historyCategory = '';
                         });
                       }
+                      unawaited(
+                        c.refreshSessions(
+                          includeArchived: _historyFilter == 'archived',
+                        ),
+                      );
                     },
                     itemBuilder: (context) => [
                       PopupMenuItem(
@@ -1177,7 +1186,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     tooltip: context.tr('刷新记录'),
                     onPressed: c.loadingSessions
                         ? null
-                        : () => c.refreshSessions(),
+                        : () => c.refreshSessions(
+                            includeArchived: _historyFilter == 'archived',
+                          ),
                     icon: const Icon(Icons.refresh_rounded, size: 20),
                   ),
                 ],
@@ -1202,8 +1213,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     TextButton(
                       onPressed: () async {
-                        await c.removeConversationCategory(_historyCategory);
-                        if (mounted) {
+                        final removed = await c.removeConversationCategory(
+                          _historyCategory,
+                        );
+                        if (removed && mounted) {
                           setState(() {
                             _historyFilter = 'all';
                             _historyCategory = '';
@@ -1233,7 +1246,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     )
                   : RefreshIndicator(
-                      onRefresh: c.refreshSessions,
+                      onRefresh: () => c.refreshSessions(
+                        includeArchived: _historyFilter == 'archived',
+                      ),
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
                         itemCount: visible.length + (c.hasMoreSessions ? 1 : 0),
@@ -1242,7 +1257,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             return TextButton(
                               onPressed: c.loadingSessions
                                   ? null
-                                  : () => c.refreshSessions(more: true),
+                                  : () => c.refreshSessions(
+                                      more: true,
+                                      includeArchived:
+                                          _historyFilter == 'archived',
+                                    ),
                               child: Text(context.tr('加载更多')),
                             );
                           }

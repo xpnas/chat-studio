@@ -136,15 +136,15 @@ class AppController extends ChangeNotifier {
   List<ModelChoice> models = [];
   List<Conversation> conversations = [];
 
-  // Conversation organization is intentionally local to this client. The
-  // upstream session contract currently exposes history, rename and delete,
-  // but not pin/archive/category mutations. Keep it scoped by server,
-  // account and profile so local organization never leaks across workspaces.
+  // Conversation organization is server-backed. The sets are an in-memory
+  // index for fast filtering; the server is authoritative and is refreshed
+  // whenever the session list is synchronized.
   final pinnedConversationIds = <String>{};
   final archivedConversationIds = <String>{};
   final conversationCategories = <String, String>{};
   final conversationCategoryNames = <String>{};
-  bool _organizationLoaded = false;
+  final conversationCategoryById = <int, ConversationCategory>{};
+  bool _includeArchivedSessions = false;
   ModelChoice? get selectedModel => _view.model;
   set selectedModel(ModelChoice? value) => _view.model = value;
   Conversation? get current => _view.conversation;
@@ -805,49 +805,51 @@ class AppController extends ChangeNotifier {
   Future<void> _loadConversationOrganization() async {
     if (api == null || account == null) return;
     try {
-      final saved = await storage.readConversationOrganization(
-        _organizationScope,
-      );
-      pinnedConversationIds
+      await storage.readConversationOrganization(_organizationScope);
+      // Ignore the legacy local pin/archive snapshot. Pin and archive must
+      // follow the server so Web and other devices see the same state.
+      pinnedConversationIds.clear();
+      archivedConversationIds.clear();
+      // Categories are owned by the server. Ignore legacy local category
+      // data so an old device cache cannot overwrite Web changes.
+      conversationCategories.clear();
+      conversationCategoryNames.clear();
+      conversationCategoryById.clear();
+    } catch (_) {}
+  }
+
+  Future<void> _loadServerConversationCategories({
+    required int epoch,
+    required StudioApi client,
+  }) async {
+    final activeProfile = client.profile;
+    try {
+      final categories = await client.conversationCategories();
+      if (!_valid(epoch) || api != client || profile != activeProfile) return;
+      conversationCategoryById
         ..clear()
-        ..addAll(asList(saved['pinned']).whereType<String>());
-      archivedConversationIds
-        ..clear()
-        ..addAll(asList(saved['archived']).whereType<String>());
-      conversationCategories
-        ..clear()
-        ..addAll(
-          asMap(saved['categories']).map(
-            (key, value) => MapEntry(key, text(value)),
-          )..removeWhere((key, value) => value.isEmpty),
+        ..addEntries(
+          categories.map((category) => MapEntry(category.id, category)),
         );
       conversationCategoryNames
         ..clear()
-        ..addAll(asList(saved['categoryNames']).whereType<String>());
-      _organizationLoaded = true;
+        ..addAll(categories.map((category) => category.name));
     } catch (_) {
-      _organizationLoaded = false;
+      // Keep the last known server snapshot during a transient refresh error.
+      // A profile switch clears it before starting the new load.
     }
-  }
-
-  void _saveConversationOrganization() {
-    if (!_organizationLoaded || api == null || account == null) return;
-    unawaited(
-      storage.saveConversationOrganization(_organizationScope, {
-        'pinned': pinnedConversationIds.toList(),
-        'archived': archivedConversationIds.toList(),
-        'categories': conversationCategories,
-        'categoryNames': conversationCategoryNames.toList(),
-      }),
-    );
   }
 
   bool isConversationPinned(Conversation conversation) =>
       pinnedConversationIds.contains(conversation.id);
   bool isConversationArchived(Conversation conversation) =>
       archivedConversationIds.contains(conversation.id);
-  String conversationCategory(Conversation conversation) =>
-      conversationCategories[conversation.id] ?? '';
+  String conversationCategory(Conversation conversation) {
+    final serverName = conversation.categoryId == null
+        ? null
+        : conversationCategoryById[conversation.categoryId!]?.name;
+    return serverName ?? conversationCategories[conversation.id] ?? '';
+  }
 
   void _sortConversations() {
     conversations.sort((a, b) {
@@ -862,27 +864,55 @@ class AppController extends ChangeNotifier {
     Conversation conversation,
     bool value,
   ) async {
-    if (value) {
-      pinnedConversationIds.add(conversation.id);
-    } else {
-      pinnedConversationIds.remove(conversation.id);
-    }
+    final previous = isConversationPinned(conversation);
+    if (previous == value || api == null) return;
+    _setConversationOrganization(conversation.id, pinned: value);
     _sortConversations();
-    _saveConversationOrganization();
     _notify();
+    try {
+      await api!.setConversationPinned(conversation.id, value);
+      await refreshSessions();
+    } catch (error) {
+      _setConversationOrganization(conversation.id, pinned: previous);
+      _sortConversations();
+      if (!_disposed) reportError(error);
+      _notify();
+    }
   }
 
   Future<void> setConversationArchived(
     Conversation conversation,
     bool value,
   ) async {
-    if (value) {
-      archivedConversationIds.add(conversation.id);
-    } else {
-      archivedConversationIds.remove(conversation.id);
-    }
-    _saveConversationOrganization();
+    final previous = isConversationArchived(conversation);
+    if (previous == value || api == null) return;
+    _setConversationOrganization(conversation.id, archived: value);
     _notify();
+    try {
+      await api!.setConversationArchived(conversation.id, value);
+      await refreshSessions();
+    } catch (error) {
+      _setConversationOrganization(conversation.id, archived: previous);
+      if (!_disposed) reportError(error);
+      _notify();
+    }
+  }
+
+  void _setConversationOrganization(String id, {bool? pinned, bool? archived}) {
+    if (pinned != null) {
+      if (pinned) {
+        pinnedConversationIds.add(id);
+      } else {
+        pinnedConversationIds.remove(id);
+      }
+    }
+    if (archived != null) {
+      if (archived) {
+        archivedConversationIds.add(id);
+      } else {
+        archivedConversationIds.remove(id);
+      }
+    }
   }
 
   Future<void> moveConversationToCategory(
@@ -890,47 +920,111 @@ class AppController extends ChangeNotifier {
     String? category,
   ) async {
     final value = category?.trim() ?? '';
+    final categoryId = value.isEmpty
+        ? null
+        : conversationCategoryById.values
+              .where((item) => item.name == value)
+              .firstOrNull
+              ?.id;
+    if (value.isNotEmpty && categoryId == null) {
+      reportError(const ApiException('分类不存在，请刷新后重试'));
+      return;
+    }
+    final previous = conversationCategories[conversation.id];
     if (value.isEmpty) {
       conversationCategories.remove(conversation.id);
     } else {
       conversationCategories[conversation.id] = value;
-      conversationCategoryNames.add(value);
     }
-    _saveConversationOrganization();
     _notify();
+    try {
+      await api!.setConversationCategory(conversation.id, categoryId);
+      await refreshSessions();
+    } catch (error) {
+      if (previous == null) {
+        conversationCategories.remove(conversation.id);
+      } else {
+        conversationCategories[conversation.id] = previous;
+      }
+      if (!_disposed) reportError(error);
+    }
   }
 
-  Future<void> createConversationCategory(String category) async {
+  Future<bool> createConversationCategory(String category) async {
     final value = category.trim();
-    if (value.isEmpty) return;
-    conversationCategoryNames.add(value);
-    _saveConversationOrganization();
-    _notify();
+    if (value.isEmpty) return false;
+    try {
+      final created = await api!.createConversationCategory(value);
+      conversationCategoryById[created.id] = created;
+      conversationCategoryNames.add(created.name);
+      _notify();
+      return true;
+    } catch (error) {
+      if (!_disposed) reportError(error);
+      return false;
+    }
   }
 
-  Future<void> removeConversationCategory(String category) async {
-    conversationCategoryNames.remove(category);
-    conversationCategories.removeWhere((_, value) => value == category);
-    _saveConversationOrganization();
-    _notify();
+  Future<bool> removeConversationCategory(String category) async {
+    final target = conversationCategoryById.values
+        .where((item) => item.name == category)
+        .firstOrNull;
+    if (target == null) return false;
+    try {
+      await api!.deleteConversationCategory(target.id);
+      conversationCategoryById.remove(target.id);
+      conversationCategoryNames.remove(target.name);
+      conversationCategories.removeWhere((_, value) => value == target.name);
+      await refreshSessions();
+      return true;
+    } catch (error) {
+      if (!_disposed) reportError(error);
+      return false;
+    }
   }
 
-  Future<void> refreshSessions({String? query, bool more = false}) async {
+  Future<void> refreshSessions({
+    String? query,
+    bool more = false,
+    bool? includeArchived,
+  }) async {
     if (!authenticated || (more && loadingSessions)) return;
     final client = api!;
+    final includeArchivedSessions = includeArchived ?? _includeArchivedSessions;
+    _includeArchivedSessions = includeArchivedSessions;
     final epoch = _epoch, searchEpoch = ++_searchEpoch;
     if (query != null) search = query.trim();
     loadingSessions = true;
     _notify();
     try {
+      if (!more) {
+        await _loadServerConversationCategories(epoch: epoch, client: client);
+      }
       final data = await client.sessions(
         offset: more ? _sessionOffset : 0,
         search: search,
+        includeArchived: includeArchivedSessions,
       );
       if (!_valid(epoch) || searchEpoch != _searchEpoch) return;
       final rows = asList(
         data[search.isEmpty ? 'sessions' : 'results'],
       ).map((s) => Conversation.fromJson(asMap(s))).toList();
+      if (!more) {
+        conversationCategories.clear();
+        pinnedConversationIds.clear();
+        archivedConversationIds.clear();
+      }
+      for (final row in rows) {
+        _setConversationOrganization(
+          row.id,
+          pinned: row.isPinned,
+          archived: row.isArchived,
+        );
+        final category = conversationCategory(row);
+        if (category.isNotEmpty) {
+          conversationCategories[row.id] = category;
+        }
+      }
       _sessionOffset = (more ? _sessionOffset : 0) + rows.length;
       if (!more) _sessionOffset = rows.length;
       final local = _states.values
@@ -1938,7 +2032,8 @@ class AppController extends ChangeNotifier {
     archivedConversationIds.clear();
     conversationCategories.clear();
     conversationCategoryNames.clear();
-    _organizationLoaded = false;
+    conversationCategoryById.clear();
+    _includeArchivedSessions = false;
     selectedModel = null;
     sttProvider = null;
     _clearAgents();

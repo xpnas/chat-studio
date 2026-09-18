@@ -862,16 +862,75 @@ class StudioApi {
     );
   }
 
-  Future<Map<String, dynamic>> sessions({int offset = 0, String search = ''}) =>
-      search.isNotEmpty
+  Future<Map<String, dynamic>> sessions({
+    int offset = 0,
+    String search = '',
+    bool includeArchived = false,
+  }) => search.isNotEmpty
       ? request(
           '/api/studio/search/sessions',
-          query: {'profile': profile, 'q': search, 'limit': '100'},
+          query: {
+            'profile': profile,
+            'q': search,
+            'limit': '100',
+            if (includeArchived) 'includeArchived': 'true',
+          },
         )
       : request(
           '/api/studio/sessions',
-          query: {'profile': profile, 'offset': '$offset', 'limit': '40'},
+          query: {
+            'profile': profile,
+            'offset': '$offset',
+            'limit': '40',
+            if (includeArchived) 'includeArchived': 'true',
+          },
         );
+  Future<List<ConversationCategory>> conversationCategories() async {
+    final data = await request('/api/studio/session-categories');
+    return asList(data['categories'])
+        .map((item) => ConversationCategory.fromJson(asMap(item)))
+        .where((category) => category.id > 0 && category.name.isNotEmpty)
+        .toList();
+  }
+
+  Future<ConversationCategory> createConversationCategory(String name) async {
+    final data = await request(
+      '/api/studio/session-categories',
+      method: 'POST',
+      body: {'name': name},
+    );
+    return ConversationCategory.fromJson(asMap(data['category']));
+  }
+
+  Future<void> deleteConversationCategory(int id) async {
+    await request(
+      '/api/studio/session-categories/${Uri.encodeComponent('$id')}',
+      method: 'DELETE',
+    );
+  }
+
+  Future<void> setConversationPinned(String id, bool value) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/${value ? 'pin' : 'unpin'}',
+      method: 'POST',
+    );
+  }
+
+  Future<void> setConversationArchived(String id, bool value) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/${value ? 'archive' : 'unarchive'}',
+      method: 'POST',
+    );
+  }
+
+  Future<void> setConversationCategory(String id, int? categoryId) async {
+    await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}/category',
+      method: 'POST',
+      body: {'categoryId': categoryId},
+    );
+  }
+
   Future<MessagePage> messages(String id, {int offset = 0}) async {
     final data = await request(
       '/api/studio/sessions/conversations/${Uri.encodeComponent(id)}/messages/paginated',
