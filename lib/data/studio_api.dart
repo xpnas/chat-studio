@@ -195,6 +195,7 @@ class StudioApi {
 
   Future<List<Map<String, dynamic>>> uploadAttachments(
     List<LocalAttachment> attachments, {
+    String? groupRoomId,
     Future<void>? cancel,
     void Function(double)? onProgress,
   }) async {
@@ -224,7 +225,9 @@ class StudioApi {
       throw const ApiException('已取消：会话或 Profile 已变化');
     }
     final data = await _multipart(
-      '/api/studio/uploads',
+      groupRoomId == null
+          ? '/api/studio/uploads'
+          : '/api/studio/group-chat/rooms/${Uri.encodeComponent(groupRoomId)}/attachments',
       files,
       cancel: cancel,
       onProgress: onProgress,
@@ -281,6 +284,33 @@ class StudioApi {
     return result;
   }
 
+  Uri _attachmentUri(MessageAttachment file, {bool thumbnail = false}) {
+    if (file.groupRoomId.isNotEmpty) {
+      final storedName = file.path.replaceAll('\\', '/').split('/').last;
+      return address.uri.replace(
+        pathSegments: [
+          '',
+          'api',
+          'studio',
+          'group-chat',
+          'rooms',
+          file.groupRoomId,
+          'attachments',
+          storedName,
+        ],
+        queryParameters: {'name': file.name},
+      );
+    }
+    return address.uri.replace(
+      path: '/api/studio/files/download',
+      queryParameters: {
+        'path': file.path,
+        'name': file.name,
+        if (thumbnail) 'variant': 'app-image',
+      },
+    );
+  }
+
   /// Download to a unique temporary file, with bounded memory and backpressure.
   /// The caller owns cleanup after export; never writes to a server-supplied path.
   Future<File> downloadAttachment(
@@ -301,10 +331,7 @@ class StudioApi {
     final req =
         http.AbortableRequest(
             'GET',
-            address.uri.replace(
-              path: '/api/studio/files/download',
-              queryParameters: {'path': file.path, 'name': file.name},
-            ),
+            _attachmentUri(file),
             abortTrigger: abort.future,
           )
           ..followRedirects = false
@@ -399,7 +426,8 @@ class StudioApi {
   }) async {
     // Never navigate to a URL or use arbitrary response headers as destinations.
     final scope = profile, credential = token;
-    final key = '$scope|$credential|${file.path}|$thumbnail';
+    final key =
+        '$scope|$credential|${file.groupRoomId}|${file.path}|$thumbnail';
     final cached = thumbnail ? _images.remove(key) : null;
     if (cached != null) {
       _images[key] = cached;
@@ -414,14 +442,7 @@ class StudioApi {
     final request =
         http.AbortableRequest(
             'GET',
-            address.uri.replace(
-              path: '/api/studio/files/download',
-              queryParameters: {
-                'path': file.path,
-                'name': file.name,
-                if (thumbnail) 'variant': 'app-image',
-              },
-            ),
+            _attachmentUri(file, thumbnail: thumbnail),
             abortTrigger: abort.future,
           )
           ..followRedirects = false
@@ -918,7 +939,10 @@ class StudioApi {
       room: room,
       agents: agents.isEmpty ? room.agents : agents,
       messages: asList(data['messages'])
-          .map((item) => GroupChatMessage.fromJson(asMap(item)))
+          .map(
+            (item) =>
+                GroupChatMessage.fromJson({'roomId': roomId, ...asMap(item)}),
+          )
           .where((message) => message.id.isNotEmpty)
           .toList(growable: false),
       total: integer(data['total']),

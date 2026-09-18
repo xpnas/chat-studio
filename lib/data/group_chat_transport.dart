@@ -54,7 +54,9 @@ class GroupChatTransport {
     if (socket == null || !socket.connected) {
       throw const ApiException('群聊连接尚未就绪，请稍后重试');
     }
-    final response = await socket.emitWithAckAsync(event, data);
+    final response = await socket
+        .emitWithAckAsync(event, data)
+        .timeout(const Duration(seconds: 30));
     return decodeSocketPayload(response);
   }
 

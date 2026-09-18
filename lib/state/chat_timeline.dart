@@ -257,7 +257,11 @@ class ChatTimeline {
     for (final message in rows) {
       if (message.role == 'assistant' &&
           result.isNotEmpty &&
-          result.last.role == 'assistant') {
+          result.last.role == 'assistant' &&
+          result.last.senderId == message.senderId &&
+          result.last.groupRoomId == message.groupRoomId &&
+          (message.groupRoomId.isEmpty ||
+              result.last.runMarker == message.runMarker)) {
         final old = result.removeLast();
         result.add(
           old.copyWith(

@@ -154,10 +154,12 @@ class GroupRoom {
     this.createdAt = 0,
     this.lastActiveAt = 0,
     this.totalTokens = 0,
+    this.canMentionAll = false,
   });
   final String id, name, workspace;
   final List<GroupAgentSummary> agents;
   final int createdAt, lastActiveAt, totalTokens;
+  final bool canMentionAll;
 
   factory GroupRoom.fromJson(Map<String, dynamic> json) => GroupRoom(
     id: text(json['id']),
@@ -166,6 +168,7 @@ class GroupRoom {
     createdAt: integer(json['createdAt'] ?? json['created_at']),
     lastActiveAt: integer(json['lastActiveAt'] ?? json['last_active_at']),
     totalTokens: integer(json['totalTokens'] ?? json['total_tokens']),
+    canMentionAll: json['canMentionAll'] == true,
     agents: asList(json['agents'])
         .map((item) => GroupAgentSummary.fromJson(asMap(item)))
         .where((item) => item.id.isNotEmpty || item.agent.isNotEmpty)
@@ -221,6 +224,7 @@ class GroupChatMessage {
     this.finishReason = '',
     this.mentions = const [],
     this.isStreaming = false,
+    this.payload,
   });
   final String id, roomId, senderId, senderName, content;
   final String senderType, senderAgentId, senderAgentType, role;
@@ -228,6 +232,33 @@ class GroupChatMessage {
   final int timestamp;
   final List<GroupChatMention> mentions;
   final bool isStreaming;
+  final ChatMessage? payload;
+
+  ChatMessage toChatMessage({String? agentType}) => ChatMessage(
+    id: id,
+    role: role == 'tool' || role == 'system'
+        ? role
+        : (isAgent ? 'assistant' : 'user'),
+    content: content,
+    reasoning: reasoning,
+    pending: isStreaming,
+    timestamp: timestamp,
+    senderId: senderAgentId.isNotEmpty
+        ? senderAgentId
+        : senderId.isNotEmpty
+        ? senderId
+        : senderName,
+    senderName: senderName,
+    agentType: agentType ?? senderAgentType,
+    groupRoomId: roomId,
+    attachments: [
+      for (final file in payload?.attachments ?? <MessageAttachment>[])
+        file.inGroup(roomId),
+    ],
+    tools: payload?.tools ?? const [],
+    taskPlan: payload?.taskPlan,
+    runMarker: payload?.runMarker ?? '',
+  );
 
   bool get isAgent => senderType == 'agent' || role == 'assistant';
 
@@ -235,6 +266,7 @@ class GroupChatMessage {
     final rawMentions = asList(json['mentions']);
     return GroupChatMessage(
       id: text(json['id']),
+      payload: ChatMessage.fromJson(json),
       roomId: text(json['roomId'] ?? json['room_id']),
       senderId: text(json['senderId'] ?? json['sender_id']),
       senderName: text(json['senderName'] ?? json['sender_name']).isEmpty
@@ -298,6 +330,7 @@ class GroupChatMessage {
     finishReason: finishReason ?? this.finishReason,
     mentions: mentions,
     isStreaming: isStreaming ?? this.isStreaming,
+    payload: payload,
   );
 }
 
@@ -351,9 +384,18 @@ class MessageAttachment {
     required this.path,
     required this.mimeType,
     this.size = 0,
+    this.groupRoomId = '',
   });
   final String name, path, mimeType;
   final int size;
+  final String groupRoomId;
+  MessageAttachment inGroup(String roomId) => MessageAttachment(
+    name: name,
+    path: path,
+    mimeType: mimeType,
+    size: size,
+    groupRoomId: roomId,
+  );
   bool get isImage => mimeType.startsWith('image/');
   String get audioMime =>
       mimeType.toLowerCase().startsWith('audio/') && mimeType != 'audio/*'
@@ -445,6 +487,10 @@ class ChatMessage {
     this.hasFinishReason = false,
     this.timestamp = 0,
     this.taskPlan,
+    this.senderId = '',
+    this.senderName = '',
+    this.agentType = '',
+    this.groupRoomId = '',
   });
   final String id, role, content, reasoning;
   final bool pending;
@@ -457,6 +503,7 @@ class ChatMessage {
   final bool hasFinishReason;
   final num timestamp;
   final TaskPlan? taskPlan;
+  final String senderId, senderName, agentType, groupRoomId;
   String get renderKey => localKey ?? id;
   String get bodyText {
     var value = content;
@@ -505,6 +552,10 @@ class ChatMessage {
     hasFinishReason: hasFinishReason,
     timestamp: timestamp,
     taskPlan: taskPlan,
+    senderId: senderId,
+    senderName: senderName,
+    agentType: agentType,
+    groupRoomId: groupRoomId,
   );
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
     id: '${json['id'] ?? json['message_id'] ?? ''}',
@@ -518,6 +569,7 @@ class ChatMessage {
         json.containsKey('finish_reason') || json.containsKey('finishReason'),
     content: messageText(json['display_content'] ?? json['content']),
     reasoning: messageText(json['reasoning_content'] ?? json['reasoning']),
+    taskPlan: _messageTaskPlan(json),
     attachments: MessageAttachment.parse(
       json['display_content'] ?? json['content'],
     ),
@@ -532,6 +584,16 @@ class ChatMessage {
         )
         .toList(),
   );
+}
+
+TaskPlan? _messageTaskPlan(Map<String, dynamic> json) {
+  if (json['role'] != 'tool' || json['tool_name'] != 'task_plan') return null;
+  final content = json['content'];
+  try {
+    return TaskPlan.parse(content is String ? jsonDecode(content) : content);
+  } on FormatException {
+    return null;
+  }
 }
 
 class MessagePage {

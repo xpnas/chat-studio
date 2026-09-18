@@ -24,10 +24,11 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onRetry;
   final ChatMessage message;
   Future<void> _openLink(BuildContext context, String? href) async {
-    final file = messageFileReference(
+    final reference = messageFileReference(
       href ?? '',
       server: controller?.api?.address.uri,
     );
+    final file = reference?.inGroup(message.groupRoomId);
     if (file != null && controller?.api != null) {
       if (file.isAudio) {
         controller!.playAudioAttachment(file);
@@ -120,13 +121,25 @@ class MessageBubble extends StatelessWidget {
                         if (message.role == 'command')
                           const Icon(Icons.terminal_rounded, size: 20)
                         else
-                          AgentAvatar(controller: controller, size: 20),
+                          AgentAvatar(
+                            controller: controller,
+                            agentId: message.groupRoomId.isEmpty
+                                ? null
+                                : message.agentType,
+                            size: 20,
+                          ),
                         const SizedBox(width: 9),
-                        Text(
-                          message.role == 'command'
-                              ? context.tr("命令")
-                              : AgentIdentity.current(controller).name,
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                        Expanded(
+                          child: Text(
+                            message.role == 'command'
+                                ? context.tr("命令")
+                                : message.senderName.isNotEmpty
+                                ? message.senderName
+                                : AgentIdentity.current(controller).name,
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -234,7 +247,7 @@ class MessageBubble extends StatelessWidget {
                                 href,
                                 server: controller?.api?.address.uri,
                                 label: label,
-                              );
+                              )?.inGroup(message.groupRoomId);
                               if (file?.isAudio != true ||
                                   controller?.api == null) {
                                 return null;
@@ -252,7 +265,7 @@ class MessageBubble extends StatelessWidget {
                                 uri.toString(),
                                 server: controller?.api?.address.uri,
                                 label: alt,
-                              );
+                              )?.inGroup(message.groupRoomId);
                               if (file != null && controller?.api != null) {
                                 return AttachmentTile(
                                   key: ValueKey(

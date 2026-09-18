@@ -86,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _historyFilter = 'all';
   String _historyCategory = '';
   int _historyTab = 0;
+  bool get _includeArchived => _historyTab == 2 || _historyFilter == 'archived';
   List<GroupRoom> _groupRooms = const [];
   bool _loadingGroupRooms = false;
   String? _groupRoomsError;
@@ -1127,25 +1128,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _drawer(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    if (_historyTab == 1 && _groupRooms.isEmpty && !_loadingGroupRooms) {
-      unawaited(_loadGroupRooms());
-    }
-    if (_historyTab == 2 &&
-        !c.loadingSessions &&
-        c.conversations.every((item) => !c.isConversationArchived(item))) {
-      // History is the cross-device archive view; ask the server for archived rows too.
-      unawaited(c.refreshSessions(includeArchived: true));
-    }
     final visible = c.conversations.where((conversation) {
       final archived = c.isConversationArchived(conversation);
       final category = c.conversationCategory(conversation);
       if (_historyTab == 0 && conversation.source == 'group_chat') return false;
-      if (_historyTab == 2) return true;
       return switch (_historyFilter) {
-        'pinned' => c.isConversationPinned(conversation) && !archived,
+        'pinned' =>
+          c.isConversationPinned(conversation) &&
+              (_historyTab == 2 || !archived),
         'archived' => archived,
-        'category' => category == _historyCategory && !archived,
-        _ => !archived,
+        'category' =>
+          category == _historyCategory && (_historyTab == 2 || !archived),
+        _ => _historyTab == 2 || !archived,
       };
     }).toList();
     final categories = c.conversationCategoryNames.toList()..sort();
@@ -1214,7 +1208,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Duration(milliseconds: 350),
                     () => c.refreshSessions(
                       query: value,
-                      includeArchived: _historyFilter == 'archived',
+                      includeArchived: _includeArchived,
                     ),
                   );
                 },
@@ -1227,12 +1221,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 initialIndex: _historyTab,
                 child: TabBar(
                   onTap: (value) {
+                    if (_historyTab == value) return;
+                    _searchTimer?.cancel();
                     setState(() => _historyTab = value);
                     if (value == 1) {
                       unawaited(_loadGroupRooms());
-                    }
-                    if (value == 2) {
-                      unawaited(c.refreshSessions(includeArchived: true));
+                    } else {
+                      unawaited(
+                        c.refreshSessions(
+                          query: _search.text,
+                          includeArchived: _includeArchived,
+                        ),
+                      );
                     }
                   },
                   tabs: const [
@@ -1312,9 +1312,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           });
                         }
                         unawaited(
-                          c.refreshSessions(
-                            includeArchived: _historyFilter == 'archived',
-                          ),
+                          c.refreshSessions(includeArchived: _includeArchived),
                         );
                       },
                       itemBuilder: (context) => [
@@ -1350,7 +1348,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: c.loadingSessions
                           ? null
                           : () => c.refreshSessions(
-                              includeArchived: _historyFilter == 'archived',
+                              includeArchived: _includeArchived,
                             ),
                       icon: const Icon(Icons.refresh_rounded, size: 20),
                     )
@@ -1397,30 +1395,45 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-            if (c.loadingSessions) const LinearProgressIndicator(minHeight: 2),
+            if (_historyTab != 1 && c.loadingSessions)
+              const LinearProgressIndicator(minHeight: 2),
             Expanded(
               child: _historyTab == 1
                   ? _groupRoomsView(context)
                   : visible.isEmpty
-                  ? Center(
-                      child: Text(
-                        c.conversations.isEmpty
-                            ? (c.search.isEmpty
-                                  ? context.tr('还没有对话\n从一个问题开始吧')
-                                  : context.tr('没有找到相关对话'))
-                            : context.tr('此筛选下暂无对话'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: colors.onSurfaceVariant,
-                          height: 1.8,
+                  ? RefreshIndicator(
+                      onRefresh: () =>
+                          c.refreshSessions(includeArchived: _includeArchived),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            SizedBox(
+                              height: constraints.maxHeight,
+                              child: Center(
+                                child: Text(
+                                  c.conversations.isEmpty
+                                      ? (c.search.isEmpty
+                                            ? context.tr('还没有对话\n从一个问题开始吧')
+                                            : context.tr('没有找到相关对话'))
+                                      : context.tr('此筛选下暂无对话'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: colors.onSurfaceVariant,
+                                    height: 1.8,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     )
                   : RefreshIndicator(
-                      onRefresh: () => c.refreshSessions(
-                        includeArchived: _historyFilter == 'archived',
-                      ),
+                      onRefresh: () =>
+                          c.refreshSessions(includeArchived: _includeArchived),
                       child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
                         itemCount: visible.length + (c.hasMoreSessions ? 1 : 0),
                         itemBuilder: (context, index) {
@@ -1430,8 +1443,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ? null
                                   : () => c.refreshSessions(
                                       more: true,
-                                      includeArchived:
-                                          _historyFilter == 'archived',
+                                      includeArchived: _includeArchived,
                                     ),
                               child: Text(context.tr('加载更多')),
                             );

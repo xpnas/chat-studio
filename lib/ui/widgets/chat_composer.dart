@@ -7,6 +7,7 @@ import '../../data/mobile_media.dart';
 import '../../data/models.dart';
 import '../../state/app_controller.dart';
 import '../../state/conversation_state.dart';
+import '../../state/group_chat_controller.dart';
 import 'reading_handle.dart';
 import 'model_sheet.dart';
 import 'slash_command_picker.dart';
@@ -26,6 +27,7 @@ class ChatComposer extends StatefulWidget {
     this.onExpand,
     this.readingProgress = const AlwaysStoppedAnimation<double>(0),
     this.layoutBuilder,
+    this.group,
   });
   final AppController controller;
   final TextEditingController input;
@@ -34,6 +36,7 @@ class ChatComposer extends StatefulWidget {
   final VoidCallback? onExpand;
   final ValueListenable<double> readingProgress;
   final ComposerLayoutBuilder? layoutBuilder;
+  final GroupChatController? group;
   @override
   State<ChatComposer> createState() => _ChatComposerState();
 }
@@ -56,13 +59,26 @@ class _ChatComposerState extends State<ChatComposer>
   Timer? _timer;
   Completer<void>? _cancel;
   AppController get c => widget.controller;
+  GroupChatController? get group => widget.group;
+  bool get _working => group?.working ?? c.working;
+  bool get _connected => group?.connected ?? c.connected;
+  bool get _canCompose => group?.canSend ?? (c.canSend || c.canQueue);
+  bool _canSubmit(String text) => group?.canSend ?? c.canSubmit(text);
+  void _stop(String? owner) {
+    if (group != null) {
+      unawaited(group!.stop());
+    } else {
+      c.stop(expectedSession: owner);
+    }
+  }
+
   bool get _busy => _phase.isNotEmpty;
   @override
   void initState() {
     super.initState();
     _focus.addListener(_focusChanged);
     _retryRevision = c.retryRevision;
-    _draft = c.draft;
+    _draft = group?.draft ?? c.draft;
     if (_draft.text.isNotEmpty) {
       widget.input.text = _draft.text;
     } else {
@@ -80,6 +96,7 @@ class _ChatComposerState extends State<ChatComposer>
   void _saveDraft() => _draft.text = widget.input.text;
 
   void _contextChanged() {
+    if (group != null) return;
     if (!identical(_draft, c.draft)) {
       _abort();
       _focus.unfocus();
@@ -381,8 +398,9 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   Future<void> _send() async {
-    if (_busy || !c.canSubmit(widget.input.text)) return;
-    if (c.working &&
+    if (_busy || !_canSubmit(widget.input.text)) return;
+    if (group == null &&
+        c.working &&
         c.isBridgeCommand(widget.input.text) &&
         (_attachments.isNotEmpty || _remoteAttachments.isNotEmpty)) {
       _error(context.tr("运行中发送命令不能携带附件，请先移除附件"));
@@ -404,6 +422,7 @@ class _ChatComposerState extends State<ChatComposer>
           ? <Map<String, dynamic>>[]
           : await client!.uploadAttachments(
               List.of(_attachments),
+              groupRoomId: group?.room.id,
               cancel: _cancel!.future,
               onProgress: (value) {
                 if (_valid(operation)) setState(() => _uploadProgress = value);
@@ -412,10 +431,11 @@ class _ChatComposerState extends State<ChatComposer>
       if (!_valid(operation)) return;
       _remoteAttachments.addAll(MessageAttachment.parse(blocks));
       _attachments.clear();
-      final sent = c.send(
-        input,
-        attachments: _remoteAttachments.map((f) => f.toBlock()).toList(),
-      );
+      final attachments = _remoteAttachments.map((f) => f.toBlock()).toList();
+      final sent = group == null
+          ? c.send(input, attachments: attachments)
+          : await group!.send(input, attachments: attachments);
+      if (!_valid(operation)) return;
       if (sent) {
         widget.input.clear();
         _attachments.clear();
@@ -440,7 +460,7 @@ class _ChatComposerState extends State<ChatComposer>
         !_focus.hasFocus &&
         _attachments.isEmpty &&
         _remoteAttachments.isEmpty &&
-        c.timeline.interaction == null;
+        (group != null || c.timeline.interaction == null);
     final editor = AnimatedSize(
       duration: MediaQuery.of(context).disableAnimations
           ? Duration.zero
@@ -465,12 +485,13 @@ class _ChatComposerState extends State<ChatComposer>
             ),
           )
         : null;
-    final stop = folded && c.working
+    final stop = folded && _working
         ? IconButton.filledTonal(
             key: const Key('collapsed-stop-button'),
             tooltip: context.tr("停止生成"),
-            onPressed: c.connected && c.current?.canContinue != false
-                ? () => c.stop(expectedSession: owner)
+            onPressed:
+                _connected && (group != null || c.current?.canContinue != false)
+                ? () => _stop(owner)
                 : null,
             icon: const Icon(Icons.stop_rounded, size: 21),
           )
@@ -502,7 +523,7 @@ class _ChatComposerState extends State<ChatComposer>
         controller: c,
         input: widget.input,
         focus: _focus,
-        enabled: !_busy,
+        enabled: !_busy && group == null,
         child: DecoratedBox(
           key: const Key('composer-surface'),
           decoration: BoxDecoration(
@@ -719,7 +740,9 @@ class _ChatComposerState extends State<ChatComposer>
                     textCapitalization: TextCapitalization.sentences,
                     keyboardType: TextInputType.multiline,
                     decoration: InputDecoration(
-                      hintText: context.tr("发消息，输入 / 使用命令"),
+                      hintText: group == null
+                          ? context.tr("发消息，输入 / 使用命令")
+                          : '发消息，输入 @ 选择 Agent',
                       counterText: '',
                       filled: false,
                       contentPadding: EdgeInsets.symmetric(vertical: 8),
@@ -740,71 +763,79 @@ class _ChatComposerState extends State<ChatComposer>
                       child: IconButton(
                         key: const Key('attachment-button'),
                         tooltip: context.tr("添加文件或图片"),
-                        onPressed: !_busy && (c.canSend || c.canQueue)
-                            ? _pick
-                            : null,
+                        onPressed: !_busy && _canCompose ? _pick : null,
                         icon: const Icon(Icons.add_rounded, size: 22),
                       ),
                     ),
-                    Expanded(
-                      child: Tooltip(
-                        message: context.l10n.format("选择模型 · {0}", {
-                          '0': c.selectedModel?.label ?? context.tr("服务端默认模型"),
-                        }),
-                        child: TextButton(
-                          key: const Key('model-button'),
-                          onPressed: !_busy && c.canConfigure ? _models : null,
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            minimumSize: const Size(0, 44),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  c.selectedModel?.label ?? context.tr("默认模型"),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12),
+                    if (group == null)
+                      Expanded(
+                        child: Tooltip(
+                          message: context.l10n.format("选择模型 · {0}", {
+                            '0':
+                                c.selectedModel?.label ?? context.tr("服务端默认模型"),
+                          }),
+                          child: TextButton(
+                            key: const Key('model-button'),
+                            onPressed: !_busy && c.canConfigure
+                                ? _models
+                                : null,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              minimumSize: const Size(0, 44),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    c.selectedModel?.label ??
+                                        context.tr("默认模型"),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
                                 ),
-                              ),
-                              const Icon(Icons.expand_more_rounded, size: 16),
-                            ],
+                                const Icon(Icons.expand_more_rounded, size: 16),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Tooltip(
-                      message: context.l10n.format("思考深度 · {0}", {
-                        '0': context.tr(
-                          reasoningEffortLabels[c.reasoningEffort] ?? "默认",
-                        ),
-                      }),
-                      child: SizedBox(
-                        width: 64,
-                        child: TextButton(
-                          key: const Key('reasoning-button'),
-                          onPressed: !_busy && c.canConfigure
-                              ? _reasoning
-                              : null,
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
-                            minimumSize: const Size(0, 44),
+                    if (group == null)
+                      Tooltip(
+                        message: context.l10n.format("思考深度 · {0}", {
+                          '0': context.tr(
+                            reasoningEffortLabels[c.reasoningEffort] ?? "默认",
                           ),
-                          child: Text(
-                            context.l10n.format("思考 · {0}", {
-                              '0': context.tr(
-                                reasoningEffortLabels[c.reasoningEffort] ??
-                                    "默认",
+                        }),
+                        child: SizedBox(
+                          width: 64,
+                          child: TextButton(
+                            key: const Key('reasoning-button'),
+                            onPressed: !_busy && c.canConfigure
+                                ? _reasoning
+                                : null,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
                               ),
-                            }),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11),
+                              minimumSize: const Size(0, 44),
+                            ),
+                            child: Text(
+                              context.l10n.format("思考 · {0}", {
+                                '0': context.tr(
+                                  reasoningEffortLabels[c.reasoningEffort] ??
+                                      "默认",
+                                ),
+                              }),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11),
+                            ),
                           ),
                         ),
                       ),
-                    ),
                     SizedBox(
                       width: 44,
                       child: IconButton(
@@ -812,9 +843,7 @@ class _ChatComposerState extends State<ChatComposer>
                         tooltip: c.sttProvider == null
                             ? context.tr("配置语音输入")
                             : context.tr("语音输入"),
-                        onPressed: !_busy && (c.canSend || c.canQueue)
-                            ? _voice
-                            : null,
+                        onPressed: !_busy && _canCompose ? _voice : null,
                         icon: Icon(
                           Icons.mic_none_rounded,
                           size: 22,
@@ -824,16 +853,17 @@ class _ChatComposerState extends State<ChatComposer>
                         ),
                       ),
                     ),
+                    if (group != null) const Spacer(),
                     ValueListenableBuilder(
                       valueListenable: widget.input,
                       builder: (context, value, _) =>
-                          c.working && value.text.trim().isNotEmpty
+                          _working && value.text.trim().isNotEmpty
                           ? SizedBox(
                               width: 40,
                               child: IconButton(
                                 tooltip: context.tr("停止生成"),
-                                onPressed: c.connected
-                                    ? () => c.stop(expectedSession: owner)
+                                onPressed: _connected
+                                    ? () => _stop(owner)
                                     : null,
                                 icon: const Icon(Icons.stop_rounded),
                               ),
@@ -844,7 +874,7 @@ class _ChatComposerState extends State<ChatComposer>
                       valueListenable: widget.input,
                       builder: (context, value, _) => IconButton.filled(
                         key: Key(
-                          c.working &&
+                          _working &&
                                   widget.input.text.trim().isEmpty &&
                                   _attachments.isEmpty &&
                                   _remoteAttachments.isEmpty
@@ -852,31 +882,35 @@ class _ChatComposerState extends State<ChatComposer>
                               : 'send-button',
                         ),
                         tooltip:
-                            c.working &&
+                            _working &&
                                 value.text.trim().isEmpty &&
                                 _attachments.isEmpty &&
                                 _remoteAttachments.isEmpty
                             ? context.tr("停止生成")
-                            : c.working && !c.isBridgeCommand(value.text)
+                            : group == null &&
+                                  c.working &&
+                                  !c.isBridgeCommand(value.text)
                             ? context.tr("加入队列")
                             : context.tr("发送消息"),
                         onPressed:
-                            c.working &&
+                            _working &&
                                 value.text.trim().isEmpty &&
                                 _attachments.isEmpty &&
                                 _remoteAttachments.isEmpty
-                            ? (c.connected && c.current?.canContinue != false
-                                  ? () => c.stop(expectedSession: owner)
+                            ? (_connected &&
+                                      (group != null ||
+                                          c.current?.canContinue != false)
+                                  ? () => _stop(owner)
                                   : null)
                             : (!_busy &&
-                                      c.canSubmit(value.text) &&
+                                      _canSubmit(value.text) &&
                                       (value.text.trim().isNotEmpty ||
                                           _attachments.isNotEmpty ||
                                           _remoteAttachments.isNotEmpty)
                                   ? _send
                                   : null),
                         icon: Icon(
-                          c.working &&
+                          _working &&
                                   value.text.trim().isEmpty &&
                                   _attachments.isEmpty &&
                                   _remoteAttachments.isEmpty

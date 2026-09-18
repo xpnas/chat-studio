@@ -1,164 +1,213 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../data/studio_api.dart';
 import '../state/app_controller.dart';
 import '../state/group_chat_controller.dart';
 import 'widgets/agent_avatar.dart';
+import 'widgets/chat_composer.dart';
+import 'widgets/message_bubble.dart';
+import 'widgets/reading_handle.dart';
 
 class GroupChatScreen extends StatefulWidget {
   const GroupChatScreen({
     super.key,
     required this.api,
     required this.room,
-    this.appController,
+    required this.appController,
+    this.controller,
   });
   final StudioApi api;
   final GroupRoom room;
-  final AppController? appController;
+  final AppController appController;
+  final GroupChatController? controller;
 
   @override
   State<GroupChatScreen> createState() => _GroupChatScreenState();
 }
 
-class _GroupChatScreenState extends State<GroupChatScreen> {
+class _GroupChatScreenState extends State<GroupChatScreen>
+    with WidgetsBindingObserver {
   late final GroupChatController controller;
   final input = TextEditingController();
   final scroll = ScrollController();
-  bool showMentions = false;
+  final progress = ValueNotifier<double>(0);
+  bool collapsed = false, away = false, loadingOlder = false;
+  bool _backgrounded = false, _historyCheckScheduled = false;
+  bool _userScrolling = false;
+  int? mentionStart;
+  int mentionEnd = 0;
+  String mentionQuery = '';
 
   @override
   void initState() {
     super.initState();
-    controller = GroupChatController(api: widget.api, room: widget.room)
-      ..addListener(_changed);
+    controller =
+        widget.controller ??
+        GroupChatController(api: widget.api, room: widget.room);
+    controller.addListener(_changed);
     input.addListener(_inputChanged);
     scroll.addListener(_scrollChanged);
-    controller.start();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(controller.start());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) _backgrounded = true;
+    if (state == AppLifecycleState.resumed && _backgrounded) {
+      _backgrounded = false;
+      unawaited(controller.start());
+    }
   }
 
   void _changed() {
-    if (mounted) setState(() {});
-    if (controller.messages.isNotEmpty && scroll.hasClients) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && scroll.hasClients) {
-          scroll.animateTo(
-            scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
+    if (!mounted) return;
+    setState(() {});
+    _scheduleOlder();
   }
 
   void _inputChanged() {
-    final value = input.text;
-    final at = value.lastIndexOf('@');
-    final query = at < 0 ? '' : value.substring(at + 1);
-    setState(
-      () => showMentions = at >= 0 && !query.contains(' ') && query.length < 24,
-    );
-  }
-
-  void _scrollChanged() {
-    if (scroll.hasClients && scroll.position.pixels <= 80) {
-      controller.loadOlder();
-    }
+    final caret = input.selection.baseOffset;
+    final prefix = caret >= 0 && caret <= input.text.length
+        ? input.text.substring(0, caret)
+        : '';
+    final match = RegExp(r'(^|\s)@([^@\n]{0,48})$').firstMatch(prefix);
+    setState(() {
+      mentionStart = match == null
+          ? null
+          : match.start + match.group(1)!.length;
+      mentionEnd = caret;
+      mentionQuery = match?.group(2)?.toLowerCase() ?? '';
+    });
   }
 
   void _pickMention(GroupAgentSummary? agent) {
-    final value = input.text;
-    final at = value.lastIndexOf('@');
-    if (at < 0) {
-      return;
-    }
-    final mention = agent == null ? '@all ' : '@${agent.name} ';
+    final start = mentionStart;
+    if (start == null) return;
+    final mention = '@${agent?.name ?? 'all'} ';
     input.value = TextEditingValue(
-      text: '${value.substring(0, at)}$mention',
-      selection: TextSelection.collapsed(offset: at + mention.length),
+      text: input.text.replaceRange(start, mentionEnd, mention),
+      selection: TextSelection.collapsed(offset: start + mention.length),
     );
-    setState(() => showMentions = false);
+    setState(() => mentionStart = null);
   }
 
-  Future<void> _send() async {
-    final value = input.text.trim();
-    if (value.isEmpty || controller.sending) {
-      return;
+  void _scrollChanged() {
+    if (!scroll.hasClients) return;
+    final position = scroll.position;
+    final nextAway = position.pixels > 220;
+    progress.value = historyReadProgress(position);
+    final restore = collapsed && position.pixels <= 24;
+    if (nextAway != away || restore) {
+      setState(() {
+        away = nextAway;
+        if (restore) collapsed = false;
+      });
     }
-    input.clear();
-    try {
-      await controller.send(value);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(controller.error ?? '发送失败')));
+    _scheduleOlder();
+  }
+
+  void _scheduleOlder() {
+    if (_historyCheckScheduled) return;
+    _historyCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _historyCheckScheduled = false;
+      if (!mounted ||
+          !scroll.hasClients ||
+          controller.loading ||
+          loadingOlder ||
+          !controller.hasMore ||
+          controller.error != null) {
+        return;
       }
+      if (scroll.position.extentAfter <= 240) unawaited(_older());
+    });
+  }
+
+  bool _chatScrolled(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
     }
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _userScrolling = true;
+    } else if (notification is ScrollEndNotification) {
+      _userScrolling = false;
+    } else if (notification is ScrollUpdateNotification &&
+        _userScrolling &&
+        (notification.scrollDelta ?? 0) > 0 &&
+        notification.metrics.pixels > 160 &&
+        !collapsed) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      setState(() => collapsed = true);
+    }
+    return false;
+  }
+
+  Future<void> _older() async {
+    if (loadingOlder || controller.loading) return;
+    loadingOlder = true;
+    await controller.loadOlder();
+    if (!mounted) return;
+    loadingOlder = false;
+    _scheduleOlder();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    controller.removeListener(_changed);
+    if (widget.controller == null) controller.dispose();
     input.removeListener(_inputChanged);
     input.dispose();
-    scroll.removeListener(_scrollChanged);
     scroll.dispose();
-    controller.removeListener(_changed);
-    controller.dispose();
+    progress.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final messages = controller.displayMessages;
+    final mentions = controller.agents
+        .where((a) => a.name.toLowerCase().contains(mentionQuery))
+        .toList();
+    final mentionAll =
+        controller.room.canMentionAll && 'all'.startsWith(mentionQuery);
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              controller.room.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              '${controller.agents.length} 个 Agent',
-              style: TextStyle(
-                fontSize: 11,
-                color: colors.onSurfaceVariant,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ],
+        title: Text(
+          controller.room.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
-          if (controller.agents.isNotEmpty)
-            SizedBox(
-              width: (controller.agents.length.clamp(1, 5)) * 25.0 + 12,
-              height: 44,
-              child: Stack(
-                alignment: Alignment.centerLeft,
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * .42,
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
-                  for (var i = 0; i < controller.agents.length && i < 5; i++)
-                    Positioned(
-                      left: i * 22,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: colors.surface,
-                          shape: BoxShape.circle,
-                        ),
+                  for (final agent in controller.agents)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Tooltip(
+                        message: agent.name,
                         child: AgentAvatar(
                           controller: widget.appController,
-                          agentId: controller.agents[i].agent,
-                          size: 25,
+                          agentId: agent.agent,
+                          size: 26,
                         ),
                       ),
                     ),
                 ],
               ),
             ),
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -171,194 +220,120 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              leading: const Icon(Icons.cloud_off_outlined),
               actions: [
                 TextButton(
-                  onPressed: controller.start,
+                  onPressed: controller.loading ? null : controller.start,
                   child: const Text('重试'),
                 ),
               ],
             ),
+          if (controller.loading) const LinearProgressIndicator(minHeight: 2),
           Expanded(
-            child: controller.loading && controller.messages.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : controller.messages.isEmpty
-                ? const Center(child: Text('还没有群聊消息'))
-                : ListView.builder(
-                    controller: scroll,
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-                    itemCount: controller.messages.length,
-                    itemBuilder: (_, index) =>
-                        _message(controller.messages[index]),
-                  ),
-          ),
-          _composer(colors),
-        ],
-      ),
-    );
-  }
-
-  Widget _message(GroupChatMessage message) {
-    final colors = Theme.of(context).colorScheme;
-    final agent = message.isAgent;
-    final agentId = message.senderAgentType.isNotEmpty
-        ? message.senderAgentType
-        : message.senderName;
-    return Align(
-      alignment: agent ? Alignment.centerLeft : Alignment.centerRight,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * .88,
-        ),
-        margin: const EdgeInsets.only(bottom: 9),
-        padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-        decoration: BoxDecoration(
-          color: agent
-              ? colors.surfaceContainerLow
-              : colors.primaryContainer.withValues(alpha: .45),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: colors.outlineVariant.withValues(alpha: .28),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (agent) ...[
-              AgentAvatar(
-                controller: widget.appController,
-                agentId: agentId,
-                size: 24,
-              ),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    agent ? message.senderName : '我',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colors.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
+            child: Stack(
+              children: [
+                NotificationListener<ScrollNotification>(
+                  onNotification: _chatScrolled,
+                  child: RefreshIndicator(
+                    onRefresh: controller.start,
+                    child: ListView.builder(
+                      controller: scroll,
+                      reverse: true,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: messages.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == messages.length) {
+                          return controller.hasMore
+                              ? Center(
+                                  child: TextButton(
+                                    onPressed: controller.loading
+                                        ? null
+                                        : _older,
+                                    child: const Text('加载更早消息'),
+                                  ),
+                                )
+                              : const SizedBox.shrink();
+                        }
+                        final message = messages[messages.length - 1 - index];
+                        return MessageBubble(
+                          key: ValueKey(message.id),
+                          message: message,
+                          controller: widget.appController,
+                        );
+                      },
                     ),
                   ),
-                  if (message.content.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: SelectableText(
-                        message.content,
-                        style: const TextStyle(fontSize: 15, height: 1.42),
+                ),
+                if (messages.isEmpty && !controller.loading)
+                  Center(
+                    child: Text(
+                      '开始对话',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ),
+                if (away)
+                  Positioned(
+                    right: 16,
+                    bottom: 10,
+                    child: IconButton.filledTonal(
+                      tooltip: '回到最新消息',
+                      icon: const Icon(Icons.arrow_downward_rounded),
+                      onPressed: () => scroll.animateTo(
+                        0,
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOut,
                       ),
                     ),
-                  if (message.reasoning.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        '思考中 · ${message.reasoning.trim()}',
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colors.onSurfaceVariant.withValues(alpha: .72),
-                          height: 1.3,
-                        ),
-                      ),
-                    ),
-                  if (message.isStreaming && message.content.trim().isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 5),
-                      child: SizedBox(
-                        width: 28,
-                        child: LinearProgressIndicator(
-                          minHeight: 2,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+                  ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _composer(ColorScheme colors) => SafeArea(
-    top: false,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showMentions)
-            Align(
-              alignment: Alignment.bottomLeft,
-              child: Card(
-                margin: const EdgeInsets.only(bottom: 6),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
+          ),
+          if (!collapsed &&
+              mentionStart != null &&
+              (mentions.isNotEmpty || mentionAll))
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: Material(
+                color: colors.surfaceContainerLow,
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    if (mentionAll)
                       ListTile(
                         dense: true,
-                        leading: const Icon(Icons.groups_rounded),
+                        leading: const Icon(Icons.groups_outlined),
                         title: const Text('@all'),
-                        subtitle: const Text('提醒所有 Agent'),
                         onTap: () => _pickMention(null),
                       ),
-                      ...controller.agents.map(
-                        (agent) => ListTile(
-                          dense: true,
-                          leading: AgentAvatar(
-                            controller: widget.appController,
-                            agentId: agent.agent,
-                            size: 25,
-                          ),
-                          title: Text('@${agent.name}'),
-                          onTap: () => _pickMention(agent),
+                    for (final agent in mentions)
+                      ListTile(
+                        dense: true,
+                        leading: AgentAvatar(
+                          controller: widget.appController,
+                          agentId: agent.agent,
+                          size: 25,
                         ),
+                        title: Text('@${agent.name}'),
+                        onTap: () => _pickMention(agent),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: input,
-                  minLines: 1,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
-                    hintText: '输入消息，使用 @ 指定 Agent',
-                  ),
-                  onSubmitted: (_) => _send(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: controller.sending || !controller.connected
-                    ? null
-                    : _send,
-                icon: controller.sending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.arrow_upward_rounded),
-              ),
-            ],
+          ChatComposer(
+            controller: widget.appController,
+            input: input,
+            group: controller,
+            collapsed: collapsed,
+            readingProgress: progress,
+            onExpand: () {
+              _userScrolling = false;
+              setState(() => collapsed = false);
+            },
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
