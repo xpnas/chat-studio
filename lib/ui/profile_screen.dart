@@ -330,10 +330,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _versionLabel(PackageInfo info) {
     final version = info.version.trim();
     final build = info.buildNumber.trim();
-    if (version.isEmpty)
+    if (version.isEmpty) {
       return build.isEmpty
           ? context.tr("未知版本")
           : context.l10n.format("构建 {0}", {'0': build});
+    }
     return build.isEmpty ? version : '$version ($build)';
   }
 

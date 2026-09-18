@@ -418,6 +418,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       return;
     }
     if (action == 'delete') {
+      final deletedMessage = context.tr("Agent 已删除");
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -438,7 +439,7 @@ class _ManagementScreenState extends State<ManagementScreen>
         ),
       );
       if (confirmed != true) return;
-      await _run(context.tr("Agent 已删除"), () async {
+      await _run(deletedMessage, () async {
         await api.deleteCodingAgent(id);
       });
       return;
@@ -491,6 +492,8 @@ class _ManagementScreenState extends State<ManagementScreen>
     final servers = asList(
       data['servers'],
     ).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+    final mcpSuccessMessage = context.tr("MCP 测试成功");
+    final mcpFailureMessage = context.tr("MCP 测试失败");
     final selected = await showSettingsSheet<String>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -537,9 +540,9 @@ class _ManagementScreenState extends State<ManagementScreen>
                                             );
                                         _message(
                                           flag(result['ok'])
-                                              ? context.tr("MCP 测试成功")
+                                              ? mcpSuccessMessage
                                               : text(result['error']).isEmpty
-                                              ? context.tr("MCP 测试失败")
+                                              ? mcpFailureMessage
                                               : text(result['error']),
                                           error: !flag(result['ok']),
                                         );
@@ -840,10 +843,12 @@ class _ManagementScreenState extends State<ManagementScreen>
   Future<void> _refreshModelCache() async {
     final api = _api;
     if (api == null) return;
+    final refreshedMessage = context.tr("模型缓存刷新完成");
     setState(() => _refreshingCache = true);
     try {
       await api.refreshModelCache();
-      _message(context.tr("模型缓存刷新完成"));
+      if (!mounted) return;
+      _message(refreshedMessage);
       await _loadAll();
     } catch (error) {
       _message(_friendlyError(error), error: true);
@@ -856,6 +861,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     final api = _api;
     final poolKey = text(group['provider']);
     if (api == null || poolKey.isEmpty) return;
+    final updatedMessage = context.tr("Provider 模型目录已更新");
     try {
       final result = await api.refreshProviderModels(poolKey);
       if (!mounted) return;
@@ -884,7 +890,8 @@ class _ManagementScreenState extends State<ManagementScreen>
         if (proceed != true) return;
         await api.refreshProviderModels(poolKey, confirm: true);
       }
-      _message(context.tr("Provider 模型目录已更新"));
+      if (!mounted) return;
+      _message(updatedMessage);
       await _loadAll();
     } catch (error) {
       _message(_friendlyError(error), error: true);
@@ -895,6 +902,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     final api = _api;
     final poolKey = text(group['provider']);
     if (api == null || poolKey.isEmpty) return;
+    final providerSavedMessage = context.tr("Provider 已保存");
     final detail = await _try(() async {
       final response = await api.providerEditor(poolKey);
       return asMap(response['provider']).isEmpty
@@ -1056,7 +1064,7 @@ class _ManagementScreenState extends State<ManagementScreen>
           'api_key': key.text,
         },
       };
-      await _run(context.tr("Provider 已保存"), () async {
+      await _run(providerSavedMessage, () async {
         await api.patchProviderEditor(poolKey, revision, values);
       });
     }
@@ -1073,6 +1081,7 @@ class _ManagementScreenState extends State<ManagementScreen>
   ) async {
     final api = _api;
     if (api == null) return;
+    final providerDeletedMessage = context.tr("Provider 已删除");
     final yes = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1096,7 +1105,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
     if (yes != true) return;
     await _run(
-      context.tr("Provider 已删除"),
+      providerDeletedMessage,
       () => api.removeProvider(
         provider,
         source: source.isEmpty ? null : source,
@@ -1106,6 +1115,7 @@ class _ManagementScreenState extends State<ManagementScreen>
   }
 
   Future<void> _showProviderDialog() async {
+    final providerAddedMessage = context.tr("Provider 已添加");
     final name = TextEditingController();
     final url = TextEditingController();
     final key = TextEditingController();
@@ -1194,7 +1204,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       final api = _api;
       if (api != null) {
         await _run(
-          context.tr("Provider 已添加"),
+          providerAddedMessage,
           () => api.addProvider(
             name: name.text.trim(),
             baseUrl: url.text.trim(),
@@ -1248,6 +1258,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     List<Map<String, dynamic>> providers,
     String active,
   ) async {
+    final voiceSwitchedMessage = context.tr("语音 Provider 已切换");
     final options = providers
         .map((item) => text(item['provider']))
         .where((value) => value.isNotEmpty)
@@ -1329,7 +1340,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
     if (result != null && _api != null) {
       await _run(
-        context.tr("语音 Provider 已切换"),
+        voiceSwitchedMessage,
         () => _api!.setActiveVoiceProvider(kind, result),
       );
     }
@@ -1348,6 +1359,7 @@ class _ManagementScreenState extends State<ManagementScreen>
   Future<void> _deleteVoiceProvider(String kind, String provider) async {
     final api = _api;
     if (api == null) return;
+    final voiceDeletedMessage = context.tr("语音 Provider 已删除");
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1371,7 +1383,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     );
     if (confirmed != true) return;
     await _run(
-      context.tr("语音 Provider 已删除"),
+      voiceDeletedMessage,
       () => api.deleteVoiceProvider(kind, provider),
     );
   }
@@ -1380,6 +1392,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     String kind,
     List<Map<String, dynamic>> providers,
   ) async {
+    final voiceSavedMessage = context.tr("语音 Provider 已保存并启用");
     final choices = kind == 'stt'
         ? const [
             'openai',
@@ -1521,7 +1534,7 @@ class _ManagementScreenState extends State<ManagementScreen>
         if (language.text.trim().isNotEmpty) 'language': language.text.trim(),
       };
       await _run(
-        context.tr("语音 Provider 已保存并启用"),
+        voiceSavedMessage,
         () => _api!.saveVoiceProvider(
           kind,
           provider,

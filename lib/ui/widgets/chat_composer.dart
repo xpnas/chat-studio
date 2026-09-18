@@ -236,6 +236,9 @@ class _ChatComposerState extends State<ChatComposer>
 
   Future<void> _pick() async {
     final operation = ++_operation;
+    final attachmentLimitError = context.tr(
+      "最多 5 个非空附件，单个不超过 20 MB，总计不超过 40 MB",
+    );
     setState(() => _phase = context.tr("选择附件"));
     try {
       final images = await showModalBottomSheet<bool>(
@@ -277,7 +280,7 @@ class _ChatComposerState extends State<ChatComposer>
           combined.fold<int>(0, (n, f) => n + f.size) +
                   _remoteAttachments.fold<int>(0, (n, f) => n + f.size) >
               LocalAttachment.maxTotalBytes) {
-        throw StateError(context.tr("最多 5 个非空附件，单个不超过 20 MB，总计不超过 40 MB"));
+        throw StateError(attachmentLimitError);
       }
       setState(() => _attachments.addAll(selected));
     } catch (e) {
@@ -289,6 +292,7 @@ class _ChatComposerState extends State<ChatComposer>
 
   Future<void> _voice() async {
     final operation = ++_operation;
+    final recordingLabel = context.tr("录音中");
     setState(() => _phase = context.tr("准备录音"));
     try {
       await c.refreshCapabilities(includeAgents: false);
@@ -306,7 +310,7 @@ class _ChatComposerState extends State<ChatComposer>
       if (_media is AudioLevelSource) {
         _levels = (_media as AudioLevelSource).audioLevels.listen(
           (level) {
-            if (!_valid(operation) || _phase != context.tr("录音中")) return;
+            if (!_valid(operation) || _phase != recordingLabel) return;
             setState(() {
               _level = level;
               if (level > .2) _lastAudibleSecond = _seconds;
@@ -340,6 +344,7 @@ class _ChatComposerState extends State<ChatComposer>
     _cancel = Completer<void>();
     _levels?.cancel();
     _levels = null;
+    final transcriptionLengthError = context.tr("识别后文字超出输入上限，请缩短草稿");
     setState(() => _phase = context.tr("识别中"));
     try {
       final path = await _media.stopRecording();
@@ -357,8 +362,9 @@ class _ChatComposerState extends State<ChatComposer>
       if (!_valid(operation)) return;
       final previous = widget.input.text;
       final value = previous.isEmpty ? result : '$previous\n$result';
-      if (value.length > 64000)
-        throw StateError(context.tr("识别后文字超出输入上限，请缩短草稿"));
+      if (value.length > 64000) {
+        throw StateError(transcriptionLengthError);
+      }
       widget.input.value = TextEditingValue(
         text: value,
         selection: TextSelection.collapsed(offset: value.length),
@@ -391,6 +397,7 @@ class _ChatComposerState extends State<ChatComposer>
       return;
     }
     _cancel = Completer<void>();
+    final sendUnavailableError = context.tr("当前无法发送，草稿已保留。请恢复连接后重试。");
     setState(() => _phase = context.tr("上传中"));
     try {
       final blocks = _attachments.isEmpty
@@ -415,7 +422,7 @@ class _ChatComposerState extends State<ChatComposer>
         _remoteAttachments.clear();
         HapticFeedback.lightImpact();
       } else {
-        _error(context.tr("当前无法发送，草稿已保留。请恢复连接后重试。"));
+        _error(sendUnavailableError);
       }
     } catch (e) {
       if (_valid(operation)) _error(e);
