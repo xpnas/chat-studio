@@ -155,7 +155,9 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {});
     _scheduleEarlierHistory();
     final session = c.sessionId, gesture = _gestureRevision;
+    final liveChanged = c.timeline.liveRevision != _liveRevision;
     if (session == _lastSession &&
+        !liveChanged &&
         !_userScrolling &&
         _stage.currentContext != null) {
       final box = _stage.currentContext!.findRenderObject() as RenderBox;
@@ -169,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
             !_userScrolling,
       );
     }
-    if (c.timeline.liveRevision != _liveRevision) {
+    if (liveChanged) {
       if (_scroll.hasClients && _scroll.offset > 120) _hasNewContent = true;
       _liveRevision = c.timeline.liveRevision;
     }

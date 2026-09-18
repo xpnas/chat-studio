@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../state/app_controller.dart';
 import 'theme.dart';
 import 'server_screen.dart';
 import 'management_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.controller});
   final AppController controller;
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  AppController get controller => widget.controller;
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
   Future<void> _credentials(BuildContext context, bool username) async {
     final old = TextEditingController(), replacement = TextEditingController();
     final form = GlobalKey<FormState>();
@@ -221,16 +230,26 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                 ]),
-                ListTile(
-                  leading: const Icon(Icons.info_outline_rounded),
-                  title: const Text('开源许可'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => showLicensePage(
-                    context: context,
-                    applicationName: 'Chat Studio',
-                    applicationVersion: '1.0.17',
+                const SizedBox(height: 20),
+                _section(context, '关于', [
+                  _aboutTile(context),
+                  ListTile(
+                    leading: const Icon(Icons.menu_book_outlined),
+                    title: const Text('开源许可'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      final info = await _packageInfo;
+                      if (!context.mounted) return;
+                      showLicensePage(
+                        context: context,
+                        applicationName: info.appName.isEmpty
+                            ? 'Chat Studio'
+                            : info.appName,
+                        applicationVersion: _versionLabel(info),
+                      );
+                    },
                   ),
-                ),
+                ]),
                 const SizedBox(height: 26),
                 OutlinedButton.icon(
                   onPressed: () async {
@@ -283,6 +302,43 @@ class ProfileScreen extends StatelessWidget {
       );
     },
   );
+  String _versionLabel(PackageInfo info) {
+    final version = info.version.trim();
+    final build = info.buildNumber.trim();
+    if (version.isEmpty) return build.isEmpty ? '未知版本' : '构建 $build';
+    return build.isEmpty ? version : '$version ($build)';
+  }
+
+  Widget _aboutTile(BuildContext context) => FutureBuilder<PackageInfo>(
+    future: _packageInfo,
+    builder: (context, snapshot) {
+      final info = snapshot.data;
+      final version = info == null ? '正在读取版本信息…' : '版本 ${_versionLabel(info)}';
+      return ListTile(
+        leading: const Icon(Icons.info_outline_rounded),
+        title: const Text('关于 Chat Studio'),
+        subtitle: Text('$version\n适配 Studio v1.0.3'),
+        isThreeLine: true,
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: info == null
+            ? null
+            : () => showAboutDialog(
+                context: context,
+                applicationName: info.appName.isEmpty
+                    ? 'Chat Studio'
+                    : info.appName,
+                applicationVersion: _versionLabel(info),
+                applicationLegalese: 'Apache License 2.0',
+                children: const [
+                  Text('面向 Hermes Studio 的原生移动端客户端。'),
+                  SizedBox(height: 12),
+                  Text('服务端兼容版本：Studio v1.0.3'),
+                ],
+              ),
+      );
+    },
+  );
+
   Widget _section(BuildContext context, String title, List<Widget> children) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,

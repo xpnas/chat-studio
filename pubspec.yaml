@@ -19,6 +19,7 @@ dependencies:
   url_launcher: 6.3.2
   record: 7.1.1
   path_provider: 2.1.6
+  package_info_plus: 10.2.1
   file_picker: 13.0.0
   image_picker: 1.2.3
   mime: 2.1.0

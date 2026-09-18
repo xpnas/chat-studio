@@ -4,10 +4,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
+import '../data/compression_settings.dart';
 import '../data/studio_api.dart';
 import '../state/app_controller.dart';
 import 'theme.dart';
 import 'widgets/agent_avatar.dart';
+import 'widgets/settings_editors.dart';
 
 class ManagementScreen extends StatefulWidget {
   const ManagementScreen({super.key, required this.controller});
@@ -32,6 +34,10 @@ class _ManagementScreenState extends State<ManagementScreen>
   Map<String, dynamic> _stt = const {};
   Map<String, dynamic> _tts = const {};
   Map<String, dynamic> _config = const {};
+  String? _configError;
+  Map<String, dynamic> _runtimeAgents = const {};
+  String? _runtimeError;
+  String? _agentsError;
   Map<String, dynamic> _usage = const {};
   Map<String, dynamic> _skillsUsage = const {};
   List<Map<String, dynamic>> _logFiles = const [];
@@ -74,6 +80,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       _attempt(() => api.skillUsageStats()),
       _attempt(() => api.logFiles()),
       _attempt(() => api.performanceRuntime()),
+      _attempt(() => api.agentAvailability()),
     ]);
     if (!mounted) return;
     setState(() {
@@ -86,13 +93,29 @@ class _ManagementScreenState extends State<ManagementScreen>
       _stt = _mapResult(results[6]);
       _tts = _mapResult(results[7]);
       _config = _mapResult(results[8]);
+      _configError = results[8] is Map<String, dynamic>
+          ? null
+          : _friendlyError(results[8]!);
+      _agentsError = results[0] is Map<String, dynamic>
+          ? null
+          : _friendlyError(results[0]!);
+      _runtimeAgents = _mapResult(results[13]);
+      _runtimeError =
+          results[13] is Map<String, dynamic> &&
+              _runtimeAgents['agents'] is List
+          ? null
+          : '无法读取运行时状态，请刷新重试';
       _usage = _mapResult(results[9]);
       _skillsUsage = _mapResult(results[10]);
       _logFiles = _listResult(results[11]);
       _performance = _mapResult(results[12]);
-      _selectedLog = _selectedLog.isNotEmpty
+      final availableLogNames = _logFiles
+          .map((file) => text(file['name']))
+          .where((name) => name.isNotEmpty)
+          .toSet();
+      _selectedLog = availableLogNames.contains(_selectedLog)
           ? _selectedLog
-          : text(_logFiles.firstOrNull?['name']);
+          : (availableLogNames.isEmpty ? '' : availableLogNames.first);
       _loading = false;
       final failures = results.whereType<ApiException>().toList();
       _error = failures.length == results.length && failures.isNotEmpty
@@ -153,6 +176,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     return tools
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
+        .where((row) => !['hermes', 'ekko-agent'].contains(text(row['id'])))
         .toList();
   }
 
@@ -215,48 +239,80 @@ class _ManagementScreenState extends State<ManagementScreen>
     children: children,
   );
 
-  Widget _section(String title, String subtitle, List<Widget> children) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
+  Widget _section(
+    String title,
+    String subtitle,
+    List<Widget> children,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 18),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (subtitle.isNotEmpty)
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                  if (subtitle.isNotEmpty)
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(children: children),
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
-      );
+        // Keep floating labels and popup anchors outside the section surface
+        // from being cut off by the rounded card boundary.
+        Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.none,
+          child: Column(children: children),
+        ),
+      ],
+    ),
+  );
 
   Widget _agentsPage() => _page([
-    _section('Agent 管理', '安装状态、版本更新和 Agent 配置均在服务端执行。', [
+    _section('运行时', '运行时状态与 Coding Agent 安装目录来自不同接口。', [
+      if (_runtimeError != null) ...[_EmptyRow(label: _runtimeError!)],
+      if (_runtimeError == null)
+        ...asList(_runtimeAgents['agents'])
+            .map(asMap)
+            .where((row) => ['hermes', 'ekko-agent'].contains(text(row['id'])))
+            .map(
+              (row) => ListTile(
+                leading: AgentAvatar(
+                  controller: widget.controller,
+                  agentId: text(row['id']),
+                  size: 38,
+                ),
+                title: Text(
+                  row['id'] == 'hermes' ? 'Hermes Runtime' : 'Ekko Agent',
+                ),
+                subtitle: Text(
+                  '${row['installed'] is! bool
+                      ? '状态未知'
+                      : row['installed'] == true && row['source'] != 'not-installed'
+                      ? '已安装'
+                      : '未安装或不可用'} · '
+                  '${row['id'] == 'hermes' ? '独立 Python 运行时，安装与修复请使用 Studio Web 端 Runtime 管理' : '服务端内置，随 Studio 更新'}',
+                ),
+              ),
+            ),
+    ]),
+    _section('Coding Agent 管理', '以下 CLI 的安装、更新和配置均在服务端执行；不包含 Hermes Runtime。', [
+      if (_agentsError != null) _EmptyRow(label: _agentsError!),
       if (_agentRows.isEmpty) const _EmptyRow(label: '服务端未返回 Agent 管理数据'),
       for (final agent in _agentRows) _agentTile(agent),
     ]),
@@ -264,7 +320,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       const ListTile(
         leading: Icon(Icons.info_outline_rounded),
         title: Text('配置文件与 MCP'),
-        subtitle: Text('可查看和保存 Agent 的配置文件；大段配置建议在 Web 端编辑。'),
+        subtitle: Text('配置文件使用全屏编辑；Hermes Runtime 与 CLI 使用不同的管理接口。'),
       ),
     ]),
   ]);
@@ -309,7 +365,7 @@ class _ManagementScreenState extends State<ManagementScreen>
             PopupMenuItem(
               value: 'toggle-auto-update',
               child: Text(
-                flag(asMap(_agentPolicies['agents'])[id]['autoUpdate'])
+                flag(asMap(asMap(_agentPolicies['agents'])[id])['autoUpdate'])
                     ? '关闭自动更新'
                     : '开启自动更新',
               ),
@@ -329,7 +385,9 @@ class _ManagementScreenState extends State<ManagementScreen>
       return;
     }
     if (action == 'toggle-auto-update') {
-      final current = flag(asMap(_agentPolicies['agents'])[id]['autoUpdate']);
+      final current = flag(
+        asMap(asMap(_agentPolicies['agents'])[id])['autoUpdate'],
+      );
       await _run(
         current ? '自动更新已关闭' : '自动更新已开启',
         () => api.setCodingAgentAutoUpdate(id, !current),
@@ -383,41 +441,16 @@ class _ManagementScreenState extends State<ManagementScreen>
     };
     final data = await _try(() => api.codingAgentConfig(id, key));
     if (!mounted || data == null) return;
-    final editor = TextEditingController(text: text(data['content']));
-    final save = await showDialog<bool>(
+    final content = await showSettingsTextEditor(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('$id 配置'),
-        content: SizedBox(
-          width: 650,
-          child: TextField(
-            controller: editor,
-            maxLines: 16,
-            minLines: 8,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-            decoration: InputDecoration(
-              labelText: text(data['path']).isEmpty ? key : text(data['path']),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+      title: '$id 配置',
+      label: text(data['path']).isEmpty ? key : text(data['path']),
+      initialValue: text(data['content']),
     );
-    if (save == true) {
-      await _run('Agent 配置已保存', () async {
-        await api.saveCodingAgentConfig(id, key, editor.text);
-      });
-    }
-    editor.dispose();
+    if (!mounted || content == null) return;
+    await _run('Agent 配置已保存', () async {
+      await api.saveCodingAgentConfig(id, key, content);
+    });
   }
 
   Future<void> _showMcpManager(String id) async {
@@ -434,10 +467,10 @@ class _ManagementScreenState extends State<ManagementScreen>
     final servers = asList(
       data['servers'],
     ).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
-    final selected = await showDialog<String>(
+    final selected = await showSettingsSheet<String>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) => SettingsSheet(
           title: Text('$id MCP 服务'),
           content: SizedBox(
             width: 620,
@@ -524,6 +557,7 @@ class _ManagementScreenState extends State<ManagementScreen>
         ),
       ),
     );
+    if (!mounted) return;
     if (selected == 'add') {
       await _showMcpEditor(id);
     } else if (selected case final action? when action.startsWith('delete:')) {
@@ -533,67 +567,81 @@ class _ManagementScreenState extends State<ManagementScreen>
   }
 
   Future<void> _showMcpEditor(String id) async {
+    final api = _api;
+    if (api == null) return;
     final name = TextEditingController();
-    final config = TextEditingController(text: '{\n  "command": ""\n}');
-    final result = await showDialog<bool>(
+    var config = '{\n  "command": ""\n}';
+    String? error;
+    final result = await showSettingsSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('添加 MCP 服务'),
-        content: SizedBox(
-          width: 620,
-          child: Column(
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => SettingsSheet(
+          title: const Text('添加 MCP 服务'),
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: name,
-                decoration: const InputDecoration(labelText: '服务名称'),
+                decoration: InputDecoration(
+                  labelText: '服务名称',
+                  errorText: error,
+                ),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: config,
-                minLines: 8,
-                maxLines: 16,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                decoration: const InputDecoration(
-                  labelText: 'MCP JSON 配置',
-                  alignLabelWithHint: true,
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('编辑 MCP JSON 配置'),
+                subtitle: Text(
+                  config,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
+                trailing: const Icon(Icons.fullscreen_rounded),
+                onTap: () async {
+                  final value = await showSettingsTextEditor(
+                    context: context,
+                    title: 'MCP 配置',
+                    label: 'JSON 配置',
+                    initialValue: config,
+                    validator: validateJsonObject,
+                  );
+                  if (context.mounted && value != null) {
+                    update(() => config = value);
+                  }
+                },
               ),
             ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (name.text.trim().isEmpty) {
+                  update(() => error = '请输入服务名称');
+                  return;
+                }
+                Navigator.pop(context, true);
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
-    if (result == true && _api != null) {
-      try {
-        final decoded = jsonDecode(config.text);
-        if (decoded is! Map || name.text.trim().isEmpty) {
-          throw const FormatException('名称和 JSON 配置不能为空');
-        }
-        await _run(
-          'MCP 服务已添加',
-          () => _api!.addCodingAgentMcpServer(
-            id,
-            name.text.trim(),
-            Map<String, dynamic>.from(decoded),
-          ),
-        );
-      } on FormatException catch (error) {
-        _message(error.message, error: true);
-      }
+    if (mounted && result == true) {
+      await _run(
+        'MCP 服务已添加',
+        () => api.addCodingAgentMcpServer(
+          id,
+          name.text.trim(),
+          Map<String, dynamic>.from(jsonDecode(config) as Map),
+        ),
+      );
     }
     name.dispose();
-    config.dispose();
   }
 
   Widget _modelsPage() => _page([
@@ -817,10 +865,10 @@ class _ManagementScreenState extends State<ManagementScreen>
         : text(detail['api_mode']);
     final revision = text(detail['revision']);
     final editable = flag(detail['editable']);
-    final result = await showDialog<String>(
+    final result = await showSettingsSheet<String>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) => SettingsSheet(
           title: Text(
             text(detail['label']).isEmpty ? poolKey : text(detail['label']),
           ),
@@ -855,6 +903,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: mode,
                   decoration: const InputDecoration(labelText: '接口模式'),
                   items: const [
@@ -1012,10 +1061,10 @@ class _ManagementScreenState extends State<ManagementScreen>
     final key = TextEditingController();
     final model = TextEditingController();
     var mode = 'chat_completions';
-    final save = await showDialog<bool>(
+    final save = await showSettingsSheet<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) => SettingsSheet(
           title: const Text('添加 Provider'),
           content: SingleChildScrollView(
             child: Column(
@@ -1040,6 +1089,7 @@ class _ManagementScreenState extends State<ManagementScreen>
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: mode,
                   decoration: const InputDecoration(labelText: '接口模式'),
                   items: const [
@@ -1152,10 +1202,10 @@ class _ManagementScreenState extends State<ManagementScreen>
       return;
     }
     var selected = options.contains(active) ? active : options.first;
-    final result = await showDialog<String>(
+    final result = await showSettingsSheet<String>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
+        builder: (context, setState) => SettingsSheet(
           title: Text(kind == 'stt' ? '选择 STT Provider' : '选择 TTS Provider'),
           content: SizedBox(
             width: 440,
@@ -1163,6 +1213,7 @@ class _ManagementScreenState extends State<ManagementScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: selected,
                   items: options
                       .map(
@@ -1293,7 +1344,7 @@ class _ManagementScreenState extends State<ManagementScreen>
     final voice = TextEditingController();
     final language = TextEditingController();
     final apiKey = TextEditingController();
-    final result = await showDialog<bool>(
+    final result = await showSettingsSheet<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -1307,13 +1358,14 @@ class _ManagementScreenState extends State<ManagementScreen>
             voice.text = text(settings['voice']);
             language.text = text(settings['language']);
           }
-          return AlertDialog(
+          return SettingsSheet(
             title: Text(kind == 'stt' ? '配置 STT Provider' : '配置 TTS Provider'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: provider,
                     decoration: const InputDecoration(labelText: 'Provider'),
                     items: choices
@@ -1471,20 +1523,27 @@ class _ManagementScreenState extends State<ManagementScreen>
           ),
         )
         .toList();
-    return DropdownButtonFormField<String>(
-      initialValue: items.any((item) => item.value == _selectedLog)
-          ? _selectedLog
-          : null,
-      decoration: const InputDecoration(
-        prefixIcon: Icon(Icons.description_outlined),
-        labelText: '日志文件',
+    // InputDecoration.labelText floats above the field border. The section card
+    // clips its children, so leave room for the floating label instead of
+    // letting the top half of the label be clipped by the card boundary.
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: DropdownButtonFormField<String>(
+        isExpanded: true,
+        initialValue: items.any((item) => item.value == _selectedLog)
+            ? _selectedLog
+            : null,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.description_outlined),
+          labelText: '日志文件',
+        ),
+        items: items,
+        onChanged: (value) {
+          if (value == null) return;
+          setState(() => _selectedLog = value);
+          unawaited(_loadLogs());
+        },
       ),
-      items: items,
-      onChanged: (value) {
-        if (value == null) return;
-        setState(() => _selectedLog = value);
-        unawaited(_loadLogs());
-      },
     );
   }
 
@@ -1553,30 +1612,35 @@ class _ManagementScreenState extends State<ManagementScreen>
         flag(asMap(_config['privacy'])['redact_pii']),
       ),
     ]),
-    _section('运行参数', '适合手机快速调整的常用服务端参数。', [
+    if (_configError != null)
+      ErrorNotice(message: '服务配置读取失败：$_configError', onDismiss: _loadAll),
+    _section('运行参数', '当前 Profile 的配置策略，不代表当前会话已经发生压缩。', [
       ListTile(
         leading: const Icon(Icons.speed_outlined),
         title: const Text('最大运行步数'),
         subtitle: Text('${integer(asMap(_config['agent'])['max_turns'])} 步'),
         trailing: const Icon(Icons.edit_outlined),
-        onTap: () => _showNumberConfig(
-          'agent',
-          'max_turns',
-          integer(asMap(_config['agent'])['max_turns']),
-        ),
+        onTap: _saving || _configError != null
+            ? null
+            : () => _showNumberConfig(
+                'agent',
+                'max_turns',
+                integer(asMap(_config['agent'])['max_turns']),
+              ),
       ),
       ListTile(
+        key: const Key('compression-settings'),
         leading: const Icon(Icons.compress_outlined),
-        title: const Text('上下文压缩'),
+        title: const Text('上下文自动压缩'),
         subtitle: Text(
-          flag(asMap(_config['compression'])['enabled']) ? '已启用' : '未启用',
+          _configError != null
+              ? '状态未知 · 配置读取失败'
+              : CompressionSettings.fromConfig(_config).summary,
         ),
-        trailing: const Icon(Icons.edit_outlined),
-        onTap: () => _showNumberConfig(
-          'compression',
-          'threshold',
-          integer(asMap(_config['compression'])['threshold']),
-        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: _saving || _configError != null
+            ? null
+            : _showCompressionSettings,
       ),
     ]),
     _section('高级服务配置', '完整配置仍由服务端保存；此处可编辑移动端未单独展开的字段。', [
@@ -1585,7 +1649,9 @@ class _ManagementScreenState extends State<ManagementScreen>
         title: const Text('编辑完整服务配置'),
         subtitle: const Text('显示、记忆、隐私、代理和平台配置等'),
         trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => _showJsonEditor('完整服务配置', _config, _saveFullConfig),
+        onTap: _saving || _configError != null
+            ? null
+            : () => _showJsonEditor('完整服务配置', _config, _saveFullConfig),
       ),
     ]),
     _section('权限说明', '以下能力由服务端角色控制。移动端不会绕过权限。', [
@@ -1606,7 +1672,7 @@ class _ManagementScreenState extends State<ManagementScreen>
       SwitchListTile(
         title: Text(title),
         value: value,
-        onChanged: _saving
+        onChanged: _saving || _configError != null
             ? null
             : (next) => _run(
                 '$title已更新',
@@ -1629,89 +1695,54 @@ class _ManagementScreenState extends State<ManagementScreen>
     });
   }
 
+  Future<void> _showCompressionSettings() async {
+    final api = _api;
+    if (api == null) return;
+    final values = await showSettingsSheet<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => CompressionSettingsSheet(
+        settings: CompressionSettings.fromConfig(_config),
+      ),
+    );
+    if (!mounted || values == null) return;
+    await _run(
+      '上下文压缩策略已保存',
+      () => api.updateConfigSection('compression', values),
+    );
+  }
+
   Future<void> _showNumberConfig(
     String section,
     String key,
     int initial,
   ) async {
+    final api = _api;
+    if (api == null) return;
     final input = TextEditingController(text: initial > 0 ? '$initial' : '');
-    final save = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('设置 $key'),
-        content: TextField(
-          controller: input,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: '数值'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    if (save == true) {
-      final value = int.tryParse(input.text.trim());
-      if (value == null || value <= 0) {
-        _message('请输入大于 0 的整数', error: true);
-      } else {
-        await _run(
-          '配置已保存',
-          () => _api!.updateConfigSection(section, {key: value}),
-        );
-      }
-    }
-    input.dispose();
-  }
-
-  Future<void> _showJsonEditor(
-    String title,
-    dynamic value,
-    Future<void> Function(Map<String, dynamic>) save,
-  ) async {
-    final input = TextEditingController(text: _prettyJson(value));
     String? error;
-    final result = await showDialog<bool>(
+    final value = await showSettingsSheet<int>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(title),
-          content: SizedBox(
-            width: 680,
-            child: TextField(
-              controller: input,
-              minLines: 10,
-              maxLines: 20,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              decoration: InputDecoration(
-                labelText: 'JSON 配置',
-                errorText: error,
-                alignLabelWithHint: true,
-              ),
-            ),
+        builder: (context, update) => SettingsSheet(
+          title: const Text('最大运行步数'),
+          content: TextField(
+            controller: input,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: '步数', errorText: error),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(context),
               child: const Text('取消'),
             ),
             FilledButton(
               onPressed: () {
-                try {
-                  final decoded = jsonDecode(input.text);
-                  if (decoded is! Map) {
-                    throw const FormatException('配置必须是 JSON 对象');
-                  }
-                  Navigator.pop(context, true);
-                } on FormatException catch (exception) {
-                  setDialogState(() => error = exception.message);
+                final value = int.tryParse(input.text.trim());
+                if (value == null || value <= 0) {
+                  update(() => error = '请输入大于 0 的整数');
+                  return;
                 }
+                Navigator.pop(context, value);
               },
               child: const Text('保存'),
             ),
@@ -1719,11 +1750,26 @@ class _ManagementScreenState extends State<ManagementScreen>
         ),
       ),
     );
-    if (result == true) {
-      final decoded = jsonDecode(input.text);
-      await save(Map<String, dynamic>.from(decoded as Map));
-    }
     input.dispose();
+    if (mounted && value != null) {
+      await _run('配置已保存', () => api.updateConfigSection(section, {key: value}));
+    }
+  }
+
+  Future<void> _showJsonEditor(
+    String title,
+    dynamic value,
+    Future<void> Function(Map<String, dynamic>) save,
+  ) async {
+    final content = await showSettingsTextEditor(
+      context: context,
+      title: title,
+      label: 'JSON 配置',
+      initialValue: _prettyJson(value),
+      validator: validateJsonObject,
+    );
+    if (!mounted || content == null) return;
+    await save(Map<String, dynamic>.from(jsonDecode(content) as Map));
   }
 
   String _prettyJson(dynamic value) {

@@ -594,6 +594,9 @@ class StudioApi {
 
   // Management APIs mirror the v1.0.3 Studio web client. These methods keep
   // credentials on the server and return only the fields needed by mobile UI.
+  Future<Map<String, dynamic>> agentAvailability() =>
+      request('/api/agents/availability');
+
   Future<Map<String, dynamic>> codingAgents() => request('/api/coding-agents');
 
   Future<Map<String, dynamic>> installCodingAgent(String id) => request(

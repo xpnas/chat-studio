@@ -122,9 +122,12 @@ flutter build appbundle --release
 |---|---|---|
 | `Mobile CI` | push / PR / 手动 | 测试覆盖率、可安装 debug APK、iOS 模拟器 app、iOS 未签名设备 app |
 | `Signed packages` | 手动选择 android / ios / both | 签名 Release APK + AAB / IPA，需 `release` 环境 Secrets |
+| `Branch releases` | 非 `main`/`master` 分支 push / 手动 | GitHub Release 下的独立 APK + AAB；配置 iOS 签名后追加独立 IPA |
 | `Studio contract` | 手动 | 固定源码版本的真实 REST + Socket.IO 联调，使用本地模型夹具 |
 
 普通 PR 不读取生产签名密钥。建议为 GitHub 的 `release` Environment 配置审核人及允许发布的分支。这里提供可执行配置，**不表示已经在远端 Actions 上运行通过**；本地 Git 提交不会自动等同于推送。
+
+`Branch releases` 不使用 Actions 的压缩 artifact 作为最终下载入口，而是由发布 Job 将每个文件作为独立 Release asset 上传。分支推送会创建一个预发布版本；版本标题中包含分支名、提交短 SHA 和 Actions 运行号。正式版本仍建议使用 `Signed packages` 工作流生成并签名。Android 分支包使用一次性 CI 预览签名，只适合测试安装，不能覆盖正式签名包。若要让分支版本同时生成可安装 iOS IPA，请在 `release` Environment 配置已有的 iOS 签名 Secrets，并设置仓库变量 `BRANCH_RELEASE_IOS=true`；也可以从 `Branch releases` 手动运行并勾选 `include_ios`。
 
 ## 目录
 

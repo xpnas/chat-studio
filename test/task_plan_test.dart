@@ -171,6 +171,29 @@ void main() {
     },
   );
 
+  test('a late plan stays before its complete streamed assistant turn', () {
+    final t = ChatTimeline()..sessionId = 's1';
+    t.replace([
+      const ChatMessage(id: 'u', role: 'user', content: 'q', timestamp: 1000),
+      const ChatMessage(
+        id: 'a1',
+        role: 'assistant',
+        content: '先到的输出',
+        runMarker: 'r1',
+        timestamp: 1100,
+      ),
+    ]);
+    t.apply('run.started', {'run_id': 'r1'});
+    t.apply('message.delta', {'run_id': 'r1', 'delta': '后到的输出'});
+    t.apply('plan.updated', planJson());
+
+    expect(t.displayMessages.map((m) => m.id), ['u', 'task-plan:s1:p1', 'a1']);
+    expect(t.displayMessages.last.content, contains('后到的输出'));
+
+    t.apply('run.completed', {'run_id': 'r1'});
+    expect(t.displayMessages.map((m) => m.id), ['u', 'task-plan:s1:p1', 'a1']);
+  });
+
   test(
     'timestamps place plans even without a matching persisted run marker',
     () {

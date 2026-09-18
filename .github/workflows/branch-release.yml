@@ -1,0 +1,198 @@
+name: Branch releases
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      include_ios:
+        description: 'Build a signed iOS IPA (requires release environment secrets)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: branch-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.9'
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      release_title: ${{ steps.meta.outputs.release_title }}
+      release_prerelease: ${{ steps.meta.outputs.release_prerelease }}
+      version_name: ${{ steps.meta.outputs.version_name }}
+      build_number: ${{ steps.meta.outputs.build_number }}
+      slug: ${{ steps.meta.outputs.slug }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_name="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml | tr -d '\r')"
+          if [[ -z "$version_name" ]]; then
+            echo 'pubspec.yaml has no versionName' >&2
+            exit 1
+          fi
+          build_number="${GITHUB_RUN_NUMBER}"
+          slug="$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//' | cut -c1-48)"
+          [[ -n "$slug" ]] || slug="branch"
+          short_sha="${GITHUB_SHA:0:7}"
+          release_tag="branch-${slug}-${short_sha}-${GITHUB_RUN_NUMBER}"
+          release_title="Chat Studio 分支预览 · ${GITHUB_REF_NAME} · ${short_sha} · #${GITHUB_RUN_NUMBER}"
+          release_prerelease=true
+          {
+            echo "release_tag=$release_tag"
+            echo "release_title=$release_title"
+            echo "release_prerelease=$release_prerelease"
+            echo "version_name=$version_name"
+            echo "build_number=$build_number"
+            echo "slug=$slug"
+          } >> "$GITHUB_OUTPUT"
+
+  android:
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: python3 scripts/verify-app-identity.py
+      - run: flutter pub get --enforce-lockfile
+      - name: Create temporary preview signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/chatstudio-preview.jks" \
+            -storetype JKS \
+            -storepass preview-password \
+            -keypass preview-password \
+            -alias chatstudio-preview \
+            -keyalg RSA -keysize 2048 -validity 30 \
+            -dname 'CN=Chat Studio Branch Preview, OU=CI, O=Chat Studio, C=US'
+          {
+            echo "storeFile=$RUNNER_TEMP/chatstudio-preview.jks"
+            echo 'storePassword=preview-password'
+            echo 'keyPassword=preview-password'
+            echo 'keyAlias=chatstudio-preview'
+          } > android/key.properties
+      - name: Build Android preview packages
+        run: |
+          flutter build apk --release --build-name=${{ needs.metadata.outputs.version_name }} --build-number=${{ needs.metadata.outputs.build_number }}
+          flutter build appbundle --release --build-name=${{ needs.metadata.outputs.version_name }} --build-number=${{ needs.metadata.outputs.build_number }}
+      - name: Rename Android release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "release-assets/chatstudio-${{ needs.metadata.outputs.version_name }}-${{ needs.metadata.outputs.slug }}-android.apk"
+          cp build/app/outputs/bundle/release/app-release.aab \
+            "release-assets/chatstudio-${{ needs.metadata.outputs.version_name }}-${{ needs.metadata.outputs.slug }}-android.aab"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: branch-release-android
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  ios:
+    needs: metadata
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.include_ios) ||
+      (github.event_name == 'push' && vars.BRANCH_RELEASE_IOS == 'true')
+    runs-on: macos-15
+    environment: release
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: python3 scripts/verify-app-identity.py
+      - run: flutter pub get --enforce-lockfile
+      - name: Build signed iOS IPA
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          IOS_EXPORT_METHOD: app-store-connect
+          BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+        run: bash scripts/ios-package.sh
+      - name: Rename iOS release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          ipa=(build/ios/ipa/*.ipa)
+          [[ -f "${ipa[0]}" ]] || { echo 'No IPA was produced' >&2; exit 1; }
+          cp "${ipa[0]}" \
+            "release-assets/chatstudio-${{ needs.metadata.outputs.version_name }}-${{ needs.metadata.outputs.slug }}-ios.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: branch-release-ios
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [metadata, android, ios]
+    if: >-
+      always() && needs.android.result == 'success' &&
+      (needs.ios.result == 'success' || needs.ios.result == 'skipped')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: branch-release-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish individual files to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.metadata.outputs.release_tag }}
+          TITLE: ${{ needs.metadata.outputs.release_title }}
+          PRERELEASE: ${{ needs.metadata.outputs.release_prerelease }}
+          VERSION_NAME: ${{ needs.metadata.outputs.version_name }}
+          BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release-assets/*.apk release-assets/*.aab release-assets/*.ipa)
+          ((${#files[@]} > 0)) || { echo 'No installable release assets found' >&2; exit 1; }
+          cat > release-notes.md <<EOF
+          Chat Studio ${VERSION_NAME} branch build
+
+          Build number: ${BUILD_NUMBER}
+          Commit: ${GITHUB_SHA}
+
+          Assets are uploaded as individual APK/AAB/IPA files; the Actions artifact ZIP is not the distribution package.
+          EOF
+          args=(gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "$TITLE" --notes-file release-notes.md)
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+          "${args[@]}"
+          sha256sum "${files[@]}" > "release-assets/SHA256SUMS.txt"
+          gh release upload "$TAG" release-assets/SHA256SUMS.txt --clobber

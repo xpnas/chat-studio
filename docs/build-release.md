@@ -73,6 +73,14 @@ dist/chatstudio-{version}-SHA256SUMS.txt
 
 `github.run_number` 用作 CI versionCode；正式上架前应确保它高于已有商店版本，必要时调整构建编号策略。不同工作流编号不能作为全局单调版本源。
 
+### 分支预览版与 GitHub Release 下载
+
+`.github/workflows/branch-release.yml` 在非 `main`/`master` 分支 push 时构建 Android APK/AAB，并创建一个带分支名、提交短 SHA 和 Actions 运行号的 GitHub 预发布版本。正式版本仍使用 `Signed packages` 工作流，避免把临时分支签名误当成生产签名。最终 Release 页面会显示独立的 `.apk`、`.aab`（以及启用 iOS 签名后的 `.ipa`）下载项，不会把它们作为一个压缩包提供。Actions 的中间 artifact 可能仍以 ZIP 形式保存，这是 GitHub Actions 的传输机制，不是最终分发文件。
+
+分支 Android 包使用 runner 临时生成的预览签名，适合测试安装但不能覆盖正式签名版本。iOS 只有在 `release` Environment 已配置现有证书/profile Secrets，并设置仓库变量 `BRANCH_RELEASE_IOS=true` 时，分支 push 才会生成 IPA；手动运行工作流可以通过 `include_ios` 选择构建 iOS。
+
+每次分支提交使用独立的 `branch-{branch}-{short-sha}-{run-number}` Release tag，避免覆盖旧提交的 Release。若只希望保留最新分支版本，可在 GitHub 上定期删除旧的预发布版本。
+
 ## iOS
 
 ### 无 Apple 证书

@@ -234,8 +234,16 @@ class ChatTimeline {
       if (index < 0) {
         index = rows.indexWhere((m) => m.timestamp > plan.createdAt);
       }
+      if (index < 0) index = rows.length;
+      // A plan can be announced after an interim assistant message, and live
+      // run IDs can differ from persisted run markers. Anchor it to the start
+      // of that assistant turn, not to the instant the plan was created. Never
+      // cross a user/command boundary or reorder earlier plan cards.
+      while (index > 0 && rows[index - 1].role == 'assistant') {
+        index--;
+      }
       rows.insert(
-        index < 0 ? rows.length : index,
+        index,
         ChatMessage(
           id: plan.key,
           role: 'system',
