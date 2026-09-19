@@ -5,6 +5,8 @@ on:
     branches-ignore:
       - main
       - master
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       include_ios:
@@ -48,9 +50,17 @@ jobs:
           slug="$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//' | cut -c1-48)"
           [[ -n "$slug" ]] || slug="branch"
           short_sha="${GITHUB_SHA:0:7}"
-          release_tag="branch-${slug}-${short_sha}-${GITHUB_RUN_NUMBER}"
-          release_title="Chat Studio 分支预览 · ${GITHUB_REF_NAME} · ${short_sha} · #${GITHUB_RUN_NUMBER}"
-          release_prerelease=true
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            # A v* tag is a user-facing release. Reuse the tag instead of
+            # creating an unrelated branch-preview tag.
+            release_tag="$GITHUB_REF_NAME"
+            release_title="Chat Studio ${GITHUB_REF_NAME}"
+            release_prerelease=false
+          else
+            release_tag="branch-${slug}-${short_sha}-${GITHUB_RUN_NUMBER}"
+            release_title="Chat Studio 分支预览 · ${GITHUB_REF_NAME} · ${short_sha} · #${GITHUB_RUN_NUMBER}"
+            release_prerelease=true
+          fi
           {
             echo "release_tag=$release_tag"
             echo "release_title=$release_title"
@@ -191,8 +201,15 @@ jobs:
 
           Assets are uploaded as individual APK/AAB/IPA files; the Actions artifact ZIP is not the distribution package.
           EOF
-          args=(gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "$TITLE" --notes-file release-notes.md)
-          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
-          "${args[@]}"
+          # A manually created release may already exist for the tag. In that
+          # case, keep its notes and add/replace the generated assets instead
+          # of failing with "release already exists".
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            args=(gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "$TITLE" --notes-file release-notes.md)
+            if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+            "${args[@]}"
+          fi
           sha256sum "${files[@]}" > "release-assets/SHA256SUMS.txt"
           gh release upload "$TAG" release-assets/SHA256SUMS.txt --clobber
