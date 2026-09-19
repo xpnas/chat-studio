@@ -184,6 +184,10 @@ jobs:
       - name: Publish individual files to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job only downloads artifacts and has no checkout. Tell gh
+          # explicitly which repository to operate on instead of making it
+          # infer the repository from a missing .git directory.
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.metadata.outputs.release_tag }}
           TITLE: ${{ needs.metadata.outputs.release_title }}
           PRERELEASE: ${{ needs.metadata.outputs.release_prerelease }}
