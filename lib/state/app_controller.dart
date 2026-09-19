@@ -1480,10 +1480,13 @@ class AppController extends ChangeNotifier {
     if (sessionId == null) unawaited(refreshAgents());
     if (connected) {
       _recoverSessions();
-    } else if (!transport.isStarted) {
-      // A started Socket.IO client already has automatic reconnect enabled;
-      // rebuilding it here causes needless disconnect/reconnect flashes when
-      // returning from the background.
+    } else {
+      // A foreground transition is an explicit opportunity to recover a
+      // socket that was disposed by the platform (or by a network-loss
+      // boundary). `isStarted` only means that a transport object exists; it
+      // does not mean that its underlying socket is still reconnectable.
+      // Rebuild it when the app is actually offline, while leaving a healthy
+      // connection untouched to avoid needless disconnect/reconnect flashes.
       reconnect();
     }
   }

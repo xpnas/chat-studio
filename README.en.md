@@ -4,7 +4,7 @@
 
 A lightweight Hermes Studio client for Android and iOS. It implements the real Hermes Studio-compatible protocol with a standalone Flutter UI — **not a WebView wrapper**.
 
-> Current delivery: source for both platforms, a signed Android Release APK, GitHub builds for both platforms, and optional signing workflows. Android has been built and tested locally on Windows against the real service protocol. iOS still requires validation on a GitHub macOS runner with Xcode; an unsigned `.app` is not presented as an installable IPA.
+> Current delivery: source for both platforms, a signed Android Release APK, GitHub builds for both platforms, and optional signing workflows. Android has been built locally on Windows. Real service contract checks run on the GitHub Ubuntu runner; iOS still requires validation on a GitHub macOS runner with Xcode; an unsigned `.app` is not presented as an installable IPA.
 
 > The application ID is `ai.chatstudio.app` and the Dart package name is `chatstudio`. This is a new application identity: install it separately and add/sign in to your server again. Server-side history is unaffected. See [build and release](docs/build-release.md) and [naming conventions](docs/naming.md).
 
@@ -31,7 +31,20 @@ A lightweight Hermes Studio client for Android and iOS. It implements the real H
 
 ## Screenshots
 
-The screenshots under `docs/screenshots/` are rendered from the current Flutter components with test data rather than captured from a physical device. See [screenshot notes](docs/screenshots/README.md).
+The screenshots below are rendered from the current Flutter components with deterministic test data rather than captured from a physical device. Only the key flows are shown here: sign-in, server switching, chat, history/tasks, Agent/model selection, remote workspace, and attachments. See [screenshot notes](docs/screenshots/README.md) for the complete catalog and verification boundary.
+
+<p>
+  <img src="docs/screenshots/login.png" width="230" alt="Sign-in screen" />
+  <img src="docs/screenshots/servers.png" width="230" alt="Multiple server records and switching" />
+  <img src="docs/screenshots/home.png" width="230" alt="New conversation" />
+  <img src="docs/screenshots/chat.png" width="230" alt="Shared single/group chat surface" />
+  <img src="docs/screenshots/history-tasks.png" width="230" alt="History list and task status" />
+  <img src="docs/screenshots/task-plan-expanded.png" width="230" alt="Expanded Agent task plan" />
+  <img src="docs/screenshots/agents.png" width="230" alt="Installed Agent selection" />
+  <img src="docs/screenshots/models.png" width="230" alt="Provider-grouped model selection" />
+  <img src="docs/screenshots/workspace.png" width="230" alt="Remote server workspace" />
+  <img src="docs/screenshots/attachments.png" width="230" alt="File and image attachments" />
+</p>
 
 ## Technical choices
 

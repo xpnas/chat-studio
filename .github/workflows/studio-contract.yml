@@ -20,11 +20,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.13.1'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.9'
           channel: stable
           cache: true
+      - name: Cache Dart packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-flutter-pub-${{ hashFiles('mobile/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-pub-
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: studio
       - run: npx vitest run tests/server/app-connections-auth.test.ts tests/server/user-auth.test.ts

@@ -133,6 +133,21 @@ void main() {
     },
   );
   test(
+    'foreground rebuilds a transport that was disconnected while backgrounded',
+    () async {
+      final h = TestHarness();
+      addTearDown(h.dispose);
+      await h.login();
+      final initialConnections = h.transport.connections;
+
+      h.transport.receive('disconnected', {});
+      expect(h.controller.connected, false);
+      h.controller.onForeground();
+
+      expect(h.transport.connections, initialConnections + 1);
+    },
+  );
+  test(
     'network reconnect buffered deltas are not replayed twice by resume',
     () {
       final t = ChatTimeline()..begin('work', 'local:u');

@@ -4,7 +4,7 @@
 
 Android / iOS 上的轻量 Hermes Studio 客户端。面向 Hermes Studio 兼容接口的真实协议实现，Flutter 独立 UI，**不是 WebView 套壳**。
 
-> 当前交付：双端源码、Android 已签名 Release APK、GitHub 双端构建及可选签名流程。Windows 本机已完成 Android 编译和真实服务协议联调；iOS 尚需 GitHub macOS Runner / Xcode 验证，不把未签名 `.app` 称为可安装 IPA。
+> 当前交付：双端源码、Android 已签名 Release APK、GitHub 双端构建及可选签名流程。Windows 本机已完成 Android 编译；真实服务协议契约测试在 GitHub Ubuntu Runner 执行，iOS 尚需 GitHub macOS Runner / Xcode 验证，不把未签名 `.app` 称为可安装 IPA。
 
 > 应用包标识统一为 `ai.chatstudio.app`，Dart 包名为 `chatstudio`。这是新的应用身份，需单独安装并重新添加服务器、登录；服务端历史不受影响。构建与签名要求见 [打包文档](docs/build-release.md)，名称与协议边界见 [命名规范](docs/naming.md)。
 
@@ -46,26 +46,19 @@ Android / iOS 上的轻量 Hermes Studio 客户端。面向 Hermes Studio 兼容
 
 ## 界面预览
 
-以下图片由当前源码的真实 Flutter 组件重新渲染（测试数据，不是真机截图），展示输入框内模型/思考选择、紧凑任务列表、悬浮阅读入口、多服务器、全屏图片预览、动态图标 Agent 选择和 Agent 任务计划。生成步骤、全部场景及验证边界见 [截图说明](docs/screenshots/README.md)。
+以下图片由当前源码的真实 Flutter 组件重新渲染（测试数据，不是真机截图），只保留登录、多服务器、聊天、历史任务、Agent/模型、远程工作区和附件等重点场景。完整场景、生成步骤及验证边界见 [截图说明](docs/screenshots/README.md)。
 
 <p>
-  <img src="docs/screenshots/task-plan.png" width="230" alt="轻量折叠任务计划" />
-  <img src="docs/screenshots/task-plan-expanded.png" width="230" alt="展开查看步骤与完成进度" />
-  <img src="docs/screenshots/servers.png" width="230" alt="多服务器配置与切换" />
-  <img src="docs/screenshots/image-preview.png" width="230" alt="无标题全屏图片预览" />
   <img src="docs/screenshots/login.png" width="230" alt="登录页" />
+  <img src="docs/screenshots/servers.png" width="230" alt="多服务器配置与切换" />
   <img src="docs/screenshots/home.png" width="230" alt="新建对话" />
+  <img src="docs/screenshots/chat.png" width="230" alt="单聊与群聊共用的聊天界面" />
+  <img src="docs/screenshots/history-tasks.png" width="230" alt="历史列表和任务状态" />
+  <img src="docs/screenshots/task-plan-expanded.png" width="230" alt="展开查看 Agent 任务计划" />
   <img src="docs/screenshots/agents.png" width="230" alt="服务端已安装 Agent 图标选择列表" />
-  <img src="docs/screenshots/workspace.png" width="230" alt="Agent 服务器工作区与文件列表" />
-  <img src="docs/screenshots/workspace-folders.png" width="230" alt="选择服务器绝对路径" />
-  <img src="docs/screenshots/chat.png" width="230" alt="对话页" />
-  <img src="docs/screenshots/reasoning.png" width="230" alt="思考深度选择" />
-  <img src="docs/screenshots/history-tasks.png" width="230" alt="紧凑历史列表和任务状态" />
-  <img src="docs/screenshots/attachments.png" width="230" alt="已发送附件及紧凑工具状态" />
-  <img src="docs/screenshots/reading.png" width="230" alt="悬浮双线历史阅读模式" />
   <img src="docs/screenshots/models.png" width="230" alt="按提供商分组选择模型" />
-  <img src="docs/screenshots/models-scrolled.png" width="230" alt="长模型列表滚动时高亮不越界" />
-  <img src="docs/screenshots/chat-dark.png" width="230" alt="深色对话页" />
+  <img src="docs/screenshots/workspace.png" width="230" alt="Agent 服务器工作区与文件列表" />
+  <img src="docs/screenshots/attachments.png" width="230" alt="已发送附件及紧凑工具状态" />
 </p>
 
 ## 技术选择

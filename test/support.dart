@@ -83,11 +83,13 @@ class MemoryStorage extends AppStorage {
 
 class FakeTransport implements ChatTransport {
   SocketEvent? listener;
+  int connections = 0;
   @override
   bool get isStarted => listener != null;
   final emitted = <(String, Map<String, dynamic>)>[];
   @override
   void connect(StudioApi api, SocketEvent onEvent) {
+    connections++;
     listener = onEvent;
   }
 
