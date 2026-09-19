@@ -56,7 +56,7 @@ class StudioApi {
       await for (final part in response.stream.timeout(
         const Duration(seconds: 10),
       )) {
-        if (bytes.length + part.length > 512 * 1024) return null;
+        if (bytes.length + part.length > 2 * 1024 * 1024) return null;
         bytes.add(part);
       }
       final result = bytes.takeBytes();
@@ -423,11 +423,33 @@ class StudioApi {
     MessageAttachment file, {
     bool thumbnail = false,
     Future<void>? cancel,
+  }) => _previewBytes(
+    _attachmentUri(file, thumbnail: thumbnail),
+    cacheKey: '${file.groupRoomId}|${file.path}',
+    thumbnail: thumbnail,
+    cancel: cancel,
+  );
+
+  Future<Uint8List> groupWorkspaceBytes(
+    String roomId,
+    String path,
+  ) => _previewBytes(
+    address.uri.replace(
+      path:
+          '/api/studio/group-chat/rooms/${Uri.encodeComponent(roomId)}/workspace-file/content',
+      queryParameters: {'path': path},
+    ),
+  );
+
+  Future<Uint8List> _previewBytes(
+    Uri uri, {
+    String cacheKey = '',
+    bool thumbnail = false,
+    Future<void>? cancel,
   }) async {
     // Never navigate to a URL or use arbitrary response headers as destinations.
     final scope = profile, credential = token;
-    final key =
-        '$scope|$credential|${file.groupRoomId}|${file.path}|$thumbnail';
+    final key = '$scope|$credential|$cacheKey|$thumbnail';
     final cached = thumbnail ? _images.remove(key) : null;
     if (cached != null) {
       _images[key] = cached;
@@ -440,11 +462,7 @@ class StudioApi {
 
     cancel?.then((_) => stop());
     final request =
-        http.AbortableRequest(
-            'GET',
-            _attachmentUri(file, thumbnail: thumbnail),
-            abortTrigger: abort.future,
-          )
+        http.AbortableRequest('GET', uri, abortTrigger: abort.future)
           ..followRedirects = false
           ..headers.addAll({
             'Authorization': 'Bearer $credential',

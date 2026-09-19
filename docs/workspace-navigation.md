@@ -52,6 +52,20 @@
 
 ## 验证
 
+### 最新服务端的群聊导航
+
+群聊相关协议以本地 `D:/code/hermes-studio` 为准，参考 `packages/server/src/modules/studio/controllers/group-chat-workspace.ts`，不套用上述旧版单聊工作区路径。
+
+- 单聊和群聊共用 `ChatTitle`、`ConversationDrawer`、`ChatSwipeRegion`，群聊标题仅将单个图标替换为参与 Agent 图标组。
+- 群聊正文右滑打开全屏对话列表，左滑打开全屏服务器群聊工作区；输入框、长按选字、代码横向滚动不触发导航。
+- 工作区使用群聊的 `workspace-files/list`、`workspace-file/read`、`workspace-file/content` 接口，显示服务器返回的路径，不访问手机目录，也不回退到单聊工作区。
+- 目录可浏览、刷新，文本与图片全屏只读预览；群聊目录配置留在 Web 端。服务端要求群聊管理权限时，403 显示在工作区内并可重试，不绕过权限。
+- 打开工作区后再刷新已挂载的抽屉；预览文件加载完成即结束忙碌状态，关闭预览后可继续浏览。
+
+`test/group_navigation_parity_test.dart` 覆盖群聊标题、正文中央左右滑动、服务器目录请求、只读预览、403、窄屏大字体和多 Agent 图标，以及 Hermes 大尺寸图标加载。
+
+### 单聊验证
+
 `test/workspace_gestures_test.dart` 新增 15 项测试，包括：中央慢滑、AI 文字滑动、左右抽屉、纵向/短距离/输入框不误触、长按/多指/横向内容保护、Linux/Windows 服务器绝对路径、目录分层选择、真实请求 body、ENOENT 本地提示、迟到读写/退出隔离、320px/1.8 倍字体及浅深主题字号一致性。
 
 `test/live_contract_test.dart` 新增真实远程工作区契约：在隔离服务器上创建测试目录，读取目录选项，按 `fullPath` 保存会话工作区，检查服务端持久化结果，再写入测试文件并通过文件列表读回。两端测试脚本设置独立 `WORKSPACE_BASE`，不访问生产工作目录。

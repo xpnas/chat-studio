@@ -404,7 +404,7 @@ void main() {
   );
 
   testWidgets(
-    'history without archived sessions settles and refresh is explicit',
+    'history uses Web source groups, settles and refresh is explicit',
     (tester) async {
       final h = TestHarness();
       await h.login();
@@ -418,20 +418,24 @@ void main() {
       await tester.tap(find.text('历史'));
       await tester.pumpAndSettle();
       final requests = h.requests
-          .where((r) => r.url.path == '/api/studio/sessions')
+          .where((r) => r.url.path == '/api/studio/sessions/hermes/groups')
           .toList();
       expect(requests.length, 1);
-      expect(requests.single.url.queryParameters['includeArchived'], 'true');
+      expect(requests.single.url.queryParameters['limit'], '50');
       expect(h.controller.loadingSessions, false);
       await tester.pump(const Duration(seconds: 2));
       expect(
-        h.requests.where((r) => r.url.path == '/api/studio/sessions').length,
+        h.requests
+            .where((r) => r.url.path == '/api/studio/sessions/hermes/groups')
+            .length,
         1,
       );
-      await tester.tap(find.byTooltip('刷新记录'));
+      await tester.tap(find.byTooltip('刷新历史'));
       await tester.pumpAndSettle();
       expect(
-        h.requests.where((r) => r.url.path == '/api/studio/sessions').length,
+        h.requests
+            .where((r) => r.url.path == '/api/studio/sessions/hermes/groups')
+            .length,
         2,
       );
       expect(tester.takeException(), isNull);

@@ -18,11 +18,13 @@ class MessageBubble extends StatelessWidget {
     this.controller,
     this.anchorKey,
     this.onRetry,
+    this.agentId,
   });
   final AppController? controller;
   final Key Function(int)? anchorKey;
   final VoidCallback? onRetry;
   final ChatMessage message;
+  final String? agentId;
   Future<void> _openLink(BuildContext context, String? href) async {
     final reference = messageFileReference(
       href ?? '',
@@ -123,9 +125,11 @@ class MessageBubble extends StatelessWidget {
                         else
                           AgentAvatar(
                             controller: controller,
-                            agentId: message.groupRoomId.isEmpty
-                                ? null
-                                : message.agentType,
+                            agentId:
+                                agentId ??
+                                (message.groupRoomId.isEmpty
+                                    ? null
+                                    : message.agentType),
                             size: 20,
                           ),
                         const SizedBox(width: 9),
@@ -135,7 +139,10 @@ class MessageBubble extends StatelessWidget {
                                 ? context.tr("命令")
                                 : message.senderName.isNotEmpty
                                 ? message.senderName
-                                : AgentIdentity.current(controller).name,
+                                : (agentId == null
+                                          ? AgentIdentity.current(controller)
+                                          : AgentIdentity.resolve(agentId!))
+                                      .name,
                             style: TextStyle(fontWeight: FontWeight.w600),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

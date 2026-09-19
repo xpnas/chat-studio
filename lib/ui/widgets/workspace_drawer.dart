@@ -90,13 +90,13 @@ class WorkspaceDrawer extends StatelessWidget {
     }
   }
 
-  bool _isImage(String name, String mime) =>
+  static bool _isImage(String name, String mime) =>
       mime.startsWith('image/') ||
       RegExp(
         r'\.(png|jpe?g|gif|webp|bmp)$',
         caseSensitive: false,
       ).hasMatch(name);
-  bool _isText(String name, String mime) =>
+  static bool _isText(String name, String mime) =>
       mime.startsWith('text/') ||
       const {
         'application/json',
@@ -315,14 +315,245 @@ class _ImageFilePreview extends StatelessWidget {
   );
 }
 
+/// Group workspaces are server-owned and intentionally read-only on mobile.
+class GroupWorkspaceDrawer extends StatefulWidget {
+  const GroupWorkspaceDrawer({
+    super.key,
+    required this.api,
+    required this.room,
+  });
+  final StudioApi api;
+  final GroupRoom room;
+  @override
+  State<GroupWorkspaceDrawer> createState() => GroupWorkspaceDrawerState();
+}
+
+class GroupWorkspaceDrawerState extends State<GroupWorkspaceDrawer> {
+  List<Map<String, dynamic>> _entries = [];
+  final _parents = <String>[];
+  String _path = '', _absolutePath = '';
+  bool _loading = false, _previewing = false;
+  String? _error;
+  int _request = 0;
+  String get _base =>
+      '/api/studio/group-chat/rooms/${Uri.encodeComponent(widget.room.id)}';
+
+  Future<void> refresh() => _load(_path);
+
+  Future<void> _load(
+    String path, {
+    bool enter = false,
+    bool back = false,
+  }) async {
+    if (_loading) return;
+    final request = ++_request;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await widget.api.request(
+        '$_base/workspace-files/list',
+        query: {'path': path},
+      );
+      if (!mounted || request != _request) return;
+      setState(() {
+        if (enter) _parents.add(_path);
+        if (back && _parents.isNotEmpty) _parents.removeLast();
+        _path = text(data['path']);
+        _absolutePath = text(data['absolutePath']);
+        _entries = asList(data['entries']).map(asMap).toList();
+      });
+    } catch (e) {
+      if (mounted && request == _request) {
+        setState(
+          () => _error = e is ApiException && e.status == 403
+              ? '当前账号没有此群聊工作区的访问权限'
+              : serverWorkspaceError(e),
+        );
+      }
+    } finally {
+      if (mounted && request == _request) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _preview(Map<String, dynamic> entry) async {
+    final name = text(entry['name']), path = text(entry['path']);
+    final mime = text(entry['mime'] ?? entry['mimeType']);
+    final image = WorkspaceDrawer._isImage(name, mime);
+    if (!image && !WorkspaceDrawer._isText(name, mime)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂不支持预览此文件类型')));
+      return;
+    }
+    setState(() => _previewing = true);
+    try {
+      final Widget preview;
+      if (image) {
+        final bytes = await widget.api.groupWorkspaceBytes(
+          widget.room.id,
+          path,
+        );
+        preview = _ImageFilePreview(title: name, bytes: bytes);
+      } else {
+        final data = await widget.api.request(
+          '$_base/workspace-file/read',
+          query: {'path': path},
+        );
+        preview = _TextFileEditor(
+          title: name,
+          initialValue: text(data['content']),
+        );
+      }
+      if (!mounted) return;
+      setState(() => _previewing = false);
+      await showDialog<void>(
+        context: context,
+        useSafeArea: false,
+        builder: (_) => Dialog.fullscreen(child: preview),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(serverWorkspaceError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _previewing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Drawer(
+    key: const Key('server-workspace-drawer'),
+    width: MediaQuery.sizeOf(context).width,
+    child: SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 8, 4),
+            child: Row(
+              children: [
+                const Icon(Icons.dns_outlined, size: 22),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    '服务器工作区',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '刷新文件',
+                  onPressed: _loading ? null : refresh,
+                  icon: const Icon(Icons.refresh_rounded, size: 21),
+                ),
+                IconButton(
+                  tooltip: '关闭',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            child: Text(
+              _absolutePath.isEmpty ? widget.room.workspace : _absolutePath,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: _loading || _parents.isEmpty
+                    ? null
+                    : () => _load(_parents.last, back: true),
+                icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+                label: const Text('上一级'),
+              ),
+              const Spacer(),
+              const Padding(
+                padding: EdgeInsets.only(right: 20),
+                child: Text('只读', style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+          if (_loading || _previewing)
+            const LinearProgressIndicator(minHeight: 2),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(_error!, style: const TextStyle(fontSize: 12)),
+                  ),
+                  TextButton(
+                    onPressed: _loading ? null : refresh,
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  if (_entries.isEmpty && !_loading && _error == null)
+                    const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: Text('此目录为空')),
+                    ),
+                  for (final entry in _entries)
+                    ListTile(
+                      key: ValueKey('group-workspace:${entry['path']}'),
+                      dense: true,
+                      leading: Icon(
+                        flag(entry['isDir'])
+                            ? Icons.folder_outlined
+                            : Icons.insert_drive_file_outlined,
+                        size: 22,
+                      ),
+                      title: Text(
+                        text(entry['name']),
+                        style: const TextStyle(fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: _loading || _previewing || _error != null
+                          ? null
+                          : () {
+                              if (flag(entry['isDir'])) {
+                                _load(text(entry['path']), enter: true);
+                              } else {
+                                _preview(entry);
+                              }
+                            },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _TextFileEditor extends StatefulWidget {
   const _TextFileEditor({
     required this.title,
     required this.initialValue,
-    required this.onSave,
+    this.onSave,
   });
   final String title, initialValue;
-  final Future<void> Function(String value) onSave;
+  final Future<void> Function(String value)? onSave;
   @override
   State<_TextFileEditor> createState() => _TextFileEditorState();
 }
@@ -349,7 +580,7 @@ class _TextFileEditorState extends State<_TextFileEditor> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await widget.onSave(_controller.text);
+      await widget.onSave!(_controller.text);
       if (mounted) Navigator.pop(context);
     } catch (error) {
       if (mounted) {
@@ -379,20 +610,21 @@ class _TextFileEditorState extends State<_TextFileEditor> {
           onPressed: _saving ? null : _copy,
           icon: const Icon(Icons.copy_outlined),
         ),
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: FilledButton.tonalIcon(
-            onPressed: _saving ? null : _save,
-            icon: _saving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save_outlined, size: 18),
-            label: Text(context.tr('保存')),
+        if (widget.onSave != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.tonalIcon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined, size: 18),
+              label: Text(context.tr('保存')),
+            ),
           ),
-        ),
       ],
     ),
     body: SafeArea(
@@ -400,6 +632,7 @@ class _TextFileEditorState extends State<_TextFileEditor> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         child: TextField(
           controller: _controller,
+          readOnly: widget.onSave == null,
           expands: true,
           maxLines: null,
           minLines: null,

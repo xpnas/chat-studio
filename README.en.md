@@ -12,6 +12,8 @@ A lightweight Hermes Studio client for Android and iOS. It implements the real H
 
 - Custom server URL, device-bound username/password sign-in, secure session storage, and expiration handling.
 - Profile switching, paginated/searchable history, rename, and confirmed deletion.
+- Separate single-chat, group-chat, and history tabs. History is grouped by server source with independent pagination, read-only details, import, pin, unarchive, and batch deletion persisted on the server.
+- Group chats share single-chat header styling, message rendering, and swipe navigation, with participant icons and @Agent / @all mentions. Configure groups on the Web; browse their server workspace on mobile.
 - Multiple active conversations per profile with independent output, approvals, stopping, drafts, attachments, and reading positions.
 - Streaming responses, collapsible reasoning, stop/resume after reconnect, message copy, Markdown, and distinct user/AI surfaces.
 - Eight reasoning-depth options submitted through the real `run` / `reasoning-effort` API and remembered per server/account/profile.
@@ -59,7 +61,7 @@ After launch, enter the **Studio root URL**, for example `https://studio.example
 
 **Voice:** TTS is speech synthesis, not STT. Configure and activate server-side STT for the current Profile. The mobile microphone button checks this configuration and reports the reason when it is unavailable.
 
-**Agents:** external Agents must be installed and configured on the server. Installed does not necessarily mean that model credentials or the runtime are usable. The app selects and speaks the protocol; it does not execute CLIs on the phone. Workflow, group-chat, and global-Agent sessions remain read-only. See [server configuration](docs/server-setup.md).
+**Agents:** external Agents must be installed and configured on the server. Installed does not necessarily mean that model credentials or the runtime are usable. The app selects and speaks the protocol; it does not execute CLIs on the phone. Workflow and global-Agent sessions remain read-only. Join group conversations through the dedicated group-chat tab; group configuration remains Web-only. See [server configuration](docs/server-setup.md).
 
 ## Android packages
 
