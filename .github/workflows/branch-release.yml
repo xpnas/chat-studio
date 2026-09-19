@@ -53,6 +53,8 @@ jobs:
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             # A v* tag is a user-facing release. Reuse the tag instead of
             # creating an unrelated branch-preview tag.
+            # Keep the asset name compatible with the release/* branch naming convention.
+            slug="release-$slug"
             release_tag="$GITHUB_REF_NAME"
             release_title="Chat Studio ${GITHUB_REF_NAME}"
             release_prerelease=false
