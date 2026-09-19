@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../l10n.dart';
 import '../../data/models.dart';
 import '../../state/app_controller.dart';
 import '../../state/history_controller.dart';
@@ -50,16 +51,16 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
       await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('删除 $count 段对话？'),
-          content: const Text('会同时删除服务端的对话记录，无法撤销。'),
+          title: Text(context.l10n.format('删除 {0} 段对话？', {'0': count})),
+          content: Text(context.tr('会同时删除服务端的对话记录，无法撤销。')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
+              child: Text(context.tr('取消')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除'),
+              child: Text(context.tr('删除')),
             ),
           ],
         ),
@@ -83,7 +84,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
             ? row.id
             : history.linkFor(entry).toString();
         await Clipboard.setData(ClipboardData(text: value));
-        _notice('已复制');
+        if (mounted) _notice(context.tr('已复制'));
         return;
       }
       if (action == 'delete' && !await _confirmDelete(1)) return;
@@ -105,10 +106,13 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
     }
     try {
       final result = await history.deleteSelected(targets);
-      _notice(
-        '已删除 ${integer(result['deleted'])} 条，失败 ${integer(result['failed'])} 条',
-      );
       if (mounted) {
+        _notice(
+          context.l10n.format('已删除 {0} 条，失败 {1} 条', {
+            '0': integer(result['deleted']),
+            '1': integer(result['failed']),
+          }),
+        );
         setState(() {
           selecting = false;
           selected.clear();
@@ -145,8 +149,8 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
       subtitle: Text(
         [
           if (row.model.isNotEmpty) row.model,
-          if (row.isArchived) '已归档',
-          if (entry.imported == false) '未导入',
+          if (row.isArchived) context.tr('已归档'),
+          if (entry.imported == false) context.tr('未导入'),
           if (row.updatedAt > 0)
             DateTime.fromMillisecondsSinceEpoch(
               row.updatedAt * 1000,
@@ -176,7 +180,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
       trailing: selecting
           ? null
           : PopupMenuButton<String>(
-              tooltip: '管理历史',
+              tooltip: context.tr('管理历史'),
               enabled: !history.mutating,
               icon: const Icon(Icons.more_horiz_rounded, size: 18),
               onSelected: (action) => _act(entry, action),
@@ -184,18 +188,29 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
                 PopupMenuItem(
                   value: 'import',
                   enabled: entry.imported != true,
-                  child: const Text('导入单聊'),
+                  child: Text(context.tr('导入单聊')),
                 ),
                 PopupMenuItem(
                   value: 'pin',
                   enabled: entry.imported != false,
-                  child: Text(row.isPinned ? '取消置顶' : '置顶对话'),
+                  child: Text(
+                    row.isPinned ? context.tr('取消置顶') : context.tr('置顶对话'),
+                  ),
                 ),
                 if (row.isArchived)
-                  const PopupMenuItem(value: 'unarchive', child: Text('移出归档')),
-                const PopupMenuItem(value: 'copy-link', child: Text('复制链接')),
-                const PopupMenuItem(value: 'copy-id', child: Text('复制 ID')),
-                const PopupMenuItem(value: 'delete', child: Text('删除对话')),
+                  PopupMenuItem(
+                    value: 'unarchive',
+                    child: Text(context.tr('移出归档')),
+                  ),
+                PopupMenuItem(
+                  value: 'copy-link',
+                  child: Text(context.tr('复制链接')),
+                ),
+                PopupMenuItem(
+                  value: 'copy-id',
+                  child: Text(context.tr('复制 ID')),
+                ),
+                PopupMenuItem(value: 'delete', child: Text(context.tr('删除对话'))),
               ],
             ),
     );
@@ -214,7 +229,9 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
           children: [
             Expanded(
               child: Text(
-                selecting ? '已选 ${selected.length} 条' : '历史',
+                selecting
+                    ? context.l10n.format('已选 {0} 条', {'0': selected.length})
+                    : context.tr('历史'),
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -223,7 +240,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
             ),
             if (selecting) ...[
               IconButton(
-                tooltip: '选择全部已加载记录',
+                tooltip: context.tr('选择全部已加载记录'),
                 icon: const Icon(Icons.select_all_rounded, size: 20),
                 onPressed: history.mutating
                     ? null
@@ -236,7 +253,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
                       }),
               ),
               IconButton(
-                tooltip: '删除选中',
+                tooltip: context.tr('删除选中'),
                 icon: const Icon(Icons.delete_outline_rounded, size: 20),
                 onPressed: selected.isEmpty || history.mutating
                     ? null
@@ -244,7 +261,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
               ),
             ],
             IconButton(
-              tooltip: selecting ? '取消选择' : '批量选择',
+              tooltip: selecting ? context.tr('取消选择') : context.tr('批量选择'),
               onPressed: history.mutating
                   ? null
                   : () => setState(() {
@@ -257,7 +274,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
               ),
             ),
             IconButton(
-              tooltip: '刷新历史',
+              tooltip: context.tr('刷新历史'),
               onPressed: history.loading || history.mutating
                   ? null
                   : history.refresh,
@@ -281,7 +298,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
               ),
               TextButton(
                 onPressed: history.loading ? null : history.refresh,
-                child: const Text('重试'),
+                child: Text(context.tr('重试')),
               ),
             ],
           ),
@@ -295,15 +312,18 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
               if (history.entries.isEmpty &&
                   !history.loading &&
                   history.error == null)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.all(40),
-                  child: Center(child: Text('暂无历史记录')),
+                  child: Center(child: Text(context.tr('暂无历史记录'))),
                 ),
               if (history.rows(pinned: true).isNotEmpty) ...[
-                const ListTile(
+                ListTile(
                   dense: true,
                   leading: Icon(Icons.push_pin_outlined, size: 18),
-                  title: Text('置顶', style: TextStyle(fontSize: 13)),
+                  title: Text(
+                    context.tr('置顶'),
+                    style: const TextStyle(fontSize: 13),
+                  ),
                 ),
                 ...history.rows(pinned: true).map(_row),
               ],
@@ -349,10 +369,10 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
                             : () => history.loadMore(group),
                         child: Text(
                           group.loading
-                              ? '加载中…'
+                              ? context.tr('加载中…')
                               : group.error == null
-                              ? '加载更多'
-                              : '重试',
+                              ? context.tr('加载更多')
+                              : context.tr('重试'),
                         ),
                       ),
                     ),

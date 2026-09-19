@@ -349,7 +349,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
             OutlinedButton.icon(
               onPressed: _loadGroupRooms,
               icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重试'),
+              label: Text(context.tr('重试')),
             ),
           ],
         ),
@@ -358,7 +358,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
     if (_groupRooms.isEmpty) {
       return Center(
         child: Text(
-          '暂无群聊\n群聊配置请在 Web 端完成',
+          context.tr('暂无群聊\n群聊配置请在 Web 端完成'),
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.onSurfaceVariant, height: 1.7),
         ),
@@ -409,8 +409,10 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
             ),
             subtitle: Text(
               room.agents.isEmpty
-                  ? '群聊'
-                  : '${room.agents.length} 个 Agent · 仅支持聊天',
+                  ? context.tr('群聊')
+                  : context.l10n.format('{0} 个 Agent · 仅支持聊天', {
+                      '0': room.agents.length,
+                    }),
               style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
             ),
             trailing: const Icon(Icons.chevron_right_rounded),
@@ -497,7 +499,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                   enabled: _historyTab != 1,
                   decoration: InputDecoration(
                     hintText: _historyTab == 1
-                        ? '群聊列表不支持搜索'
+                        ? context.tr('群聊列表不支持搜索')
                         : context.tr('搜索全部对话'),
                     prefixIcon: const Icon(Icons.search_rounded),
                     isDense: true,
@@ -535,10 +537,10 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                       );
                     }
                   },
-                  tabs: const [
-                    Tab(text: '单聊'),
-                    Tab(text: '群聊'),
-                    Tab(text: '历史'),
+                  tabs: [
+                    Tab(text: context.tr('单聊')),
+                    Tab(text: context.tr('群聊')),
+                    Tab(text: context.tr('历史')),
                   ],
                 ),
               ),
@@ -551,9 +553,9 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                     Expanded(
                       child: Text(
                         _historyTab == 1
-                            ? '群聊'
+                            ? context.tr('群聊')
                             : _historyTab == 2
-                            ? '全部历史'
+                            ? context.tr('全部历史')
                             : context.tr('对话记录'),
                         style: TextStyle(
                           fontSize: 13,
@@ -657,7 +659,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                       )
                     else
                       IconButton(
-                        tooltip: '刷新群聊',
+                        tooltip: context.tr('刷新群聊'),
                         onPressed: _loadingGroupRooms ? null : _loadGroupRooms,
                         icon: const Icon(Icons.refresh_rounded, size: 20),
                       ),

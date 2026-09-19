@@ -519,7 +519,8 @@ class ChatMessage {
   bool get visible =>
       taskPlan != null ||
       (role == 'user' || role == 'assistant' || role == 'command') &&
-          (content.trim().isNotEmpty ||
+          (pending ||
+              content.trim().isNotEmpty ||
               reasoning.trim().isNotEmpty ||
               attachments.isNotEmpty ||
               tools.isNotEmpty ||

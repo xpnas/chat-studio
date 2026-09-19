@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../l10n.dart';
 import '../data/models.dart';
 import '../data/studio_api.dart';
 import '../state/app_controller.dart';
@@ -250,7 +251,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       },
       appBar: AppBar(
         leading: IconButton(
-          tooltip: '对话记录',
+          tooltip: context.tr('对话记录'),
           icon: const Icon(Icons.menu_rounded),
           onPressed: () => _scaffold.currentState?.openDrawer(),
         ),
@@ -277,12 +278,12 @@ class _GroupChatScreenState extends State<GroupChatScreen>
         ),
         actions: [
           IconButton(
-            tooltip: '工作区',
+            tooltip: context.tr('工作区'),
             icon: const Icon(Icons.folder_copy_outlined, size: 21),
             onPressed: () => _scaffold.currentState?.openEndDrawer(),
           ),
           IconButton(
-            tooltip: '新建对话',
+            tooltip: context.tr('新建对话'),
             icon: const Icon(Icons.edit_square, size: 22),
             onPressed: widget.appController.busy ? null : _newChat,
           ),
@@ -306,7 +307,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                     actions: [
                       TextButton(
                         onPressed: controller.loading ? null : controller.start,
-                        child: const Text('重试'),
+                        child: Text(context.tr('重试')),
                       ),
                     ],
                   ),
@@ -344,7 +345,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                                               onPressed: controller.loading
                                                   ? null
                                                   : _older,
-                                              child: const Text('加载更早消息'),
+                                              child: Text(context.tr('加载更早消息')),
                                             ),
                                           )
                                         : const SizedBox.shrink();
@@ -363,7 +364,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                           if (messages.isEmpty && !controller.loading)
                             Center(
                               child: Text(
-                                '开始对话',
+                                context.tr('开始对话'),
                                 style: TextStyle(
                                   color: colors.onSurfaceVariant,
                                 ),
@@ -374,7 +375,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                               right: 16,
                               bottom: 10,
                               child: IconButton.filledTonal(
-                                tooltip: '回到最新消息',
+                                tooltip: context.tr('回到最新消息'),
                                 icon: const Icon(Icons.arrow_downward_rounded),
                                 onPressed: () => scroll.animateTo(
                                   0,

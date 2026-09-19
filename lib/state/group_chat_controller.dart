@@ -283,7 +283,9 @@ class GroupChatController extends ChangeNotifier {
         result.add(
           GroupChatMention(
             type: 'agent',
-            participantId: agent.id.isEmpty ? agent.agentId : agent.id,
+            // The server validates mentions against the room membership's
+            // agentId. `id` is only the database membership row id.
+            participantId: agent.agentId,
             displayName: agent.name,
           ),
         );

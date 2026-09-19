@@ -104,7 +104,11 @@ class MessageBubble extends StatelessWidget {
         ),
       );
     }
-    final colors = Theme.of(context).colorScheme, user = message.role == 'user';
+    final colors = Theme.of(context).colorScheme;
+    final user = message.role == 'user';
+    final command = message.role == 'command';
+    final showAssistantHeader =
+        !user && (message.bodyText.isNotEmpty || message.pending || command);
     return RepaintBoundary(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
@@ -115,13 +119,31 @@ class MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!user && message.bodyText.isNotEmpty)
+                if (showAssistantHeader)
                   Padding(
-                    padding: EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.only(bottom: 4),
                     child: Row(
                       children: [
-                        if (message.role == 'command')
-                          const Icon(Icons.terminal_rounded, size: 20)
+                        if (command)
+                          Container(
+                            width: 20,
+                            height: 20,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: colors.onSurfaceVariant.withValues(
+                                alpha: .12,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '/',
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                          )
                         else
                           AgentAvatar(
                             controller: controller,
@@ -135,7 +157,7 @@ class MessageBubble extends StatelessWidget {
                         const SizedBox(width: 9),
                         Expanded(
                           child: Text(
-                            message.role == 'command'
+                            command
                                 ? context.tr("命令")
                                 : message.senderName.isNotEmpty
                                 ? message.senderName
@@ -156,7 +178,7 @@ class MessageBubble extends StatelessWidget {
                   padding: message.bodyText.isNotEmpty
                       ? const EdgeInsets.symmetric(horizontal: 11, vertical: 8)
                       : EdgeInsets.zero,
-                  decoration: message.bodyText.isNotEmpty
+                  decoration: message.bodyText.isNotEmpty || command
                       ? BoxDecoration(
                           color: user
                               ? colors.primaryContainer.withValues(alpha: .42)

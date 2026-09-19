@@ -209,6 +209,59 @@ void main() {
     },
   );
 
+  test('sends room agentId in structured mentions', () async {
+    final h = TestHarness();
+    addTearDown(h.dispose);
+    await h.login();
+    groupResponses(h);
+    final transport = FakeGroupTransport();
+    final c = GroupChatController(
+      api: h.controller.api!,
+      room: room,
+      transport: transport,
+    );
+    addTearDown(c.dispose);
+    await c.start();
+    transport.receive('connected', {});
+    await Future<void>.delayed(Duration.zero);
+    expect(c.canSend, isTrue);
+    await c.send('@Code Agent hello');
+    final payload = transport.sent.last.$2;
+    expect(payload['mentions'], [
+      {
+        'type': 'agent',
+        'participantId': 'agent-a',
+        'displayName': 'Code Agent',
+      },
+    ]);
+    expect(payload['mentions'], isNot(contains({'participantId': 'a'})));
+    await c.send('@all hello');
+    expect(transport.sent.last.$2['mentions'], [
+      {'type': 'all', 'displayName': 'all'},
+    ]);
+  });
+
+  testWidgets('streaming group agent header is visible before first delta', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MessageBubble(
+          message: const ChatMessage(
+            id: 'streaming',
+            role: 'assistant',
+            content: '',
+            pending: true,
+            senderName: 'Code Agent',
+            agentType: 'codex',
+            groupRoomId: 'room-1',
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Code Agent'), findsOneWidget);
+  });
+
   test(
     'group attachments use authenticated room routes, not single-chat files',
     () async {
