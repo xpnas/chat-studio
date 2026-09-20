@@ -1,3 +1,4 @@
+import 'agent_configuration_screen.dart';
 import '../l10n.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -427,6 +428,29 @@ class _ManagementScreenState extends State<ManagementScreen>
                 title: Text(
                   row['id'] == 'hermes' ? 'Hermes Runtime' : 'Ekko Agent',
                 ),
+                trailing: Icon(
+                  widget.controller.account?.role == 'super_admin'
+                      ? Icons.chevron_right_rounded
+                      : Icons.lock_outline_rounded,
+                  size: 20,
+                ),
+                onTap: widget.controller.account?.role != 'super_admin'
+                    ? null
+                    : () async {
+                        final api = _api;
+                        if (api == null) return;
+                        await Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => row['id'] == 'hermes'
+                                ? HermesAgentSettingsScreen(api: api)
+                                : BuiltInAgentSettingsScreen(api: api),
+                          ),
+                        );
+                        if (mounted && _api == api) {
+                          await _refreshAgentsData();
+                          await widget.controller.refreshCapabilities();
+                        }
+                      },
                 subtitle: Text(
                   context.l10n.format('{0} · {1}', {
                     '0': row['installed'] is! bool
@@ -436,10 +460,8 @@ class _ManagementScreenState extends State<ManagementScreen>
                         ? context.tr('已安装')
                         : context.tr('未安装或不可用'),
                     '1': row['id'] == 'hermes'
-                        ? context.tr(
-                            '独立 Python 运行时，安装与修复请使用 Studio Web 端 Runtime 管理',
-                          )
-                        : context.tr('服务端内置，随 Studio 更新'),
+                        ? context.tr('运行、记忆、会话、网关与版本管理')
+                        : context.tr('运行、模型、工具、模块与高级设置'),
                   }),
                 ),
               ),

@@ -1097,6 +1097,9 @@ class AppController extends ChangeNotifier {
     );
     _view = state;
     current = conversation;
+    if (state.timeline.messages.isEmpty) {
+      state.timeline.contextUsage = conversation.contextUsage;
+    }
     engine = conversation.agent.isEmpty
         ? 'hermes'
         : AgentChoice.canonicalId(conversation.agent);

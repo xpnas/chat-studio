@@ -1,3 +1,4 @@
+import 'context_usage.dart';
 import 'agent_catalog.dart';
 import 'task_plan.dart';
 import 'package:mime/mime.dart';
@@ -349,7 +350,9 @@ class Conversation {
     this.categoryId,
     this.isPinned = false,
     this.isArchived = false,
+    this.contextUsage = const ContextUsage(),
   });
+  final ContextUsage contextUsage;
   final String reasoningEffort;
   final String id, title, preview, profile, agent, source, model, provider;
   final int updatedAt;
@@ -375,6 +378,7 @@ class Conversation {
         : integer(json['category_id']),
     isPinned: flag(json['is_pinned']),
     isArchived: flag(json['is_archived']),
+    contextUsage: const ContextUsage().merge(json),
   );
 }
 

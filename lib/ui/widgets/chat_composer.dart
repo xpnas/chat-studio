@@ -1,3 +1,4 @@
+import 'composer_context_info.dart';
 import '../../l10n.dart';
 import 'dart:async';
 import 'dart:io';
@@ -727,6 +728,8 @@ class _ChatComposerState extends State<ChatComposer>
                       ),
                     ],
                   ),
+                if (group == null)
+                  ComposerContextInfo(controller: c, input: widget.input),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: TextField(

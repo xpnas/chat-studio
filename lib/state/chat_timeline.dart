@@ -1,3 +1,4 @@
+import '../data/context_usage.dart';
 import '../data/task_plan.dart';
 import '../data/models.dart';
 import '../data/queued_message.dart';
@@ -6,10 +7,12 @@ import 'resume_text.dart';
 /// Pure reducer. Historical pages are authoritative; live tokens affect only one
 /// pending bubble. It is independent of widgets and of the Socket.IO library.
 class ChatTimeline {
+  ContextUsage contextUsage = const ContextUsage();
   String? _sessionId;
   String? get sessionId => _sessionId;
   set sessionId(String? value) {
     if (_sessionId != value) {
+      contextUsage = const ContextUsage();
       _plans.clear();
       _planOutcomes.clear();
     }
@@ -115,6 +118,7 @@ class ChatTimeline {
   final Set<String> _finishedRuns = {};
 
   void clear() {
+    contextUsage = const ContextUsage();
     _plans.clear();
     _planOutcomes.clear();
     messages = [];
@@ -410,6 +414,14 @@ class ChatTimeline {
         incomingRun != runId) {
       return false;
     }
+    if ([
+          'usage.updated',
+          'run.completed',
+          'compression.completed',
+        ].contains(event) ||
+        (event == 'session.command' && data['ok'] != false)) {
+      contextUsage = contextUsage.merge(data);
+    }
     switch (event) {
       case 'session.command':
         _acknowledge();
@@ -638,6 +650,7 @@ class ChatTimeline {
   /// Rebuild atomically: persisted tool-step assistant rows may already contain
   /// text present in the event log, even when the final raw row is a tool.
   void resume(Map<String, dynamic> data) {
+    final previousUsage = contextUsage;
     final previous = messages;
     final previousPlans = _plans.values.toList();
     final previousOutcomes = Map<String, String>.of(_planOutcomes);
@@ -671,6 +684,19 @@ class ChatTimeline {
       return;
     }
     clear();
+    contextUsage = previousUsage;
+    for (final entry in events) {
+      if ([
+        'usage.updated',
+        'run.completed',
+        'compression.completed',
+        'session.command',
+      ].contains(entry['event'])) {
+        final payload = asMap(entry['data']);
+        if (payload['ok'] != false) contextUsage = contextUsage.merge(payload);
+      }
+    }
+    contextUsage = contextUsage.merge(data);
     _finishedRuns.addAll(finished);
     _planOutcomes.addAll(previousOutcomes);
     mergeTaskPlans(previousPlans);
@@ -911,5 +937,6 @@ class ChatTimeline {
         ];
       }
     }
+    contextUsage = contextUsage.merge(data);
   }
 }

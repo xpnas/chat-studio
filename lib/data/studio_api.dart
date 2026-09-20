@@ -1018,6 +1018,20 @@ class StudioApi {
     );
   }
 
+  Future<int> contextLength({String? provider, String? model}) async {
+    final data = await request(
+      '/api/studio/sessions/context-length',
+      query: {
+        'profile': profile,
+        if (provider != null && provider.isNotEmpty) 'provider': provider,
+        if (model != null && model.isNotEmpty) 'model': model,
+      },
+    );
+    final value = integer(data['context_length']);
+    if (value <= 0) throw const ApiException('无效的上下文上限');
+    return value;
+  }
+
   Future<MessagePage> messages(String id, {int offset = 0}) async {
     final data = await request(
       '/api/studio/sessions/conversations/${Uri.encodeComponent(id)}/messages/paginated',

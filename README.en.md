@@ -8,6 +8,9 @@ A lightweight Hermes Studio client for Android and iOS. It implements the real H
 
 > The application ID is `ai.chatstudio.app` and the Dart package name is `chatstudio`. This is a new application identity: install it separately and add/sign in to your server again. Server-side history is unaffected. See [build and release](docs/build-release.md) and [naming conventions](docs/naming.md).
 
+
+Agent management includes native Hermes settings (Agent, memory, sessions and gateway), Runtime downloads/version switching/server directory management, and the built-in Agent's runtime/model/tool/module/advanced settings. Forms use grouped pages and bottom sheets, explicit saves, local refresh and safety confirmations. The single-chat composer shows server context usage while empty and hides it while typing. See [Agent settings and context accounting](docs/agent-runtime-settings.md).
+
 ## Features
 
 - Custom server URL, device-bound username/password sign-in, secure session storage, and expiration handling.
