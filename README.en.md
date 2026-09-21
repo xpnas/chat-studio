@@ -136,3 +136,5 @@ Original code in this repository is licensed under [Apache License 2.0](LICENSE)
 - [Privacy details](docs/privacy.md)
 
 Only device tokens, server/Profile records, a random installation identifier, language, and theme are persisted locally. Passwords and chat bodies are not stored. Provider credentials returned by a model catalog are not retained by the client. Model content, tool execution, and retention are controlled by the server you connect to.
+
+- Agent capability management is synchronized with the Web Studio: Hermes jobs, channels, skills, plugins, MCP and memory; Ekko skills, MCP and memory. See [Agent capability management](docs/agent-capabilities.md).

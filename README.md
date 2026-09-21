@@ -19,6 +19,7 @@ Android / iOS 上的轻量 Hermes Studio 客户端。面向 Hermes Studio 兼容
 - 历史列表紧凑排版，运行任务带轻量动画；待确认、待同步、完成、失败分别标记，支持系统减少动画设置。
 - 单聊输入框右上角显示服务端上下文用量、模型上限与剩余量；有输入文字时自动隐藏，清空恢复，断线恢复使用服务端快照校准。
 - Hermes Agent 的运行/记忆/会话/网关设置、Runtime 版本下载/切换/删除/目录管理，以及 Ekko Agent 的运行/模型/工具/模块/高级设置；采用原生分组页面和底部编辑器，草稿显式保存、局部刷新、危险操作确认。详见 [Agent 设置与聊天上下文](docs/agent-runtime-settings.md)。
+- Agent 能力管理与 Web 端实时同步：Hermes 支持任务、频道、技能、插件、MCP、Memory；Ekko 支持技能、MCP、记忆。支持任务创建/编辑/暂停/恢复/立即执行、技能启停/置顶/编辑/删除、插件启停、MCP 增删改与连接测试、频道 JSON 配置和记忆编辑；仅管理员可见，所有操作直接写入当前服务器 Profile。详见 [Agent 能力管理](docs/agent-capabilities.md)。
 - 输入框可选 8 档思考深度，通过真实 run / reasoning-effort 接口提交并记住偏好，实际效果取决于引擎与模型支持。
 - 新建会话动态读取当前服务器已安装的 Agent，以图标 + 名称展示、当前选项置顶；支持刷新、失败重试与未安装过滤。内置 Agent、Hermes、Claude、Codex、Pi、Grok、OpenCode 按各自协议路由，详见 [Agent 目录与选择](docs/agent-catalog.md)。模型按提供商折叠分组，当前提供商与模型置顶。
 - 流式文字与折叠思考内容、停止生成、断线/前台恢复、消息复制、Markdown；用户/AI 使用淡色圆角背景区分，空白工具消息不显示头像。

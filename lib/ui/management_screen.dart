@@ -1,4 +1,5 @@
 import 'agent_configuration_screen.dart';
+import 'agent_capabilities_screen.dart';
 import '../l10n.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -412,6 +413,29 @@ class _ManagementScreenState extends State<ManagementScreen>
   );
 
   Widget _agentsPage() => _page([
+    _section(
+      context.tr('Agent 能力'),
+      context.tr('任务、频道、技能、插件、MCP 与记忆与 Web 端实时同步。'),
+      [
+        ListTile(
+          leading: const Icon(Icons.apps_rounded),
+          title: Text(context.tr('打开 Agent 能力管理')),
+          subtitle: Text(context.tr('移动端采用全屏列表和底部编辑器，操作结果直接保存到服务端。')),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap:
+              _api == null || widget.controller.account?.role != 'super_admin'
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => AgentCapabilitiesScreen(
+                      api: _api!,
+                      controller: widget.controller,
+                    ),
+                  ),
+                ),
+        ),
+      ],
+    ),
     _section(context.tr("运行时"), context.tr("运行时状态与 Coding Agent 安装目录来自不同接口。"), [
       if (_runtimeError != null) ...[_EmptyRow(label: _runtimeError!)],
       if (_runtimeError == null)
