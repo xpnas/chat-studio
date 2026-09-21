@@ -75,7 +75,7 @@ void main() {
       await h.login();
       h.override = (r) async {
         expect(r.url.path, '/api/studio/files/download');
-        expect(r.headers['Authorization'], 'Bearer device-token');
+        expect(r.headers['Authorization'], 'Bearer web-token');
         expect(r.url.queryParameters['path'], audio.path);
         return http.Response.bytes([1, 2, 3], 200);
       };

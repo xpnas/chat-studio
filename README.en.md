@@ -13,7 +13,7 @@ Agent management includes native Hermes settings (Agent, memory, sessions and ga
 
 ## Features
 
-- Custom server URL, device-bound username/password sign-in, secure session storage, and expiration handling.
+- Custom server URL, Web-compatible username/password sign-in, secure JWT session storage, and expiration handling.
 - Profile switching, paginated/searchable history, rename, and confirmed deletion.
 - Separate single-chat, group-chat, and history tabs. History is grouped by server source with independent pagination, read-only details, import, pin, unarchive, and batch deletion persisted on the server.
 - Group chats share single-chat header styling, message rendering, and swipe navigation, with participant icons and @Agent / @all mentions. Configure groups on the Web; browse their server workspace on mobile.
@@ -135,6 +135,6 @@ Original code in this repository is licensed under [Apache License 2.0](LICENSE)
 - [Source / protocol analysis](docs/analysis/source-analysis.md)
 - [Privacy details](docs/privacy.md)
 
-Only device tokens, server/Profile records, a random installation identifier, language, and theme are persisted locally. Passwords and chat bodies are not stored. Provider credentials returned by a model catalog are not retained by the client. Model content, tool execution, and retention are controlled by the server you connect to.
+Only Web JWTs, server/Profile records, language, and theme are persisted locally. Passwords and chat bodies are not stored. Provider credentials returned by a model catalog are not retained by the client. Model content, tool execution, and retention are controlled by the server you connect to.
 
 - Agent capability management is synchronized with the Web Studio: Hermes jobs, channels, skills, plugins, MCP and memory; Ekko skills, MCP and memory. See [Agent capability management](docs/agent-capabilities.md).

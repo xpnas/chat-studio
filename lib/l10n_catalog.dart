@@ -284,8 +284,7 @@ const appEnglishCatalog = <String, String>{
   "等待服务器确认": "Waiting for server confirmation",
   "审批已过期，请同步会话": "Approval expired. Sync the chat",
   "账号信息已更新，请使用新凭据登录": "Account updated. Sign in with your new credentials",
-  "登录已过期或设备授权已撤销，请重新登录":
-      "Sign-in expired or device access revoked. Please sign in again",
+  "登录已过期或已失效，请重新登录": "Sign-in expired or no longer valid. Please sign in again",
   "本地凭据清理失败，请在系统设置中清除应用数据":
       "Failed to clear local credentials. Clear app data in system settings",
   "正在发送": "Sending",
@@ -630,8 +629,8 @@ const appEnglishCatalog = <String, String>{
   "深色": "Dark",
   "账号与隐私": "Account & privacy",
   "数据仅发送到你的服务器": "Data is sent only to your server",
-  "不含广告或分析 SDK。不保存密码，聊天记录由服务端管理。退出仅清除本机凭据；可在 Studio 撤销设备授权。":
-      "No ads or analytics SDKs. Passwords are not saved; chat history is managed by the server. Signing out clears only local credentials. Revoke device access in Studio.",
+  "不含广告或分析 SDK。不保存密码，聊天记录由服务端管理。退出仅清除本机凭据；账号权限由 Studio 与 Web 共用。":
+      "No ads or analytics SDKs. Passwords are not saved; chat history is managed by the server. Signing out clears only local credentials; permissions are shared with Studio Web.",
   "关于": "About",
   "开源许可": "Open-source licenses",
   "退出登录？": "Sign out?",

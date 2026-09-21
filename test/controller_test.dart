@@ -12,17 +12,19 @@ void main() {
   });
   tearDown(() => h.dispose());
   test(
-    'device login sends real contract, stores token but never password',
+    'web login sends shared contract, stores token but never password',
     () async {
       await h.login();
       final request = h.requests.firstWhere(
-        (r) => r.url.path.endsWith('app-login'),
+        (r) => r.url.path == '/api/auth/login',
       );
       final data = jsonDecode(request.body) as Map;
-      expect(data['device_code'], 'test-installation-id');
-      expect(data['device_name'], isNotEmpty);
+      expect(data['username'], 'Alex');
+      expect(data['password'], 'password');
+      expect(data.containsKey('device_code'), false);
+      expect(data.containsKey('device_name'), false);
       expect(request.headers.containsKey('Authorization'), false);
-      expect(h.storage.session!['token'], 'device-token');
+      expect(h.storage.session!['token'], 'web-token');
       expect(h.storage.session!.containsKey('password'), false);
       expect(h.controller.authenticated, true);
       expect(

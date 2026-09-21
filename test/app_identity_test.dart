@@ -57,17 +57,6 @@ void main() {
   );
 
   test(
-    'installation ID remains stable in the new application sandbox',
-    () async {
-      final id = await SecureAppStorage().deviceId();
-      expect(id, isNotEmpty);
-      expect(await SecureAppStorage().deviceId(), id);
-      expect(await secure.read(key: 'chatstudio.device.v1'), id);
-      expect((await secure.readAll()).keys, ['chatstudio.device.v1']);
-    },
-  );
-
-  test(
     'new storage tolerates corrupt session, server and choice values',
     () async {
       const scope = 'test-scope';

@@ -611,11 +611,7 @@ class AppController extends ChangeNotifier {
         ServerAddress.parse(server, allowLocalHttp: localHttp),
       );
       _bind(client);
-      final result = await client.login(
-        username,
-        password,
-        await storage.deviceId(),
-      );
+      final result = await client.login(username, password);
       if (!_valid(epoch)) return false;
       client.token = text(result['token']);
       if (client.token.isEmpty) throw const ApiException('服务器没有返回登录令牌');
@@ -2048,7 +2044,7 @@ class AppController extends ChangeNotifier {
     busy = preserveServer;
     loadingSessions = false;
     search = '';
-    error = expired ? '登录已过期或设备授权已撤销，请重新登录' : null;
+    error = expired ? '登录已过期或已失效，请重新登录' : null;
     _notify();
     try {
       await _writeStorage(() async {

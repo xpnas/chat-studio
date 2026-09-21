@@ -17,7 +17,7 @@ CodeGraph orient 报告 1874 个文件；这是混合解析图谱，不等于全
 
 | 源码 | 核对内容 |
 |---|---|
-| `packages/server/src/modules/studio/routes/auth.ts`、`controllers/auth.ts` | app-login、设备令牌、me、凭据修改 |
+| `packages/server/src/modules/studio/routes/auth.ts`、`controllers/auth.ts` | 登录、me、凭据修改（App 与 Web 共用登录） |
 | `packages/server/src/modules/hermes/controllers/profiles.ts` | listForApp / 账号可访问 Profile |
 | `packages/server/src/modules/hermes/controllers/models.ts` | getAvailable / configured groups / api_mode |
 | `packages/server/src/modules/studio/routes/sessions.ts`、`controllers/sessions.ts` | 会话搜索、消息分页、修改、删除 |
@@ -47,11 +47,11 @@ flowchart LR
 
 ## REST 契约
 
-受保护请求：`Authorization: Bearer <device token>`、`X-Hermes-Profile`。查询接口同时按上游约定传 `profile`。自动重定向关闭，避免令牌被转发到另一服务。
+受保护请求：`Authorization: Bearer <JWT>`、`X-Hermes-Profile`。查询接口同时按上游约定传 `profile`。自动重定向关闭，避免令牌被转发到另一服务。
 
 | 方法 / 路径 | 请求或关键返回 |
 |---|---|
-| POST `/api/auth/app-login` | username、password、device_code、device_name；返回 token、profiles、userId |
+| POST `/api/auth/login` | username、password；返回 token、profiles、userId（App 与 Web 共用 JWT） |
 | GET `/api/auth/me` | user（username / role / status / requiresCredentialChange） |
 | GET `/api/app/profiles` | profiles 对象数组；使用 name |
 | GET `/api/hermes/available-models` | groups、default、default_provider |
@@ -118,4 +118,4 @@ flowchart LR
 - `/chat-run` 连接时服务器发送 `session.activity.snapshot`（当前 Profile 的 sessions 数组，包含 session_id/status），之后通过 `session.activity` 更新 running/completed/failed，携带 timestamp。权限/澄清事件也通过 Profile 房间广播。
 - `resume` 经会话/Profile 授权后执行 `socket.join(session:<id>)`，没有自动 leave 先前房间，所以同一连接可以继续接收之前会话的输出。客户端用 Profile + session_id 路由并缓存，而非仅保留当前 timeline。
 - 客户端断线只恢复订阅/resume，不重发 run 或授权；多个任务的确认/同步超时定时器绑定各自会话。活动快照缺项先标记待同步并 resume，不当成任务已完成；旧时间戳状态事件与迟到历史响应不会覆盖新的运行状态。
-- 新增真实 Studio + 本地模型夹具测试：两个独立会话同时工作、另一个设备从快照发现运行任务、切回 A 不影响 B 完成、只停止 A、会话 reasoning-effort 修改后重连仍保留。尚未运行真实 Codex CLI/收费模型并行验收。
+- 新增真实 Studio + 本地模型夹具测试：两个独立登录会话同时工作、另一个客户端从快照发现运行任务、切回 A 不影响 B 完成、只停止 A、会话 reasoning-effort 修改后重连仍保留。尚未运行真实 Codex CLI/收费模型并行验收。

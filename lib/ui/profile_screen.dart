@@ -248,7 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: Text(context.tr("数据仅发送到你的服务器")),
                     subtitle: Text(
                       context.tr(
-                        "不含广告或分析 SDK。不保存密码，聊天记录由服务端管理。退出仅清除本机凭据；可在 Studio 撤销设备授权。",
+                        "不含广告或分析 SDK。不保存密码，聊天记录由服务端管理。退出仅清除本机凭据；账号权限由 Studio 与 Web 共用。",
                       ),
                     ),
                   ),

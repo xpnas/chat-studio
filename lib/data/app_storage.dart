@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
 import 'models.dart';
 
 abstract class AppStorage {
@@ -10,7 +9,6 @@ abstract class AppStorage {
   Future<void> clearSession();
   Future<List<Map<String, dynamic>>> readServers();
   Future<void> saveServers(List<Map<String, dynamic>> servers);
-  Future<String> deviceId();
   Future<String> readLanguage();
   Future<void> saveLanguage(String language);
   Future<String> readTheme();
@@ -125,14 +123,6 @@ class SecureAppStorage extends AppStorage {
       _secure.write(key: _session, value: jsonEncode(session));
   @override
   Future<void> clearSession() => _secure.delete(key: _session);
-  @override
-  Future<String> deviceId() async {
-    // Stable installation UUID, not an IMEI, advertising ID or hardware identifier.
-    var value = await _secure.read(key: 'chatstudio.device.v1');
-    value ??= const Uuid().v4();
-    await _secure.write(key: 'chatstudio.device.v1', value: value);
-    return value;
-  }
 
   @override
   Future<String> readTheme() async =>

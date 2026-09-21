@@ -602,25 +602,18 @@ class StudioApi {
     }
   }
 
-  Future<Map<String, dynamic>> login(
-    String username,
-    String password,
-    String deviceId,
-  ) => request(
-    '/api/auth/app-login',
-    method: 'POST',
-    public: true,
-    body: {
-      'username': username.trim(),
-      'password': password,
-      'device_code': deviceId,
-      'device_name': Platform.isIOS
-          ? 'Chat Studio · iOS'
-          : 'Chat Studio · Android',
-      'device_brand': Platform.isIOS ? 'Apple' : 'Android',
-      'device_model': 'Chat Studio',
-    },
-  );
+  /// Authenticates with the same credential endpoint as the web client.
+  ///
+  /// Mobile deliberately does not use the legacy app-specific login endpoint
+  /// endpoint or send device metadata. The returned JWT is the regular web
+  /// access token and is used by both REST and Socket.IO requests.
+  Future<Map<String, dynamic>> login(String username, String password) =>
+      request(
+        '/api/auth/login',
+        method: 'POST',
+        public: true,
+        body: {'username': username.trim(), 'password': password},
+      );
   Future<Account> me() async =>
       Account.fromJson(asMap((await request('/api/auth/me'))['user']));
   Future<List<String>> profiles() async =>

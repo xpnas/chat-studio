@@ -72,8 +72,6 @@ class MemoryStorage extends AppStorage {
   }
 
   @override
-  Future<String> deviceId() async => 'test-installation-id';
-  @override
   Future<String> readTheme() async => theme;
   @override
   Future<void> saveTheme(String value) async {
@@ -131,8 +129,8 @@ class TestHarness {
   http.Response response(http.Request request) {
     final path = request.url.path;
     final body = switch (path) {
-      '/api/auth/app-login' => {
-        'token': 'device-token',
+      '/api/auth/login' => {
+        'token': 'web-token',
         'profiles': ['default', 'work'],
         'userId': 1,
       },

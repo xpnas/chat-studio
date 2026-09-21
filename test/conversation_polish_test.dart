@@ -65,7 +65,7 @@ void main() {
       await h.controller.logout();
       await h.login();
       expect(h.controller.selectedModel?.id, 'model-b');
-      expect(jsonEncode(h.storage.choices), isNot(contains('device-token')));
+      expect(jsonEncode(h.storage.choices), isNot(contains('web-token')));
       expect(jsonEncode(h.storage.choices), isNot(contains('password')));
       await h.controller.logout();
       await h.controller.login(

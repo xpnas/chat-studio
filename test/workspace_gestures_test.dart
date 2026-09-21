@@ -143,7 +143,7 @@ void main() {
         (r) => r.method == 'POST' && r.url.path.endsWith('/workspace'),
       );
       expect(jsonDecode(saved.body)['workspace'], '/srv/agent/project');
-      expect(saved.headers['Authorization'], 'Bearer device-token');
+      expect(saved.headers['Authorization'], 'Bearer web-token');
       expect(h.controller.error, isNull);
       await tester.tap(find.byKey(const ValueKey('workspace-file:src')));
       await tester.pumpAndSettle();

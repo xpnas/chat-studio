@@ -21,9 +21,7 @@ void main() {
   test(
     'real remote workspace selection persists absolute path and lists files',
     () async {
-      final c = AppController(
-        storage: _MultiDeviceStorage('workspace-contract'),
-      );
+      final c = AppController(storage: MemoryStorage());
       final sid = 'workspace-contract-${DateTime.now().microsecondsSinceEpoch}';
       var created = false;
       try {
@@ -91,9 +89,7 @@ void main() {
   test(
     'real authenticated availability matches mobile selectable Agent catalog',
     () async {
-      final c = AppController(
-        storage: _MultiDeviceStorage('agent-catalog-contract'),
-      );
+      final c = AppController(storage: MemoryStorage());
       try {
         await c.initialize();
         expect(
@@ -130,10 +126,7 @@ void main() {
     'real task plan survives network loss, completion and fresh history',
     () async {
       final transport = _DisconnectableTransport();
-      final c = AppController(
-        storage: _MultiDeviceStorage('task-plan-contract'),
-        transport: transport,
-      );
+      final c = AppController(storage: MemoryStorage(), transport: transport);
       AppController? reader;
       String? sid;
       Future<void> until(bool Function() condition) async {
@@ -195,9 +188,7 @@ void main() {
         final page = await c.api!.messages(sid!);
         expect(page.taskPlans.single.revision, done.revision);
         expect(page.taskPlans.single.isComplete, true);
-        reader = AppController(
-          storage: _MultiDeviceStorage('task-plan-history'),
-        );
+        reader = AppController(storage: MemoryStorage());
         await reader.initialize();
         expect(
           await reader.login(
@@ -248,10 +239,7 @@ void main() {
     'real foreground resume after server 200-event buffer truncation keeps full text',
     () async {
       final transport = _DisconnectableTransport();
-      final c = AppController(
-        storage: _MultiDeviceStorage('foreground-long'),
-        transport: transport,
-      );
+      final c = AppController(storage: MemoryStorage(), transport: transport);
       String? sid;
       final expected = List.generate(
         100,
@@ -341,9 +329,7 @@ void main() {
   test(
     'real queue cancellation, sequential start and server TTS audio',
     () async {
-      final c = AppController(
-        storage: _MultiDeviceStorage('queue-tts-contract'),
-      );
+      final c = AppController(storage: MemoryStorage());
       String? sid;
       bool tts = false;
       Future<void> until(bool Function() condition) async {
@@ -443,9 +429,7 @@ void main() {
   test(
     'real Hermes command receipts, title, display clear and history clear',
     () async {
-      final c = AppController(
-        storage: _MultiDeviceStorage('chatstudio-command-contract'),
-      );
+      final c = AppController(storage: MemoryStorage());
       String? sid;
       Future<void> until(bool Function() condition) async {
         final end = DateTime.now().add(const Duration(seconds: 40));
@@ -541,12 +525,8 @@ void main() {
   test(
     'real simultaneous sessions, activity snapshot and reasoning persistence',
     () async {
-      final c = AppController(
-        storage: _MultiDeviceStorage('chatstudio-multi-main'),
-      );
-      final observer = AppController(
-        storage: _MultiDeviceStorage('chatstudio-multi-observer'),
-      );
+      final c = AppController(storage: MemoryStorage());
+      final observer = AppController(storage: MemoryStorage());
       final ids = <String>[];
       Future<void> until(bool Function() condition) async {
         final end = DateTime.now().add(const Duration(seconds: 40));
@@ -870,7 +850,6 @@ void main() {
         final login = await api.login(
           Platform.environment['CHATSTUDIO_TEST_USERNAME'] ?? 'admin',
           Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
-          'chatstudio-dart-contract-test',
         );
         api.token = text(login['token']);
         expect(api.token, isNotEmpty);
@@ -955,13 +934,6 @@ void main() {
         : false,
     timeout: const Timeout(Duration(minutes: 3)),
   );
-}
-
-class _MultiDeviceStorage extends MemoryStorage {
-  _MultiDeviceStorage(this.id);
-  final String id;
-  @override
-  Future<String> deviceId() async => id;
 }
 
 // A real Socket.IO transport with a deterministic network-loss boundary.

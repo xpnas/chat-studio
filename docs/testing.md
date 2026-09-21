@@ -150,7 +150,7 @@ flutter test test/preview_test.dart
 ## 下一轮真机验收建议
 
 1. Android Release APK 安装/覆盖更新，冷启动、键盘、复制、深色模式、返回手势。
-2. 登录后杀进程重启，验证 Keystore / Keychain 保存；撤销设备 token 后应退出。
+2. 登录后杀进程重启，验证 Keystore / Keychain 保存；使登录失效后应退出。
 3. 弱网、切 Wi-Fi/蜂窝、后台恢复、长回答与历史分页；确认不会重复发送。
 4. 在 Android profile build / iOS 真机上测长列表与 token streaming 的帧耗时，再决定是否进一步缩小 UI 重建范围。
 5. 两个平台验证局域网权限、HTTPS/WSS 代理与真实模型，并完成商店分发/隐私验收。
@@ -200,7 +200,7 @@ export HERMES_WEB_UI_TEST_DB_DIR=/absolute/disposable/database
 
 `test/multi_conversation_test.dart` 25 项回归覆盖：A/B 并行与输出隔离、后台完成/失败/待确认、停止只针对所选任务、同步完成前不提交旧权限提示、多个任务重连不重发输入、Profile 隔离与旧回调拒绝、快速切换/迟到历史、任务快照/旧时间戳、缺项待同步、后台任务防误删、思考深度 run/REST/偏好/失败回滚/会话模型切换重置、动态历史条目导航与字号/行距、减少动画、独立确认超时、注销清理、未发送草稿/文件/已上传引用/阅读位置恢复。
 
-新增真实测试使用两个不同 device_code 登录，一个客户端运行 A/B，另一个仅观察活动快照。对话 A 使用 SLOW 本地夹具保持工作，B 独立完成，切回 A 后停止不会影响 B；reasoning-effort 经 REST 保存后由重连快照读回。完整真实套件需新建隔离数据库再运行媒体测试，避免已有 STT 配置影响破坏性夹具。
+新增真实测试使用两个独立的 Web JWT 登录会话，一个客户端运行 A/B，另一个仅观察活动快照。对话 A 使用 SLOW 本地夹具保持工作，B 独立完成，切回 A 后停止不会影响 B；reasoning-effort 经 REST 保存后由重连快照读回。完整真实套件需新建隔离数据库再运行媒体测试，避免已有 STT 配置影响破坏性夹具。
 
 本轮保持 Android/iOS 共用 Flutter 状态层；未连接 Android 真机，未运行真实 Codex CLI；Xcode/iOS 编译与真机权限/性能仍待外部设备环境验证。多会话并行使用本地确定性模型，不表示所有供应商的并发限制已验证。
 

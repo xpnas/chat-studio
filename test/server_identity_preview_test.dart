@@ -42,8 +42,8 @@ void main() {
       h.controller.draft.text = 'private unsent';
       await h.controller.addServer();
       expect(h.controller.authenticated, isFalse);
-      expect(h.storage.servers.single['token'], 'device-token');
-      h.override = (r) async => r.url.path == '/api/auth/app-login'
+      expect(h.storage.servers.single['token'], 'web-token');
+      h.override = (r) async => r.url.path == '/api/auth/login'
           ? http.Response(
               '{"token":"second-token","profiles":["default"]}',
               200,
@@ -64,11 +64,11 @@ void main() {
       oldListener('message.delta', {'delta': 'old private text'});
       expect(h.controller.timeline.messages, isEmpty);
       await h.controller.switchServer('https://example.com');
-      expect(h.controller.api!.token, 'device-token');
+      expect(h.controller.api!.token, 'web-token');
       expect(h.controller.profile, 'work');
       expect(h.storage.session!['server'], 'https://example.com');
       final lastMe = h.requests.lastWhere((r) => r.url.path == '/api/auth/me');
-      expect(lastMe.headers['Authorization'], 'Bearer device-token');
+      expect(lastMe.headers['Authorization'], 'Bearer web-token');
       expect(lastMe.url.host, 'example.com');
     },
   );
@@ -119,7 +119,7 @@ void main() {
       await h.controller.logout();
       expect(h.storage.session, isNull);
       expect(h.storage.servers.first['token'], isEmpty);
-      expect(h.storage.servers.last['token'], 'device-token');
+      expect(h.storage.servers.last['token'], 'web-token');
       await h.controller.switchServer('https://second.example');
       expect(h.controller.authenticated, isFalse);
       expect(h.controller.serverInput, 'https://second.example');

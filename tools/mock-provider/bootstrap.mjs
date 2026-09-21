@@ -6,9 +6,9 @@ if (!password || password.length < 16) throw Error('Set a random CHATSTUDIO_TEST
 let login;
 for (let attempt = 0; attempt < 90; attempt++) {
   try {
-    const response = await fetch(`${origin}/api/auth/app-login`, {
+    const response = await fetch(`${origin}/api/auth/login`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username:'admin',password:'123456',device_code:'fixture-bootstrap',device_name:'Isolated CI fixture'}),
+      body:JSON.stringify({username:'admin',password:'123456'}),
     });
     if (response.ok) {login=await response.json();break;}
   } catch { /* Server still starting. */ }

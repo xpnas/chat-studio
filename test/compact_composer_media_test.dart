@@ -131,7 +131,7 @@ void main() {
       );
       expect(request.url.queryParameters['path'], '/tmp/result.png');
       expect(request.url.queryParameters['variant'], 'app-image');
-      expect(request.headers['Authorization'], 'Bearer device-token');
+      expect(request.headers['Authorization'], 'Bearer web-token');
       await tester.tap(find.text('下载报告', findRichText: true));
       await tester.pumpAndSettle();
       expect(find.byType(AttachmentViewer), findsOneWidget);

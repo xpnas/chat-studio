@@ -232,7 +232,7 @@ void main() {
           '/api/studio/group-chat/rooms/room-1/workspace-file/content',
         );
         expect(r.url.queryParameters['path'], 'images/a b.png');
-        expect(r.headers['Authorization'], 'Bearer device-token');
+        expect(r.headers['Authorization'], 'Bearer web-token');
         return http.Response.bytes([1, 2, 3], 200);
       };
       expect(

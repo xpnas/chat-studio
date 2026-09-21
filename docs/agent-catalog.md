@@ -22,7 +22,7 @@
 
 ```http
 GET /api/agents/availability
-Authorization: Bearer <当前服务器设备 token>
+Authorization: Bearer <当前服务器 JWT>
 ```
 
 响应示例：

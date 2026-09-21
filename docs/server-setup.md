@@ -8,7 +8,7 @@
 2. 如果要使用 Hermes 引擎，先在 Studio 修复/安装 Hermes Runtime；否则可选择内置 Ekko。
 3. 使用 HTTPS 域名连接；服务需要支持 WebSocket，不仅仅是普通 REST。
 4. 首次默认凭据必须立即修改。生产服务不应暴露默认 `admin / 123456`。
-5. 移动端退出只清除本地令牌；彻底撤销某个设备请到 Studio 设备/应用连接管理中操作。客户端没有虚构一个服务器并不存在的 logout / refresh API。
+5. 移动端退出只清除本地 JWT；客户端与 Web 共用登录接口和权限模型，客户端没有虚构一个服务器并不存在的 logout / refresh API。
 
 ## 独立 Docker 部署模板（未在本机执行 Docker 验证）
 

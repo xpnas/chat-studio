@@ -54,7 +54,7 @@ void main() {
             return http.Response.bytes([1, 2, 3], 200);
           case '/api/studio/stt/transcribe':
             stt++;
-            expect(r.headers['Authorization'], 'Bearer device-token');
+            expect(r.headers['Authorization'], 'Bearer web-token');
             expect(r.headers['X-Hermes-Profile'], 'default');
             expect(r.body, contains('audio/mpeg'));
             expect(r.body, contains('filename="回答.mp3"'));
