@@ -11,6 +11,10 @@ A lightweight Hermes Studio client for Android and iOS. It implements the real H
 
 Agent management includes native Hermes settings (Agent, memory, sessions and gateway), Runtime downloads/version switching/server directory management, and the built-in Agent's runtime/model/tool/module/advanced settings. Forms use grouped pages and bottom sheets, explicit saves, local refresh and safety confirmations. The single-chat composer shows server context usage while empty and hides it while typing. See [Agent settings and context accounting](docs/agent-runtime-settings.md).
 
+## Development note
+
+> All source code in this project—including the Android/iOS clients, Chinese and English UI, documentation, automated tests, and build configuration—was written, reviewed, and tested by ChatGPT. The feature list below is based on the current implementation and test results; actual availability after connecting to a server depends on the Hermes Studio version, Profile configuration, and third-party service status.
+
 ## Features
 
 - Custom server URL, Web-compatible username/password sign-in, secure JWT session storage, and expiration handling.

@@ -8,6 +8,10 @@ Android / iOS 上的轻量 Hermes Studio 客户端。面向 Hermes Studio 兼容
 
 > 应用包标识统一为 `ai.chatstudio.app`，Dart 包名为 `chatstudio`。这是新的应用身份，需单独安装并重新添加服务器、登录；服务端历史不受影响。构建与签名要求见 [打包文档](docs/build-release.md)，名称与协议边界见 [命名规范](docs/naming.md)。
 
+## 开发说明
+
+> 本项目全部源代码（包括 Android/iOS 客户端、中文和英文界面、文档、自动化测试及构建配置）均由 ChatGPT 完成编写、审阅和测试。下方功能说明基于当前实际代码与测试结果；连接服务端后具体功能是否可用，仍取决于 Hermes Studio 的版本、Profile 配置和第三方服务状态。
+
 ## 功能
 
 - 自定义服务地址，与 Web 一致的账号密码登录、安全保存 JWT 会话、过期退出。
