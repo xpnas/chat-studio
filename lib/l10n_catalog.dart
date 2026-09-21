@@ -941,6 +941,23 @@ const appEnglishCatalog = <String, String>{
   "已复制": "Copied",
   "请输入文本": "Enter text",
   "Chat Studio": "Chat Studio",
+  "登录已过期，请重新登录": "Your session has expired. Please sign in again",
+  "当前账号无权访问此 Profile": "This account cannot access the selected profile",
+  "服务端版本可能不支持 Agent 列表接口":
+      "This server version may not support the Agent availability API",
+  "连接超时，请检查服务端是否在线":
+      "The connection timed out. Check that the server is online",
+  "无法连接服务器，请检查手机网络和服务地址":
+      "Cannot reach the server. Check the phone network and server address",
+  "服务端返回格式不兼容，请升级服务端":
+      "The server response is incompatible. Upgrade the server",
+  "服务端 Agent 状态检测失败": "The server failed to inspect Agent status",
+  "Agent 列表加载失败，请重试": "Could not load Agents. Please retry",
+  "Profile：{0}": "Profile: {0}",
+  "HTTP 状态：{0}": "HTTP status: {0}",
+  "服务端信息：{0}": "Server message: {0}",
+  "如果问题持续，请检查服务端版本、Profile 权限和手机网络。":
+      "If the problem persists, check the server version, profile permissions and phone network.",
   "单聊": "Direct",
   "群聊": "Groups",
   "历史": "History",

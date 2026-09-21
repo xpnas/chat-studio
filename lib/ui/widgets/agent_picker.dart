@@ -10,6 +10,29 @@ class AgentPickerButton extends StatelessWidget {
   const AgentPickerButton({super.key, required this.controller});
   final AppController controller;
 
+  String _errorTitle(BuildContext context, AppController c) =>
+      switch (c.agentsErrorKind) {
+        'authentication' => context.tr('登录已过期，请重新登录'),
+        'permission' => context.tr('当前账号无权访问此 Profile'),
+        'not_found' => context.tr('服务端版本可能不支持 Agent 列表接口'),
+        'timeout' => context.tr('连接超时，请检查服务端是否在线'),
+        'network' => context.tr('无法连接服务器，请检查手机网络和服务地址'),
+        'incompatible' => context.tr('服务端返回格式不兼容，请升级服务端'),
+        'server' => context.tr('服务端 Agent 状态检测失败'),
+        _ => context.tr('Agent 列表加载失败，请重试'),
+      };
+
+  String _diagnostic(BuildContext context, AppController c) {
+    final lines = <String>[
+      context.l10n.format('Profile：{0}', {'0': c.profile}),
+      if (c.agentsErrorStatus != null)
+        context.l10n.format('HTTP 状态：{0}', {'0': c.agentsErrorStatus}),
+      if (c.agentsErrorDetail?.isNotEmpty == true)
+        context.l10n.format('服务端信息：{0}', {'0': c.agentsErrorDetail}),
+    ];
+    return lines.join('\n');
+  }
+
   Future<void> _open(BuildContext context) async {
     final c = controller;
     final revision = c.chatRevision;
@@ -84,7 +107,34 @@ class AgentPickerButton extends StatelessWidget {
                       child: Column(
                         children: [
                           Text(
-                            c.agentsError!,
+                            _errorTitle(sheetContext, c),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: colors.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colors.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: SelectableText(
+                              _diagnostic(sheetContext, c),
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.45,
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            context.tr('如果问题持续，请检查服务端版本、Profile 权限和手机网络。'),
+                            textAlign: TextAlign.center,
                             style: TextStyle(color: colors.onSurfaceVariant),
                           ),
                           TextButton.icon(
@@ -234,7 +284,7 @@ class AgentPickerButton extends StatelessWidget {
             padding: const EdgeInsets.only(top: 8),
             child: Text(
               c.agentsError != null
-                  ? context.tr("Agent 列表加载失败，点击重试")
+                  ? _errorTitle(context, c)
                   : context.tr("暂无可用 Agent，点击查看"),
               style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
             ),

@@ -311,6 +311,9 @@ class AppController extends ChangeNotifier {
   List<AgentChoice> agents = const [];
   bool agentsLoaded = false, agentsLoading = false;
   String? agentsError;
+  String? agentsErrorKind;
+  String? agentsErrorDetail;
+  int? agentsErrorStatus;
   int _agentsRequest = 0;
   List<AgentChoice> get availableAgents =>
       agents.where((a) => a.selectable).toList();
@@ -326,6 +329,52 @@ class AppController extends ChangeNotifier {
     agentsLoaded = false;
     agentsLoading = false;
     agentsError = null;
+    agentsErrorKind = null;
+    agentsErrorDetail = null;
+    agentsErrorStatus = null;
+  }
+
+  String _agentErrorDetail(Object error) {
+    final value = error is ApiException ? error.message : error.toString();
+    final normalized = value
+        .replaceFirst(RegExp(r'^(?:ApiException|Exception):\s*'), '')
+        .replaceAll(RegExp(r'[\r\n\t]+'), ' ')
+        .trim();
+    if (normalized.isEmpty) return '未知错误';
+    return normalized.length > 180
+        ? '${normalized.substring(0, 177)}…'
+        : normalized;
+  }
+
+  String _agentErrorKind(Object error) {
+    final detail = _agentErrorDetail(error).toLowerCase();
+    final status = error is ApiException ? error.status : 0;
+    if (status == 401) return 'authentication';
+    if (status == 403) return 'permission';
+    if (status == 404) return 'not_found';
+    if (status >= 500) return 'server';
+    if (status == 408 || detail.contains('超时') || detail.contains('timeout')) {
+      return 'timeout';
+    }
+    if (detail.contains('无法连接') ||
+        detail.contains('网络') ||
+        detail.contains('socket') ||
+        detail.contains('证书') ||
+        detail.contains('connection')) {
+      return 'network';
+    }
+    if (error is FormatException || detail.contains('格式')) {
+      return 'incompatible';
+    }
+    return 'unknown';
+  }
+
+  void _setAgentError(Object error) {
+    agentsError = '无法读取服务端 Agent，请重试';
+    agentsErrorKind = _agentErrorKind(error);
+    agentsErrorDetail = _agentErrorDetail(error);
+    final status = error is ApiException ? error.status : 0;
+    agentsErrorStatus = status > 0 ? status : null;
   }
 
   Future<void> refreshAgents() async {
@@ -339,6 +388,9 @@ class AppController extends ChangeNotifier {
         request == _agentsRequest;
     agentsLoading = true;
     agentsError = null;
+    agentsErrorKind = null;
+    agentsErrorDetail = null;
+    agentsErrorStatus = null;
     _notify();
     try {
       final data = await client.request('/api/agents/availability');
@@ -362,8 +414,8 @@ class AppController extends ChangeNotifier {
         workspaceNotice =
             '原 Agent 已不可用，新对话已改用 ${AgentChoice.metadata(engine).name}。';
       }
-    } catch (_) {
-      if (valid()) agentsError = '无法读取服务端 Agent，请重试';
+    } catch (error) {
+      if (valid()) _setAgentError(error);
     } finally {
       if (valid()) {
         agentsLoading = false;

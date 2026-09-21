@@ -127,6 +127,28 @@ void main() {
     },
   );
 
+  test('failed fetch preserves an actionable diagnostic', () async {
+    final h = TestHarness();
+    addTearDown(h.dispose);
+    h.override = (r) async => r.url.path == '/api/agents/availability'
+        ? http.Response(
+            '{"error":"Profile \\"work\\" is not available for this user"}',
+            403,
+          )
+        : h.response(r);
+    await h.login();
+    expect(h.controller.agentsErrorKind, 'permission');
+    expect(h.controller.agentsErrorStatus, 403);
+    expect(h.controller.agentsErrorDetail, contains('Profile'));
+
+    h.override = (r) async => r.url.path == '/api/agents/availability'
+        ? http.Response('{"error":"Not Found"}', 404)
+        : h.response(r);
+    await h.controller.refreshAgents();
+    expect(h.controller.agentsErrorKind, 'not_found');
+    expect(h.controller.agentsErrorStatus, 404);
+  });
+
   test('empty and unsupported catalogs cannot send a misrouted run', () async {
     final h = TestHarness();
     addTearDown(h.dispose);
