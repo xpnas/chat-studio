@@ -37,7 +37,6 @@ EXTERNAL_FILES = {
     "lib/data/agent_settings.dart": PROTOCOL_VALUES,
     "lib/ui/agent_configuration_screen.dart": PROTOCOL_VALUES,
     "lib/ui/widgets/settings_editors.dart": PROTOCOL_VALUES,
-    "scripts/analyze-upstream.ps1": ("EKKOLearnAI/hermes-studio",),
     ".github/workflows/studio-contract.yml": ("EKKOLearnAI/hermes-studio",),
 }
 errors = []
