@@ -102,7 +102,7 @@ void main() {
   });
 
   testWidgets(
-    'composer context is inside surface, hides on any text and returns on clear',
+    'composer context is inside surface and remains visible while typing',
     (tester) async {
       final h = TestHarness();
       addTearDown(h.dispose);
@@ -152,13 +152,11 @@ void main() {
       });
       await tester.enterText(find.byKey(const Key('message-input')), ' ');
       await tester.pump();
-      expect(info, findsNothing);
+      expect(info, findsOneWidget);
       await tester.enterText(find.byKey(const Key('message-input')), 'hello');
       await tester.pump();
-      expect(info, findsNothing);
-      await tester.enterText(find.byKey(const Key('message-input')), '');
-      await tester.pump();
       expect(info, findsOneWidget);
+      expect(find.text('32.0k / 128.0k · 剩余 96.0k'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     },
   );

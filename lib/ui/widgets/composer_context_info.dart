@@ -83,7 +83,7 @@ class _ComposerContextInfoState extends State<ComposerContextInfo> {
       ValueListenableBuilder<TextEditingValue>(
         valueListenable: widget.input,
         builder: (context, input, _) {
-          if (input.text.isNotEmpty || widget.controller.sessionId == null) {
+          if (widget.controller.sessionId == null) {
             return const SizedBox.shrink();
           }
           final used = widget.controller.timeline.contextUsage.used;
