@@ -72,8 +72,40 @@ jobs:
             echo "slug=$slug"
           } >> "$GITHUB_OUTPUT"
 
-  android:
+  prepare-release:
     needs: metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Create or reuse GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.metadata.outputs.release_tag }}
+          TITLE: ${{ needs.metadata.outputs.release_title }}
+          PRERELEASE: ${{ needs.metadata.outputs.release_prerelease }}
+          VERSION_NAME: ${{ needs.metadata.outputs.version_name }}
+          BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; preserving its notes."
+            exit 0
+          fi
+          cat > release-notes.md <<EOF
+          Chat Studio ${VERSION_NAME} branch build
+
+          Build number: ${BUILD_NUMBER}
+          Commit: ${GITHUB_SHA}
+
+          APK/AAB/IPA files are uploaded directly as individual GitHub Release assets.
+          EOF
+          args=(gh release create "$TAG" --target "$GITHUB_SHA" --title "$TITLE" --notes-file release-notes.md)
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+          "${args[@]}"
+
+  android:
+    needs: [metadata, prepare-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -120,15 +152,19 @@ jobs:
             "release-assets/chatstudio-${{ needs.metadata.outputs.version_name }}-${{ needs.metadata.outputs.slug }}-android.apk"
           cp build/app/outputs/bundle/release/app-release.aab \
             "release-assets/chatstudio-${{ needs.metadata.outputs.version_name }}-${{ needs.metadata.outputs.slug }}-android.aab"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: branch-release-android
-          path: release-assets/
-          if-no-files-found: error
-          retention-days: 7
+      - name: Upload Android assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.metadata.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum release-assets/*.apk release-assets/*.aab > release-assets/SHA256SUMS-android.txt
+          gh release upload "$TAG" release-assets/*.apk release-assets/*.aab release-assets/SHA256SUMS-android.txt --clobber
 
   ios:
-    needs: metadata
+    needs: [metadata, prepare-release]
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.include_ios) ||
       (github.event_name == 'push' && vars.BRANCH_RELEASE_IOS == 'true')
@@ -162,60 +198,13 @@ jobs:
           [[ -f "${ipa[0]}" ]] || { echo 'No IPA was produced' >&2; exit 1; }
           cp "${ipa[0]}" \
             "release-assets/chatstudio-${{ needs.metadata.outputs.version_name }}-${{ needs.metadata.outputs.slug }}-ios.ipa"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: branch-release-ios
-          path: release-assets/
-          if-no-files-found: error
-          retention-days: 7
-
-  publish:
-    needs: [metadata, android, ios]
-    if: >-
-      always() && needs.android.result == 'success' &&
-      (needs.ios.result == 'success' || needs.ios.result == 'skipped')
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: branch-release-*
-          merge-multiple: true
-          path: release-assets
-      - name: Publish individual files to GitHub Release
+      - name: Upload iOS asset to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          # This job only downloads artifacts and has no checkout. Tell gh
-          # explicitly which repository to operate on instead of making it
-          # infer the repository from a missing .git directory.
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.metadata.outputs.release_tag }}
-          TITLE: ${{ needs.metadata.outputs.release_title }}
-          PRERELEASE: ${{ needs.metadata.outputs.release_prerelease }}
-          VERSION_NAME: ${{ needs.metadata.outputs.version_name }}
-          BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          files=(release-assets/*.apk release-assets/*.aab release-assets/*.ipa)
-          ((${#files[@]} > 0)) || { echo 'No installable release assets found' >&2; exit 1; }
-          cat > release-notes.md <<EOF
-          Chat Studio ${VERSION_NAME} branch build
-
-          Build number: ${BUILD_NUMBER}
-          Commit: ${GITHUB_SHA}
-
-          Assets are uploaded as individual APK/AAB/IPA files; the Actions artifact ZIP is not the distribution package.
-          EOF
-          # A manually created release may already exist for the tag. In that
-          # case, keep its notes and add/replace the generated assets instead
-          # of failing with "release already exists".
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${files[@]}" --clobber
-          else
-            args=(gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "$TITLE" --notes-file release-notes.md)
-            if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
-            "${args[@]}"
-          fi
-          sha256sum "${files[@]}" > "release-assets/SHA256SUMS.txt"
-          gh release upload "$TAG" release-assets/SHA256SUMS.txt --clobber
+          sha256sum release-assets/*.ipa > release-assets/SHA256SUMS-ios.txt
+          gh release upload "$TAG" release-assets/*.ipa release-assets/SHA256SUMS-ios.txt --clobber

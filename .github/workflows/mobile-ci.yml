@@ -30,11 +30,13 @@ jobs:
           python3 -m py_compile scripts/android-signing.py
       - run: flutter analyze --fatal-infos
       - run: flutter test --coverage
-      - uses: actions/upload-artifact@v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
           name: coverage
           path: coverage/lcov.info
           if-no-files-found: error
+          retention-days: 3
   contract:
     needs: quality
     uses: ./.github/workflows/studio-contract.yml
@@ -57,12 +59,13 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       # A debug APK is installable without exposing a production signing key to PRs.
       - run: flutter build apk --debug
-      - uses: actions/upload-artifact@v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
           name: android-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
       # Profile is AOT + debug-signed: installable for performance evaluation,
       # NOT a production-signed release. Release/AAB compilation is also gated.
       - run: flutter build apk --profile --target-platform android-arm64
@@ -79,7 +82,8 @@ jobs:
           sha256sum build/app/outputs/flutter-apk/app-profile.apk \
             build/app/outputs/flutter-apk/app-release.apk \
             build/app/outputs/bundle/release/app-release.aab > build/SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
           name: android-profile-apk-and-unsigned-release
           path: |
@@ -88,7 +92,7 @@ jobs:
             build/app/outputs/bundle/release/app-release.aab
             build/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
   ios:
     needs: [quality, contract]
     runs-on: macos-15
@@ -104,17 +108,19 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter build ios --simulator --debug
       - run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app build/ios/chatstudio-simulator.zip
-      - uses: actions/upload-artifact@v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
           name: ios-simulator-app
           path: build/ios/chatstudio-simulator.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
       - run: flutter build ios --release --no-codesign
       - run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/ios/chatstudio-ios-unsigned.zip
-      - uses: actions/upload-artifact@v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
           name: ios-unsigned-app-NOT-installable
           path: build/ios/chatstudio-ios-unsigned.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3

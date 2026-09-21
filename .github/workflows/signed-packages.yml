@@ -65,6 +65,7 @@ jobs:
             build/app/outputs/bundle/release/app-release.aab
             build/SHA256SUMS.txt
           if-no-files-found: error
+          retention-days: 3
       - name: Remove temporary signing material
         if: always()
         run: rm -f android/key.properties "$RUNNER_TEMP/chatstudio-upload.jks"
@@ -98,3 +99,4 @@ jobs:
           name: ios-signed-ipa
           path: build/ios/ipa/*.ipa
           if-no-files-found: error
+          retention-days: 3
