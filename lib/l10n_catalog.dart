@@ -104,6 +104,7 @@ const appEnglishCatalog = <String, String>{
       "Context: {0} tokens used, {1} tokens limit",
   "未知": "Unknown",
   "运行": "Runtime",
+  "高级": "Advanced",
   "模块": "Modules",
   "最大执行步数": "Maximum steps",
   "模型重试次数": "Model retries",
