@@ -4,11 +4,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../data/agent_capabilities.dart';
+import '../data/hermes_channels.dart';
+import 'hermes_channel_screen.dart';
 import '../data/models.dart';
 import '../data/studio_api.dart';
 import '../l10n.dart';
 import '../state/app_controller.dart';
-import 'widgets/agent_avatar.dart';
 import 'widgets/settings_editors.dart';
 import 'theme.dart';
 
@@ -19,16 +20,18 @@ class AgentCapabilitiesScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.controller,
+    this.initialHermes = true,
   });
   final StudioApi api;
   final AppController controller;
+  final bool initialHermes;
   @override
   State<AgentCapabilitiesScreen> createState() =>
       _AgentCapabilitiesScreenState();
 }
 
 class _AgentCapabilitiesScreenState extends State<AgentCapabilitiesScreen> {
-  bool _hermes = true;
+  late final bool _hermes = widget.initialHermes;
   bool _loading = false;
   String? _error;
 
@@ -103,7 +106,7 @@ class _AgentCapabilitiesScreenState extends State<AgentCapabilitiesScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(context.tr('Agent 能力')),
+      title: Text('${_hermes ? 'Hermes' : 'Ekko'} · ${context.tr('能力管理')}'),
       actions: [
         IconButton(
           tooltip: context.tr('刷新'),
@@ -129,37 +132,6 @@ class _AgentCapabilitiesScreenState extends State<AgentCapabilitiesScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        SegmentedButton<bool>(
-          segments: [
-            ButtonSegment(
-              value: true,
-              icon: AgentAvatar(
-                controller: widget.controller,
-                agentId: 'hermes',
-                size: 22,
-              ),
-              label: Text(context.tr('Hermes')),
-            ),
-            ButtonSegment(
-              value: false,
-              icon: AgentAvatar(
-                controller: widget.controller,
-                agentId: 'ekko-agent',
-                size: 22,
-              ),
-              label: Text(context.tr('Ekko')),
-            ),
-          ],
-          selected: {_hermes},
-          onSelectionChanged: (value) {
-            if (value.isNotEmpty && value.first != _hermes) {
-              setState(() {
-                _hermes = value.first;
-                _error = null;
-              });
-            }
-          },
-        ),
         if (_error != null) ...[
           const SizedBox(height: 12),
           ErrorNotice(
@@ -220,7 +192,7 @@ class _CapabilityTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.title,
+                      context.tr(item.title),
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -228,7 +200,7 @@ class _CapabilityTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      item.subtitle,
+                      context.tr(item.subtitle),
                       style: TextStyle(
                         fontSize: 12,
                         color: colors.onSurfaceVariant,
@@ -349,7 +321,7 @@ class _AgentCapabilityDetailScreenState
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(widget.title),
+      title: Text(context.tr(widget.title)),
       actions: [
         IconButton(
           tooltip: context.tr('刷新'),
@@ -574,42 +546,43 @@ class _AgentCapabilityDetailScreenState
 
   Widget _channels() {
     final config = asMap(_data);
-    const platforms = [
-      'telegram',
-      'discord',
-      'slack',
-      'whatsapp',
-      'matrix',
-      'weixin',
-      'wecom',
-      'feishu',
-      'dingtalk',
-      'qqbot',
-    ];
     return _list(
-      children: platforms.map((platform) {
-        final values = asMap(config[platform]);
-        final enabled = flag(values['enabled']) || values.isNotEmpty;
-        return Card(
-          child: ListTile(
-            leading: Icon(
-              enabled ? Icons.link_rounded : Icons.link_off_rounded,
-              color: enabled ? Colors.green : null,
-            ),
-            title: Text(platform),
-            subtitle: Text(
-              enabled ? context.tr('已配置 · 点击编辑') : context.tr('未配置'),
-            ),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => _editJson(
-              '$platform 频道配置',
-              values,
-              (value) => widget.api.updateConfigSection(platform, value),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+          child: Text(
+            context.l10n.format('配置保存到当前服务器 · Profile：{0}', {
+              '0': widget.api.profile,
+            }),
+          ),
+        ),
+        for (final entry in hermesChannelNames.entries)
+          Card(
+            child: ListTile(
+              key: ValueKey('channel:${entry.key}'),
+              leading: const Icon(Icons.forum_outlined),
+              title: Text(entry.value),
+              subtitle: Text(
+                context.tr(
+                  channelConfigured(config, entry.key) ? '已配置' : '未配置',
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () async {
+                await Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                    builder: (_) => HermesChannelScreen(
+                      api: widget.api,
+                      platform: entry.key,
+                      initialConfig: config,
+                    ),
+                  ),
+                );
+                if (mounted) await _load();
+              },
             ),
           ),
-        );
-      }).toList(),
-      empty: context.tr('当前服务未返回频道配置'),
+      ],
     );
   }
 

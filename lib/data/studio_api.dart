@@ -87,6 +87,7 @@ class StudioApi {
     Map<String, dynamic>? body,
     Map<String, String>? query,
     bool public = false,
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     final uri = address.uri.replace(path: path, queryParameters: query);
     final request = http.Request(method, uri)..followRedirects = false;
@@ -100,7 +101,7 @@ class StudioApi {
     try {
       final response = await (() async => http.Response.fromStream(
         await _client.send(request),
-      ))().timeout(const Duration(seconds: 25));
+      ))().timeout(timeout);
       Map<String, dynamic> data;
       try {
         data = asMap(jsonDecode(utf8.decode(response.bodyBytes)));
@@ -796,12 +797,49 @@ class StudioApi {
 
   Future<void> updateConfigSection(
     String section,
-    Map<String, dynamic> values,
-  ) async {
+    Map<String, dynamic> values, {
+    bool restart = false,
+  }) async {
     await request(
       '/api/hermes/config',
       method: 'PUT',
-      body: {'section': section, 'values': values, 'restart': false},
+      body: {'section': section, 'values': values, 'restart': restart},
+      timeout: Duration(seconds: restart ? 90 : 25),
+    );
+  }
+
+  Future<void> updateHermesChannelCredentials(
+    String platform,
+    Map<String, dynamic> values,
+  ) async {
+    await request(
+      '/api/hermes/config/credentials',
+      method: 'PUT',
+      body: {'platform': platform, 'values': values},
+      timeout: const Duration(seconds: 90),
+    );
+  }
+
+  Future<Map<String, dynamic>> clearHermesChannelCredentials(String platform) =>
+      request(
+        '/api/hermes/config/credentials/${Uri.encodeComponent(platform)}',
+        method: 'DELETE',
+        timeout: const Duration(seconds: 90),
+      );
+
+  Future<Map<String, dynamic>> hermesWeixinQrCode() =>
+      request('/api/hermes/weixin/qrcode');
+  Future<Map<String, dynamic>> hermesWeixinQrStatus(String code) => request(
+    '/api/hermes/weixin/qrcode/status',
+    query: {'qrcode': code},
+    timeout: const Duration(seconds: 45),
+  );
+  Future<void> saveHermesWeixinCredentials(Map<String, dynamic> values) async {
+    await request(
+      '/api/hermes/weixin/save',
+      method: 'POST',
+      body: values,
+      timeout: const Duration(seconds: 90),
     );
   }
 

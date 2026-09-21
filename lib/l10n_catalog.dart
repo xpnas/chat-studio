@@ -2,6 +2,102 @@
 // substituted only after translation. Never use this catalog on chat bodies,
 // model output, filenames, credentials, or arbitrary server content.
 const appEnglishCatalog = <String, String>{
+  "代理地址": "Proxy URL",
+  "运行时设置与 Agent 能力已合并到各 Agent 入口。":
+      "Runtime settings and capabilities are grouped under each Agent.",
+  "能力管理": "Capabilities",
+  "Agent 管理": "Agent management",
+  "运行时与能力管理合并到对应 Agent，配置与 Web 端同步。":
+      "Runtime and capabilities are managed under each Agent and synced with Web.",
+  "任务、频道、技能、插件、MCP 与记忆": "Tasks, channels, skills, plugins, MCP and memory",
+  "技能、MCP 与记忆": "Skills, MCP and memory",
+  "任务": "Tasks",
+  "频道": "Channels",
+  "技能": "Skills",
+  "插件": "Plugins",
+  "创建、暂停和立即执行定时任务": "Create, pause and run scheduled tasks",
+  "配置 Telegram、Discord、Slack 等消息入口":
+      "Configure Telegram, Discord, Slack and other channels",
+  "启用、置顶并查看可复用技能": "Enable, pin and browse reusable skills",
+  "查看插件状态并启用或停用": "View plugin status and enable or disable plugins",
+  "管理外部工具服务器和连接状态": "Manage external tool servers and connections",
+  "编辑 Hermes 的长期记忆、用户和灵魂档案": "Edit Hermes memory, user profile and soul",
+  "管理 Ekko Agent 技能和启用状态": "Manage Ekko Agent skills and availability",
+  "管理 Ekko Agent 的外部工具服务器": "Manage Ekko Agent external tool servers",
+  "搜索、编辑和删除 Ekko 记忆节点": "Search, edit and delete Ekko memory nodes",
+  "将 Web 端左侧管理功能整理为适合手机操作的能力入口。所有修改直接保存到当前服务器和 Profile。":
+      "Manage Agent capabilities here. All changes are saved to the current server and profile.",
+  "配置保存到当前服务器 · Profile：{0}": "Saved on the current server · Profile: {0}",
+  "需要提及": "Require mention",
+  "无需提及的会话": "Free-response chats",
+  "提及匹配模式": "Mention patterns",
+  "启用反应": "Reactions",
+  "自动创建线程": "Auto thread",
+  "无需提及的频道": "Free-response channels",
+  "允许的频道": "Allowed channels",
+  "忽略的频道": "Ignored channels",
+  "不创建线程的频道": "No-thread channels",
+  "允许响应其他 Bot": "Allow bots",
+  "启用 WhatsApp": "Enable WhatsApp",
+  "用户 ID": "User ID",
+  "私聊使用提及线程": "DM mention threads",
+  "无需提及的房间": "Free-response rooms",
+  "卡片模板 ID": "Card template ID",
+  "允许的用户": "Allowed users",
+  "允许所有用户": "Allow all users",
+  "Markdown 支持": "Markdown support",
+  "已配置": "Configured",
+  "未配置": "Not configured",
+  "频道凭据": "Channel credentials",
+  "频道行为": "Channel behavior",
+  "离开后将丢弃本页未保存的频道设置。": "Unsaved channel settings will be discarded.",
+  "读取最新频道状态失败，请刷新重试；已提交的修改不会回滚。":
+      "Could not load the latest channel status. Refresh to retry; submitted changes have not been rolled back.",
+  "刷新将重新读取 Web 使用的服务器配置。":
+      "Refresh reloads the server configuration used by Web.",
+  "频道设置已保存；网关是否自动重启由服务端策略决定。":
+      "Channel settings saved. Gateway auto-restart follows server policy.",
+  "行为设置已保存，但凭据保存未完成。": "Behavior saved, but credentials could not be saved.",
+  "保存未完成，服务端可能已写入部分配置。":
+      "Save did not complete. Some settings may already be persisted on the server.",
+  "清除凭据？": "Clear credentials?",
+  "清除后频道将无法连接，确定继续？": "The channel will no longer connect. Continue?",
+  "凭据已清除，但网关重启失败，请检查服务端。":
+      "Credentials cleared, but the gateway restart failed. Check the server.",
+  "凭据已清除；自动重启已禁用，请手动重启网关。":
+      "Credentials cleared. Auto-restart is disabled; restart the gateway manually.",
+  "凭据已清除": "Credentials cleared",
+  "服务端返回了无效的扫码地址": "The server returned an invalid QR login URL",
+  "无法打开扫码页面，请重试或手动填写凭据。":
+      "Could not open QR login. Retry or enter credentials manually.",
+  "扫码确认数据不完整，请重新扫码": "Incomplete QR confirmation. Please scan again.",
+  "扫码登录成功，频道凭据已保存": "QR login succeeded. Channel credentials saved.",
+  "扫码状态异常，请重新扫码": "Unexpected QR status. Please scan again.",
+  "开启后所有用户均可与此 Bot 交互":
+      "Enabling this allows all users to interact with this bot",
+  "允许所有用户？": "Allow all users?",
+  "保存后清除此项凭据": "This credential will be cleared when saved",
+  "已保存；留空保持不变，输入新值替换": "Saved; leave blank to keep, or enter a replacement",
+  "输入凭据后保存": "Enter credentials, then save",
+  "多个值请使用逗号分隔": "Separate multiple values with commas",
+  "清除此项凭据": "Clear this credential",
+  "清除此项凭据？": "Clear this credential?",
+  "点击保存后生效，可能导致频道断开连接。": "Applies when saved and may disconnect the channel.",
+  "同一 Bot 凭据不要同时用于多个 Profile 或其他运行实例，以免连接冲突。":
+      "Avoid using the same bot credentials in multiple profiles or other running instances to prevent connection conflicts.",
+  "微信扫码登录": "Weixin QR login",
+  "正在获取二维码…": "Fetching QR code…",
+  "请在打开的页面扫码；确认后自动保存到当前 Profile。":
+      "Scan on the opened page. Confirmation saves credentials to this profile.",
+  "已扫码，请在微信中确认": "Scanned. Confirm in Weixin.",
+  "二维码已过期，请重新获取": "QR code expired. Request a new one.",
+  "扫码已确认": "QR login confirmed",
+  "扫码失败，请重试": "QR login failed. Please retry.",
+  "打开扫码页面": "Open QR login",
+  "清除全部凭据": "Clear all credentials",
+  "请先保存或放弃修改，再清除全部凭据。":
+      "Save or discard changes before clearing all credentials.",
+
   "上下文 {0} · 上限未知": "Context {0} · Limit unknown",
   "{0} / {1} · 剩余 {2}": "{0} / {1} · {2} left",
   "上下文已用 {0} tokens，上限 {1} tokens":

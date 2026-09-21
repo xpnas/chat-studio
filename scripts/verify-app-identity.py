@@ -18,8 +18,18 @@ PROTOCOL_VALUES = (
     "ekko",
     "Ekko",
 )
+# Exact upstream Agent adapter identifiers; do not permit arbitrary prefixes.
+AGENT_MANAGEMENT_IDENTIFIERS = (
+    "ekkoSkills", "ekkoSkill", "createEkkoSkill", "setEkkoSkillEnabled",
+    "updateEkkoSkill", "deleteEkkoSkill", "ekkoMcpServers", "addEkkoMcp",
+    "updateEkkoMcp", "deleteEkkoMcp", "testEkkoMcp", "ekkoMemory",
+    "updateEkkoMemory", "deleteEkkoMemory", "_deleteEkkoSkill",
+    "_editEkkoMemory", "_showEkkoSkillEditor",
+)
 EXTERNAL_FILES = {
     "lib/data/studio_protocol.dart": PROTOCOL_VALUES,
+    "lib/data/agent_capabilities.dart": PROTOCOL_VALUES + AGENT_MANAGEMENT_IDENTIFIERS,
+    "lib/ui/agent_capabilities_screen.dart": PROTOCOL_VALUES + AGENT_MANAGEMENT_IDENTIFIERS,
     # These UI strings describe upstream wire/runtime names; they are not the
     # Chat Studio client identity and must remain visible to users.
     "lib/l10n_catalog.dart": PROTOCOL_VALUES,
@@ -60,7 +70,8 @@ def verify():
     check('android:label="Chat Studio"' in read("android/app/src/main/AndroidManifest.xml"), "Android display name mismatch")
     check('title: \'Chat Studio\'' in read("lib/main.dart"), "Flutter display name mismatch")
     storage = read("lib/data/app_storage.dart")
-    for key in ("session", "servers", "choice", "device"):
+    # Web login no longer registers or persists an app-login device identity.
+    for key in ("session", "servers", "choice"):
         check(f"chatstudio.{key}.v1" in storage, f"Storage namespace mismatch: {key}")
     files = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=ROOT).decode("utf-8").split("\0")
     for name in sorted(set(files)):

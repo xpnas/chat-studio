@@ -1,5 +1,4 @@
 import 'agent_configuration_screen.dart';
-import 'agent_capabilities_screen.dart';
 import '../l10n.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -412,109 +411,99 @@ class _ManagementScreenState extends State<ManagementScreen>
     ),
   );
 
-  Widget _agentsPage() => _page([
-    _section(
-      context.tr('Agent 能力'),
-      context.tr('任务、频道、技能、插件、MCP 与记忆与 Web 端实时同步。'),
-      [
-        ListTile(
-          leading: const Icon(Icons.apps_rounded),
-          title: Text(context.tr('打开 Agent 能力管理')),
-          subtitle: Text(context.tr('移动端采用全屏列表和底部编辑器，操作结果直接保存到服务端。')),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap:
-              _api == null || widget.controller.account?.role != 'super_admin'
-              ? null
-              : () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => AgentCapabilitiesScreen(
-                      api: _api!,
-                      controller: widget.controller,
+  Widget _agentsPage() =>
+      _page([
+        _section(
+          context.tr("Agent 管理"),
+          context.tr("运行时设置与 Agent 能力已合并到各 Agent 入口。"),
+          [
+            if (_runtimeError != null) ...[_EmptyRow(label: _runtimeError!)],
+            if (_runtimeError == null)
+              ...asList(_runtimeAgents['agents'])
+                  .map(asMap)
+                  .where(
+                    (row) => ['hermes', 'ekko-agent'].contains(text(row['id'])),
+                  )
+                  .map(
+                    (row) => ListTile(
+                      leading: AgentAvatar(
+                        controller: widget.controller,
+                        agentId: text(row['id']),
+                        size: 38,
+                      ),
+                      title: Text(
+                        row['id'] == 'hermes' ? 'Hermes Runtime' : 'Ekko Agent',
+                      ),
+                      trailing: Icon(
+                        widget.controller.account?.role == 'super_admin'
+                            ? Icons.chevron_right_rounded
+                            : Icons.lock_outline_rounded,
+                        size: 20,
+                      ),
+                      onTap: widget.controller.account?.role != 'super_admin'
+                          ? null
+                          : () async {
+                              final api = _api;
+                              if (api == null) return;
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => row['id'] == 'hermes'
+                                      ? HermesAgentSettingsScreen(
+                                          api: api,
+                                          controller: widget.controller,
+                                        )
+                                      : BuiltInAgentSettingsScreen(
+                                          api: api,
+                                          controller: widget.controller,
+                                        ),
+                                ),
+                              );
+                              if (mounted && _api == api) {
+                                await _refreshAgentsData();
+                                await widget.controller.refreshCapabilities();
+                              }
+                            },
+                      subtitle: Text(
+                        context.l10n.format('{0} · {1}', {
+                          '0': row['installed'] is! bool
+                              ? context.tr('状态未知')
+                              : row['installed'] == true &&
+                                    row['source'] != 'not-installed'
+                              ? context.tr('已安装')
+                              : context.tr('未安装或不可用'),
+                          '1': row['id'] == 'hermes'
+                              ? context.tr('运行、记忆、会话、网关与版本管理')
+                              : context.tr('运行、模型、工具、模块与高级设置'),
+                        }),
+                      ),
                     ),
                   ),
-                ),
+          ],
         ),
-      ],
-    ),
-    _section(context.tr("运行时"), context.tr("运行时状态与 Coding Agent 安装目录来自不同接口。"), [
-      if (_runtimeError != null) ...[_EmptyRow(label: _runtimeError!)],
-      if (_runtimeError == null)
-        ...asList(_runtimeAgents['agents'])
-            .map(asMap)
-            .where((row) => ['hermes', 'ekko-agent'].contains(text(row['id'])))
-            .map(
-              (row) => ListTile(
-                leading: AgentAvatar(
-                  controller: widget.controller,
-                  agentId: text(row['id']),
-                  size: 38,
-                ),
-                title: Text(
-                  row['id'] == 'hermes' ? 'Hermes Runtime' : 'Ekko Agent',
-                ),
-                trailing: Icon(
-                  widget.controller.account?.role == 'super_admin'
-                      ? Icons.chevron_right_rounded
-                      : Icons.lock_outline_rounded,
-                  size: 20,
-                ),
-                onTap: widget.controller.account?.role != 'super_admin'
-                    ? null
-                    : () async {
-                        final api = _api;
-                        if (api == null) return;
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => row['id'] == 'hermes'
-                                ? HermesAgentSettingsScreen(api: api)
-                                : BuiltInAgentSettingsScreen(api: api),
-                          ),
-                        );
-                        if (mounted && _api == api) {
-                          await _refreshAgentsData();
-                          await widget.controller.refreshCapabilities();
-                        }
-                      },
-                subtitle: Text(
-                  context.l10n.format('{0} · {1}', {
-                    '0': row['installed'] is! bool
-                        ? context.tr('状态未知')
-                        : row['installed'] == true &&
-                              row['source'] != 'not-installed'
-                        ? context.tr('已安装')
-                        : context.tr('未安装或不可用'),
-                    '1': row['id'] == 'hermes'
-                        ? context.tr('运行、记忆、会话、网关与版本管理')
-                        : context.tr('运行、模型、工具、模块与高级设置'),
-                  }),
-                ),
+        _section(
+          context.tr("Coding Agent 管理"),
+          context.tr("以下 CLI 的安装、更新和配置均在服务端执行；不包含 Hermes Runtime。"),
+          [
+            if (_agentsError != null) _EmptyRow(label: _agentsError!),
+            if (_agentRows.isEmpty)
+              _EmptyRow(label: context.tr("服务端未返回 Agent 管理数据")),
+            for (final agent in _agentRows) _agentTile(agent),
+          ],
+        ),
+        _section(
+          context.tr("移动端边界"),
+          context.tr("手机端只管理服务端运行环境，不会在手机上安装 CLI 或执行 Agent。"),
+          [
+            ListTile(
+              leading: Icon(Icons.info_outline_rounded),
+              title: Text(context.tr("配置文件与 MCP")),
+              subtitle: Text(
+                context.tr("配置文件使用全屏编辑；Hermes Runtime 与 CLI 使用不同的管理接口。"),
               ),
             ),
-    ]),
-    _section(
-      context.tr("Coding Agent 管理"),
-      context.tr("以下 CLI 的安装、更新和配置均在服务端执行；不包含 Hermes Runtime。"),
-      [
-        if (_agentsError != null) _EmptyRow(label: _agentsError!),
-        if (_agentRows.isEmpty)
-          _EmptyRow(label: context.tr("服务端未返回 Agent 管理数据")),
-        for (final agent in _agentRows) _agentTile(agent),
-      ],
-    ),
-    _section(
-      context.tr("移动端边界"),
-      context.tr("手机端只管理服务端运行环境，不会在手机上安装 CLI 或执行 Agent。"),
-      [
-        ListTile(
-          leading: Icon(Icons.info_outline_rounded),
-          title: Text(context.tr("配置文件与 MCP")),
-          subtitle: Text(
-            context.tr("配置文件使用全屏编辑；Hermes Runtime 与 CLI 使用不同的管理接口。"),
-          ),
+          ],
         ),
-      ],
-    ),
-  ]);
+      ]);
 
   Widget _agentTile(Map<String, dynamic> agent) {
     final id = text(agent['id']);

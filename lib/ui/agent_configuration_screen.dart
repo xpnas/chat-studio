@@ -3,17 +3,26 @@ import 'package:flutter/material.dart';
 import '../data/agent_settings.dart';
 import '../data/models.dart';
 import '../data/studio_api.dart';
+import '../state/app_controller.dart';
 import '../l10n.dart';
 import 'widgets/settings_editors.dart';
 import 'runtime_manager_screen.dart';
+import 'agent_capabilities_screen.dart';
 
 class BuiltInAgentSettingsScreen extends AgentConfigurationScreen {
-  const BuiltInAgentSettingsScreen({super.key, required super.api});
+  const BuiltInAgentSettingsScreen({
+    super.key,
+    required super.api,
+    super.controller,
+  });
 }
 
 class HermesAgentSettingsScreen extends AgentConfigurationScreen {
-  const HermesAgentSettingsScreen({super.key, required super.api})
-    : super(hermes: true);
+  const HermesAgentSettingsScreen({
+    super.key,
+    required super.api,
+    super.controller,
+  }) : super(hermes: true);
 }
 
 /// Shared native form; the two server protocols retain independent saves.
@@ -21,9 +30,11 @@ class AgentConfigurationScreen extends StatefulWidget {
   const AgentConfigurationScreen({
     super.key,
     required this.api,
+    this.controller,
     this.hermes = false,
   });
   final StudioApi api;
+  final AppController? controller;
   final bool hermes;
   @override
   State<AgentConfigurationScreen> createState() =>
@@ -552,6 +563,38 @@ class _AgentConfigurationScreenState extends State<AgentConfigurationScreen> {
                 key: ValueKey(_section),
                 padding: const EdgeInsets.fromLTRB(15, 4, 15, 24),
                 children: [
+                  if (widget.controller != null)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: ListTile(
+                        leading: Icon(
+                          widget.hermes
+                              ? Icons.hub_rounded
+                              : Icons.auto_awesome_rounded,
+                        ),
+                        title: Text(context.tr('能力管理')),
+                        subtitle: Text(
+                          context.tr(
+                            widget.hermes
+                                ? '任务、频道、技能、插件、MCP 与记忆'
+                                : '技能、MCP 与记忆',
+                          ),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: _saving || _loading
+                            ? null
+                            : () => Navigator.push<void>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AgentCapabilitiesScreen(
+                                    api: widget.api,
+                                    controller: widget.controller!,
+                                    initialHermes: widget.hermes,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
                   if (widget.hermes && _section == '运行')
                     Card(
                       margin: const EdgeInsets.only(bottom: 10),

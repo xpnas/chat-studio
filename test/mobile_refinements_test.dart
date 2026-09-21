@@ -493,6 +493,7 @@ class VoiceFixtureApi extends StudioApi {
     Map<String, dynamic>? body,
     Map<String, String>? query,
     bool public = false,
+    Duration timeout = const Duration(seconds: 25),
   }) async => path.endsWith('profile-status')
       ? {'configured': true, 'activeProvider': 'custom'}
       : {};
