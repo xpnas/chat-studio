@@ -2,11 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chatstudio/data/models.dart';
 import 'package:chatstudio/main.dart';
+import 'package:chatstudio/state/chat_timeline.dart';
 import 'package:chatstudio/ui/widgets/stable_markdown.dart';
 import 'support.dart';
 
 // Structural performance gates, not a replacement for profile-mode device timing.
 void main() {
+  test('display messages reuse derived data until the timeline changes', () {
+    final timeline = ChatTimeline();
+    final first = timeline.displayMessages;
+    expect(identical(first, timeline.displayMessages), isTrue);
+
+    timeline.apply('message.delta', {'delta': 'cached response'});
+    final updated = timeline.displayMessages;
+    expect(identical(first, updated), isFalse);
+    expect(updated.single.content, 'cached response');
+    expect(identical(updated, timeline.displayMessages), isTrue);
+  });
   testWidgets(
     'stream batches and typing preserve app shell and historical markdown',
     (tester) async {

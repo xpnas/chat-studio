@@ -15,12 +15,37 @@ class ChatTimeline {
       contextUsage = const ContextUsage();
       _plans.clear();
       _planOutcomes.clear();
+      _resetStreamingAccumulator();
+      _touch();
     }
     _sessionId = value;
   }
 
   final Map<String, TaskPlan> _plans = {};
   final Map<String, String> _planOutcomes = {};
+  int _revision = 0;
+  int _displayRevision = -1;
+  List<ChatMessage>? _displayCache;
+  List<ChatMessage>? _displaySource;
+  int _displayLength = -1;
+  String? _streamingKey;
+  StringBuffer? _streamingContent;
+  StringBuffer? _streamingReasoning;
+
+  void _touch() {
+    _revision++;
+    _displayRevision = -1;
+    _displayCache = null;
+    _displaySource = null;
+    _displayLength = -1;
+  }
+
+  void _resetStreamingAccumulator() {
+    _streamingKey = null;
+    _streamingContent = null;
+    _streamingReasoning = null;
+  }
+
   List<TaskPlan> get taskPlans =>
       _plans.values
           .map(
@@ -49,14 +74,24 @@ class ChatTimeline {
       _plans[plan.key] = plan;
       changed = true;
     }
+    if (changed) _touch();
     return changed;
   }
 
   void _stopPlans(String run, String state) {
-    if (run.isNotEmpty) _planOutcomes[run] = state;
+    if (run.isNotEmpty && _planOutcomes[run] != state) {
+      _planOutcomes[run] = state;
+      _touch();
+    }
   }
 
-  List<ChatMessage> messages = [];
+  List<ChatMessage> _messages = [];
+  List<ChatMessage> get messages => _messages;
+  set messages(List<ChatMessage> value) {
+    _messages = value;
+    _touch();
+  }
+
   String? runId;
   bool working = false;
   Map<String, dynamic>? interaction;
@@ -96,6 +131,7 @@ class ChatTimeline {
       ];
     }
     activeQueueId = id;
+    _touch();
   }
 
   void reconcileQueue(dynamic value) {
@@ -112,6 +148,7 @@ class ChatTimeline {
           ),
         )
         .toList();
+    _touch();
   }
 
   int liveRevision = 0;
@@ -132,6 +169,8 @@ class ChatTimeline {
     queue = [];
     activeQueueId = null;
     activity = '';
+    _resetStreamingAccumulator();
+    _touch();
   }
 
   void begin(
@@ -153,6 +192,8 @@ class ChatTimeline {
     working = true;
     activity = '正在发送';
     interaction = null;
+    _resetStreamingAccumulator();
+    _touch();
   }
 
   void replace(List<ChatMessage> history, {bool keepOlder = false}) {
@@ -221,10 +262,18 @@ class ChatTimeline {
       );
       if (overlap > 0) messages = [...old.take(overlap), ...messages];
     }
+    _resetStreamingAccumulator();
+    _touch();
   }
 
   /// Keep one visual assistant turn, while raw rows still determine pagination.
   List<ChatMessage> get displayMessages {
+    if (_displayRevision == _revision &&
+        _displayCache != null &&
+        identical(_displaySource, messages) &&
+        _displayLength == messages.length) {
+      return _displayCache!;
+    }
     final result = <ChatMessage>[];
     final rows = messages.where((m) => m.visible).toList();
     for (final plan in taskPlans) {
@@ -293,17 +342,22 @@ class ChatTimeline {
         result.add(message);
       }
     }
-    return result;
+    _displayRevision = _revision;
+    _displaySource = messages;
+    _displayLength = messages.length;
+    return _displayCache = List.unmodifiable(result);
   }
 
   void markUncertain() {
-    messages = messages
-        .map(
-          (m) => m.role == 'user' && m.delivery == 'sending'
-              ? m.copyWith(delivery: 'uncertain')
-              : m,
-        )
-        .toList();
+    var changed = false;
+    for (var i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      if (message.role == 'user' && message.delivery == 'sending') {
+        messages[i] = message.copyWith(delivery: 'uncertain');
+        changed = true;
+      }
+    }
+    if (changed) _touch();
   }
 
   void _acknowledge() {
@@ -311,8 +365,7 @@ class ChatTimeline {
     if (lastUser < 0) return;
     final user = messages[lastUser];
     if (user.pending && ['sending', 'uncertain'].contains(user.delivery)) {
-      messages = [...messages]
-        ..[lastUser] = user.copyWith(pending: false, delivery: '');
+      messages[lastUser] = user.copyWith(pending: false, delivery: '');
     }
   }
 
@@ -336,13 +389,12 @@ class ChatTimeline {
           ? 'failed'
           : 'running',
     );
-    messages = [...messages]
-      ..[index] = message.copyWith(
-        tools: {
-          ...{for (final t in message.tools) t.id: t},
-          tool.id: tool,
-        }.values.take(100).toList(),
-      );
+    messages[index] = message.copyWith(
+      tools: {
+        ...{for (final t in message.tools) t.id: t},
+        tool.id: tool,
+      }.values.take(100).toList(),
+    );
   }
 
   void prepend(List<ChatMessage> history) {
@@ -351,6 +403,7 @@ class ChatTimeline {
       ...history.where((m) => m.visible && !ids.contains(m.id)),
       ...messages,
     ];
+    _touch();
   }
 
   void _assistant({
@@ -373,20 +426,36 @@ class ChatTimeline {
             runMarker: runId ?? '',
             timestamp: DateTime.now().millisecondsSinceEpoch,
           );
+    final key = old.renderKey;
+    if (_streamingKey != key) {
+      _streamingKey = key;
+      _streamingContent = StringBuffer(old.content);
+      _streamingReasoning = StringBuffer(old.reasoning);
+    }
+    if (output != null) {
+      _streamingContent = StringBuffer(output);
+    } else if (delta != null && delta.isNotEmpty) {
+      _streamingContent!.write(delta);
+    }
+    if (reasoning != null && reasoning.isNotEmpty) {
+      _streamingReasoning!.write(reasoning);
+    }
     final next = old.copyWith(
       id: id,
-      content: output ?? '${old.content}${delta ?? ''}',
-      reasoning: '${old.reasoning}${reasoning ?? ''}',
+      content: _streamingContent!.toString(),
+      reasoning: _streamingReasoning!.toString(),
       pending: !done,
     );
     if (index >= 0) {
-      messages = [...messages]..[index] = next;
+      messages[index] = next;
     } else if (next.content.isNotEmpty || next.reasoning.isNotEmpty || !done) {
-      messages = [...messages, next];
+      messages.add(next);
     }
+    if (done) _resetStreamingAccumulator();
   }
 
   bool apply(String event, Map<String, dynamic> data) {
+    _touch();
     final incomingRun = text(data['run_id']);
     if (event == 'plan.updated') {
       final plan = TaskPlan.parse(data);
@@ -938,5 +1007,6 @@ class ChatTimeline {
       }
     }
     contextUsage = contextUsage.merge(data);
+    _touch();
   }
 }
