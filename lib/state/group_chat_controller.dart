@@ -34,6 +34,12 @@ class GroupChatController extends ChangeNotifier {
   String? _pendingId, _pendingSignature;
   bool get canSend => connected && _joined && !sending;
   bool get working => messages.any((m) => m.isStreaming);
+  bool get canRespondToInteraction =>
+      connected &&
+      _joined &&
+      timeline.interaction != null &&
+      !timeline.interactionSubmitting &&
+      !timeline.interactionExpired;
   List<ChatMessage> get displayMessages => timeline.displayMessages;
   final _uuid = const Uuid();
 
@@ -43,6 +49,7 @@ class GroupChatController extends ChangeNotifier {
     connected = _joined = _joining = false;
     error = null;
     loading = true;
+    timeline.clear();
     _notify();
     try {
       final detail = await api.groupRoomDetail(room.id);
@@ -144,6 +151,14 @@ class GroupChatController extends ChangeNotifier {
       case 'message_stream_end':
         _finish(text(data['id']));
         break;
+      case 'clarify.requested':
+      case 'group.clarification.requested':
+        _interactionEvent('clarify.requested', data);
+        break;
+      case 'clarify.resolved':
+      case 'group.clarification.resolved':
+        _interactionEvent('clarify.resolved', data);
+        break;
       case 'agents_updated':
         agents = asList(
           data['agents'],
@@ -184,6 +199,12 @@ class GroupChatController extends ChangeNotifier {
           notify: false,
         );
       }
+      for (final raw in asList(response['pendingClarifies'])) {
+        _interactionEvent('clarify.requested', asMap(raw), notify: false);
+      }
+      for (final raw in asList(response['pendingApprovals'])) {
+        _interactionEvent('approval.requested', asMap(raw), notify: false);
+      }
       if (response.containsKey('hasMore')) hasMore = flag(response['hasMore']);
       if (response.containsKey('total')) total = integer(response['total']);
       error = null;
@@ -197,6 +218,43 @@ class GroupChatController extends ChangeNotifier {
       _notify();
     } finally {
       if (generation == _generation) _joining = false;
+    }
+  }
+
+  void _interactionEvent(
+    String event,
+    Map<String, dynamic> data, {
+    bool notify = true,
+  }) {
+    final normalized = {
+      ...data,
+      if (data['run_id'] == null && data['runId'] != null)
+        'run_id': data['runId'],
+    };
+    timeline.apply(event, normalized);
+    if (notify) _notify();
+  }
+
+  void respondToInteraction(String response) {
+    final pending = timeline.interaction;
+    if (pending == null || !canRespondToInteraction) return;
+    final approval = pending['kind'] == 'approval.requested';
+    final id = text(pending[approval ? 'approval_id' : 'clarify_id']);
+    if (id.isEmpty) return;
+    try {
+      transport.emit(approval ? 'approval.respond' : 'clarify.respond', {
+        'roomId': room.id,
+        if (approval) 'approval_id': id,
+        if (!approval) 'clarify_id': id,
+        approval ? 'choice' : 'response': response,
+      });
+      timeline.interactionSubmitting = true;
+      timeline.interactionError = null;
+      timeline.activity = '等待服务器确认';
+      _notify();
+    } catch (e) {
+      error = '$e';
+      _notify();
     }
   }
 

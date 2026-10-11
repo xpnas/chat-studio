@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../l10n.dart';
 import '../data/models.dart';
+import '../data/structured_interaction.dart';
 import '../data/studio_api.dart';
 import '../state/app_controller.dart';
 import '../state/group_chat_controller.dart';
@@ -13,6 +14,7 @@ import 'widgets/chat_title.dart';
 import 'widgets/chat_swipe_region.dart';
 import 'widgets/conversation_drawer.dart';
 import 'widgets/workspace_drawer.dart';
+import 'widgets/structured_interaction_card.dart';
 
 class GroupChatScreen extends StatefulWidget {
   const GroupChatScreen({
@@ -39,6 +41,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   late final String _profile;
   bool _leaving = false;
   final input = TextEditingController();
+  final _interactionField = TextEditingController();
   final scroll = ScrollController();
   final progress = ValueNotifier<double>(0);
   bool collapsed = false, away = false, loadingOlder = false;
@@ -203,6 +206,99 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     _scheduleOlder();
   }
 
+  Widget _interactionPanel(BuildContext context) {
+    final data = controller.timeline.interaction;
+    if (data == null) return const SizedBox.shrink();
+    final approval = data['kind'] == 'approval.requested';
+    final question = text(data['question']);
+    final choices = asList(data['choices']).whereType<String>().toList();
+    final parsed = approval
+        ? null
+        : StructuredQuestionSet.parse(data['questions']) ??
+              StructuredQuestionSet.parse(data['question']) ??
+              StructuredQuestionSet.parse([
+                {
+                  'qid': 'question',
+                  'question': question.isEmpty ? context.tr('请补充信息') : question,
+                  'choices': choices,
+                  'choices_offered': choices,
+                  'multi_select': false,
+                },
+              ]);
+    final colors = Theme.of(context).colorScheme;
+    final canRespond = controller.canRespondToInteraction;
+    void respond(String value) {
+      controller.respondToInteraction(value);
+      _interactionField.clear();
+    }
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: parsed == null ? 260 : 500),
+      child: SingleChildScrollView(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.secondaryContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: parsed != null
+              ? StructuredInteractionCard(
+                  questionSet: parsed,
+                  enabled: canRespond,
+                  submitting: controller.timeline.interactionSubmitting,
+                  onSubmit: respond,
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      approval ? context.tr('需要你的授权') : context.tr('需要你补充信息'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    if (question.isNotEmpty) ...[
+                      const SizedBox(height: 7),
+                      SelectableText(question),
+                    ],
+                    const SizedBox(height: 9),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 6,
+                      children: [
+                        for (final choice in choices)
+                          ActionChip(
+                            label: Text(choice),
+                            onPressed: canRespond
+                                ? () => respond(choice)
+                                : null,
+                          ),
+                      ],
+                    ),
+                    if (!approval)
+                      TextField(
+                        controller: _interactionField,
+                        enabled: canRespond,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          hintText: context.tr('补充说明'),
+                          suffixIcon: IconButton(
+                            tooltip: context.tr('提交说明'),
+                            icon: const Icon(Icons.send_rounded),
+                            onPressed:
+                                canRespond &&
+                                    _interactionField.text.trim().isNotEmpty
+                                ? () => respond(_interactionField.text.trim())
+                                : null,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -211,6 +307,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     if (widget.controller == null) controller.dispose();
     input.removeListener(_inputChanged);
     input.dispose();
+    _interactionField.dispose();
     scroll.dispose();
     progress.dispose();
     super.dispose();
@@ -422,6 +519,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                       ),
                     ),
                   ),
+                if (controller.timeline.interaction != null)
+                  _interactionPanel(context),
                 ChatComposer(
                   controller: widget.appController,
                   input: input,

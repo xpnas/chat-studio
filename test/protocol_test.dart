@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:chatstudio/core/server_address.dart';
 import 'package:chatstudio/data/models.dart';
+import 'package:chatstudio/data/structured_interaction.dart';
 import 'package:chatstudio/state/chat_timeline.dart';
 
 void main() {
@@ -80,6 +84,62 @@ void main() {
     expect(m.visible, true);
     expect(m.content, '你好 🌱');
   });
+  test('structured clarification parses Python repr and preserves answers', () {
+    const raw =
+        "[{'qid': 'q0', 'question': '多问题卡片渲染是否正常？', 'choices': ['正常 (Recommended)', '异常', '部分正常'], 'choices_offered': ['正常', '异常', '部分正常'], 'multi_select': False}, {'qid': 'q1', 'question': '这是第二个问题（单选 + 推荐项）', 'choices': ['选项 A（推荐） (Recommended)', '选项 B'], 'choices_offered': ['选项 A（推荐）', '选项 B'], 'multi_select': False}, {'qid': 'q2', 'question': '这是第三个问题（多选）', 'choices': ['标签一 (Recommended)', '标签二'], 'choices_offered': ['标签一', '标签二'], 'multi_select': True}, {'qid': 'q3', 'question': '这是第四个问题（开放输入，无选项）', 'choices': None, 'choices_offered': None, 'multi_select': False}]";
+    final set = StructuredQuestionSet.parse(raw);
+    expect(set, isNotNull);
+    expect(set!.questions, hasLength(4));
+    expect(set.questions[0].choices.first.label, '正常');
+    expect(set.questions[0].choices.first.recommended, true);
+    expect(set.questions[1].choices.first.label, '选项 A');
+    expect(set.questions[2].multiSelect, true);
+    expect(set.questions[3].isOpen, true);
+
+    final response =
+        jsonDecode(
+              set.encodeResponses({
+                'q0': '正常 (Recommended)',
+                'q1': '选项 A（推荐） (Recommended)',
+                'q2': ['标签一 (Recommended)', '标签二'],
+                'q3': '继续执行',
+              }),
+            )
+            as Map<String, dynamic>;
+    expect((response['responses'] as List), hasLength(4));
+    expect((response['responses'] as List)[2]['answers'], [
+      '标签一 (Recommended)',
+      '标签二',
+    ]);
+  });
+  test(
+    'structured clarification ignores ordinary text and accepts JSON arrays',
+    () {
+      expect(StructuredQuestionSet.parse('普通澄清问题'), isNull);
+      final set = StructuredQuestionSet.parse([
+        {
+          'qid': 'q0',
+          'question': '选择',
+          'choices': ['A'],
+          'choices_offered': ['A'],
+          'multi_select': false,
+        },
+      ]);
+      expect(set?.questions.single.id, 'q0');
+      expect(
+        StructuredQuestionSet.parse({
+          'questions': [
+            {
+              'qid': 'nested',
+              'question': '嵌套结构',
+              'choices': ['可以'],
+            },
+          ],
+        })?.questions.single.id,
+        'nested',
+      );
+    },
+  );
   group('streaming reducer', () {
     late ChatTimeline timeline;
     setUp(() {

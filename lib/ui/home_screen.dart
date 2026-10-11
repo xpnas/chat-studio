@@ -5,6 +5,7 @@ import 'widgets/agent_picker.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
+import '../data/structured_interaction.dart';
 import '../state/app_controller.dart';
 import '../state/conversation_state.dart';
 import 'theme.dart';
@@ -14,6 +15,7 @@ import 'widgets/reading_handle.dart';
 import 'widgets/reading_anchor.dart';
 import 'widgets/conversation_drawer.dart';
 import 'widgets/chat_title.dart';
+import 'widgets/structured_interaction_card.dart';
 import 'group_chat_screen.dart';
 
 class _ConnectionLine extends StatelessWidget {
@@ -787,10 +789,14 @@ class _InteractionCardState extends State<_InteractionCard> {
       expectedSession: owner,
       expectedInteraction: interactionId,
     );
+    final questionSet = approval
+        ? null
+        : StructuredQuestionSet.parse(data['questions']) ??
+              StructuredQuestionSet.parse(data['question']);
     final choices = asList(data['choices']).whereType<String>().toList();
     final colors = Theme.of(context).colorScheme;
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 270),
+      constraints: BoxConstraints(maxHeight: questionSet == null ? 270 : 500),
       child: SingleChildScrollView(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -807,9 +813,10 @@ class _InteractionCardState extends State<_InteractionCard> {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              SelectableText(
-                approval ? text(data['description']) : text(data['question']),
-              ),
+              if (questionSet == null)
+                SelectableText(
+                  approval ? text(data['description']) : text(data['question']),
+                ),
               if (approval && text(data['command']).isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -892,6 +899,13 @@ class _InteractionCardState extends State<_InteractionCard> {
                         child: Text(context.tr("永久允许")),
                       ),
                   ],
+                )
+              else if (questionSet != null)
+                StructuredInteractionCard(
+                  questionSet: questionSet,
+                  enabled: canRespond,
+                  submitting: widget.controller.timeline.interactionSubmitting,
+                  onSubmit: respond,
                 )
               else ...[
                 if (choices.isNotEmpty)
