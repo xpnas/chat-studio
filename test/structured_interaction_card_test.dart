@@ -48,10 +48,24 @@ void main() {
 
       expect(find.text('请逐项回答'), findsOneWidget);
       expect(find.text('A'), findsOneWidget);
-      final chips = find.byType(FilterChip);
-      await tester.tap(chips.at(0));
-      await tester.tap(chips.at(2));
-      await tester.tap(chips.at(3));
+      await tester.tap(find.byKey(const ValueKey('q0:A (Recommended)')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('q1:X')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('q1:Y')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const ValueKey('q1:X')))
+            .value,
+        true,
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const ValueKey('q1:Y')))
+            .value,
+        true,
+      );
       await tester.enterText(find.byType(TextField), '继续');
       await tester.tap(find.text('提交回答'));
       await tester.pump();

@@ -1,60 +1,26 @@
 import '../l10n.dart';
+import 'session_tasks_screen.dart';
+import 'person_screens.dart';
+import '../data/mobile_features.dart';
+import '../data/message_selection.dart';
+import '../state/message_selection_controller.dart';
+import 'message_selection_screen.dart';
 import 'widgets/chat_swipe_region.dart';
 import 'widgets/workspace_drawer.dart';
 import 'widgets/agent_picker.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
-import '../data/structured_interaction.dart';
 import '../state/app_controller.dart';
-import '../state/conversation_state.dart';
 import 'theme.dart';
 import 'widgets/message_bubble.dart';
+import 'widgets/chat_history_list.dart';
 import 'widgets/chat_composer.dart';
-import 'widgets/reading_handle.dart';
-import 'widgets/reading_anchor.dart';
+import 'widgets/chat_reading_view.dart';
 import 'widgets/conversation_drawer.dart';
 import 'widgets/chat_title.dart';
-import 'widgets/structured_interaction_card.dart';
+import 'widgets/chat_interaction_card.dart';
 import 'group_chat_screen.dart';
-
-class _ConnectionLine extends StatelessWidget {
-  const _ConnectionLine({required this.controller});
-  final AppController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = !controller.connected || controller.syncing;
-    final colors = Theme.of(context).colorScheme;
-    return Semantics(
-      container: true,
-      label: controller.syncing
-          ? context.tr('正在同步对话状态…')
-          : controller.connected
-          ? context.tr('聊天已连接')
-          : context.tr('正在连接聊天服务…'),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: controller.connected ? null : controller.reconnect,
-        child: LinearProgressIndicator(
-          // Keep the indicator finite so opening/resuming the app never
-          // leaves widget tests (or reduced-motion users) with a perpetual
-          // animation. The color and fill communicate the connection state.
-          value: active ? (controller.syncing ? .62 : .22) : 0,
-          minHeight: 2,
-          color: active
-              ? controller.syncing
-                    ? colors.primary
-                    : colors.tertiary
-              : colors.primary.withValues(alpha: .18),
-          backgroundColor: colors.surfaceContainerHighest.withValues(
-            alpha: .32,
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
@@ -63,215 +29,108 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with ChatReadingState<HomeScreen> {
+  Conversation? get _selectionConversation =>
+      c.conversations
+          .where((row) => row.id == c.sessionId && row.profile == c.profile)
+          .firstOrNull ??
+      c.current;
+  Future<void> _selectMessages([String? initial]) async {
+    final api = c.api, session = _selectionConversation;
+    if (api == null ||
+        !MobileFeatures.messageSelection ||
+        !supportsSessionSelection(session)) {
+      return;
+    }
+    final id = session!.id, profile = c.profile, token = api.token;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MessageSelectionScreen<int, int>(
+          title: session.title,
+          scopeChanges: c,
+          messages: List.of(c.displayMessages),
+          initialMessageId: initial,
+          controller: MessageSelectionController<int, int>(
+            read: () => api.sessionMessageSelection(id),
+            remove: (ids, revision) =>
+                api.deleteSessionMessages(id, ids, revision),
+            reconcile: () => c.reconcileMessageDeletion(id),
+            valid: () =>
+                c.api == api &&
+                api.token == token &&
+                c.profile == profile &&
+                c.sessionId == id,
+          ),
+        ),
+      ),
+    );
+  }
+
   final _scaffold = GlobalKey<ScaffoldState>();
   final _input = TextEditingController();
-  final _scroll = ScrollController();
-  final _readingProgress = ValueNotifier<double>(0);
-  String? _lastSession;
-  ConversationDraft? _lastDraft;
-  bool _restoringView = false;
-  bool _historyCheckScheduled = false;
-  int _lastLength = 0, _liveRevision = 0;
-  bool _hasNewContent = false;
-  final _anchors = ReadingAnchor();
-  final _stage = GlobalKey();
-  int _gestureRevision = 0;
-  bool _hintOffered = false;
-  int _hintSerial = 0;
-  bool _showReadingHint = false;
-  Timer? _hintTimer;
-  bool _showJump = false;
-  bool _composerCollapsed = false, _userScrolling = false;
   AppController get c => widget.controller;
   @override
   void initState() {
     super.initState();
-    _lastDraft = c.draft;
-    _lastSession = c.sessionId;
     c.addListener(_changed);
-    _scroll.addListener(_scrollChanged);
-    _scheduleEarlierHistory();
+    initReading();
   }
 
-  void _scrollChanged() {
-    if (!mounted || !_scroll.hasClients) return;
-    _updateReadingProgress();
-    _scheduleEarlierHistory();
-    if (!_restoringView && identical(_lastDraft, c.draft)) {
-      c.draft.scrollOffset = _scroll.offset;
-    }
-    final pixels = _scroll.position.pixels.clamp(
-      _scroll.position.minScrollExtent,
-      _scroll.position.maxScrollExtent,
-    );
-    final showJump = pixels > 220;
-    final restore = _composerCollapsed && pixels <= 24;
-    if (showJump != _showJump || restore || (pixels <= 24 && _hasNewContent)) {
-      setState(() {
-        if (pixels <= 24) _hasNewContent = false;
-        _showJump = showJump;
-        if (restore) _composerCollapsed = false;
-      });
-    }
-  }
-
-  void _scheduleEarlierHistory() {
-    if (!mounted || _historyCheckScheduled) return;
-    _historyCheckScheduled = true;
-    final draft = c.draft;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _historyCheckScheduled = false;
-      if (!mounted ||
-          !identical(draft, c.draft) ||
-          _restoringView ||
-          !_scroll.hasClients ||
-          !_scroll.position.hasContentDimensions ||
-          !c.canLoadEarlier) {
-        return;
-      }
-      // reverse:true: older messages live at maxScrollExtent, not at zero.
-      // Also fill a viewport with short/hidden-only pages until it can scroll.
-      if (_scroll.position.extentAfter <= 240) {
-        unawaited(c.loadHistory(more: true));
-      }
-    });
-  }
-
-  void _updateReadingProgress() {
-    if (mounted &&
-        _scroll.hasClients &&
-        _scroll.position.hasContentDimensions) {
-      _readingProgress.value = historyReadProgress(_scroll.position);
-    }
-  }
-
-  bool _chatScrolled(ScrollNotification notification) {
-    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
-      return false;
-    }
-    if (notification is ScrollStartNotification &&
-        notification.dragDetails != null) {
-      _gestureRevision++;
-      _userScrolling = true;
-    } else if (notification is ScrollEndNotification) {
-      _userScrolling = false;
-    } else if (notification is ScrollUpdateNotification &&
-        _userScrolling &&
-        (notification.scrollDelta ?? 0) > 0 &&
-        notification.metrics.pixels > 160 &&
-        !_composerCollapsed &&
-        c.timeline.messages.isNotEmpty) {
-      // reverse:true: increasing offset means browsing older messages. Ignore
-      // programmatic restores, pagination and streaming layout changes.
-      setState(() => _composerCollapsed = true);
-      _offerReadingHint();
-    }
-    return false;
-  }
-
-  void _offerReadingHint() {
-    if (_hintOffered || c.readingHintSeen) return;
-    _hintOffered = true;
-    final serial = ++_hintSerial;
-    unawaited(c.markReadingHintSeen());
-    setState(() => _showReadingHint = true);
-    _hintTimer?.cancel();
-    _hintTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && serial == _hintSerial) {
-        setState(() => _showReadingHint = false);
-      }
-    });
-  }
-
-  void _expandComposer() {
-    // Expanding while a fling is settling should not immediately fold again.
-    _userScrolling = false;
-    setState(() => _composerCollapsed = false);
-  }
+  @override
+  ChatReadingSnapshot get readingSnapshot => ChatReadingSnapshot(
+    id: c.sessionId,
+    draft: c.draft,
+    messageCount: c.timeline.messages.length,
+    liveRevision: c.timeline.liveRevision,
+    hasNewer: c.hasNewerMessages,
+    readingOlder: c.readingOlderWindow,
+    canLoadEarlier: c.canLoadEarlier,
+  );
+  @override
+  bool get readingRouteVisible =>
+      ModalRoute.of(context)?.isCurrent == true &&
+      _scaffold.currentState?.isDrawerOpen != true &&
+      _scaffold.currentState?.isEndDrawerOpen != true;
+  @override
+  bool get readingHintSeen => c.readingHintSeen;
+  @override
+  Future<void> markReadingHintSeen() => c.markReadingHintSeen();
+  @override
+  void beginHistoryReading() => c.beginReadingWindow();
+  @override
+  Future<void> showLatestHistory() => c.showLatestHistory();
+  @override
+  Future<void> loadEarlierHistory() => c.loadHistory(more: true);
+  @override
+  Future<void> confirmLatestVisible() => c.confirmVisibleRead(atLatest: true);
 
   void _changed() {
-    if (!mounted) return;
-    setState(() {});
-    _scheduleEarlierHistory();
-    final session = c.sessionId, gesture = _gestureRevision;
-    final liveChanged = c.timeline.liveRevision != _liveRevision;
-    if (session == _lastSession &&
-        !liveChanged &&
-        !_userScrolling &&
-        _stage.currentContext != null) {
-      final box = _stage.currentContext!.findRenderObject() as RenderBox;
-      _anchors.preserve(
-        _scroll,
-        box.localToGlobal(Offset.zero).dy,
-        () =>
-            mounted &&
-            c.sessionId == session &&
-            gesture == _gestureRevision &&
-            !_userScrolling,
-      );
-    }
-    if (liveChanged) {
-      if (_scroll.hasClients && _scroll.offset > 120) _hasNewContent = true;
-      _liveRevision = c.timeline.liveRevision;
-    }
-    if (_lastSession != c.sessionId || !identical(_lastDraft, c.draft)) {
-      if (_scroll.hasClients && !_restoringView) {
-        _lastDraft?.scrollOffset = _scroll.offset;
-      }
-      _lastSession = c.sessionId;
-      _lastDraft = c.draft;
-      _restoringView = true;
-      _liveRevision = c.timeline.liveRevision;
-      _anchors.clear();
-      _hasNewContent = false;
-      _showReadingHint = false;
-      _hintSerial++;
-      _readingProgress.value = 0;
-      _composerCollapsed = false;
-      _userScrolling = false;
-      _lastLength = c.timeline.messages.length;
-      final restoredDraft = c.draft;
+    final person = c.personToOpen;
+    if (person != null) {
+      c.personToOpen = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !identical(c.draft, restoredDraft)) return;
-        if (_scroll.hasClients) {
-          _scroll.jumpTo(
-            restoredDraft.scrollOffset.clamp(
-              0,
-              _scroll.position.maxScrollExtent,
+        if (mounted) {
+          Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PersonScreen(app: c, sessionId: person),
             ),
           );
         }
-        _restoringView = false;
-        _scheduleEarlierHistory();
       });
-      return;
     }
-    if (c.timeline.messages.length != _lastLength) {
-      _lastLength = c.timeline.messages.length;
-      // A reversed list stays anchored while streaming; never force-scroll a reader.
-      if (_scroll.hasClients && _scroll.position.pixels < 120) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scroll.hasClients) {
-            _scroll.animateTo(
-              0,
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-            );
-          }
-        });
-      }
-    }
+    if (!mounted) return;
+    setState(() {});
+    readingChanged();
   }
 
   @override
   void dispose() {
     c.removeListener(_changed);
     _input.dispose();
-    _scroll.dispose();
-    _readingProgress.dispose();
-    _hintTimer?.cancel();
-    _hintSerial++;
+    disposeReading();
     super.dispose();
   }
 
@@ -293,10 +152,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       // The reading-region recognizer handles edge and center touches once.
       drawerEnableOpenDragGesture: false,
+      onDrawerChanged: (open) {
+        if (!open) scheduleReadReceipt();
+      },
       endDrawer: WorkspaceDrawer(controller: c),
       endDrawerEnableOpenDragGesture: false,
       onEndDrawerChanged: (open) {
         if (open && c.sessionId != null) c.refreshWorkspaceFiles();
+        if (!open) scheduleReadReceipt();
       },
       appBar: AppBar(
         leading: IconButton(
@@ -308,9 +171,44 @@ class _HomeScreenState extends State<HomeScreen> {
         title: ChatTitle(controller: c, title: c.title),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(2),
-          child: _ConnectionLine(controller: c),
+          child: ChatConnectionLine(
+            connected: c.connected,
+            syncing: c.syncing,
+            onReconnect: c.reconnect,
+          ),
         ),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: context.tr('更多操作'),
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'select') {
+                _selectMessages();
+                return;
+              }
+              Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SessionTasksScreen(
+                    app: c,
+                    sessionId: value == 'current' ? c.sessionId : null,
+                  ),
+                ),
+              );
+            },
+            itemBuilder: (_) => [
+              if (MobileFeatures.messageSelection &&
+                  supportsSessionSelection(_selectionConversation))
+                PopupMenuItem(value: 'select', child: Text(context.tr('选择消息'))),
+              if (MobileFeatures.sessionTasks)
+                PopupMenuItem(value: 'all', child: Text(context.tr('任务中心'))),
+              if (MobileFeatures.sessionTasks && c.sessionId != null)
+                PopupMenuItem(
+                  value: 'current',
+                  child: Text(context.tr('当前会话目标')),
+                ),
+            ],
+          ),
           IconButton(
             tooltip: context.tr("工作区"),
             onPressed: () => _scaffold.currentState!.openEndDrawer(),
@@ -324,44 +222,45 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 840),
-            child: Column(
-              children: [
-                if (c.workspaceNotice != null)
-                  ErrorNotice(
-                    message: c.workspaceNotice!,
-                    onDismiss: () {
-                      c.workspaceNotice = null;
-                      c.dismissError();
-                    },
-                  ),
-                if (c.error != null)
-                  ErrorNotice(message: c.error!, onDismiss: c.dismissError),
-                if (c.current?.canContinue == false)
-                  Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text(
-                      context.tr("此会话由工作流、群聊或其他 Agent 管理。移动端仅供查看，请新建普通对话。"),
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                Expanded(
-                  child: NotificationListener<ScrollMetricsNotification>(
-                    onNotification: (_) {
-                      _scrollChanged();
-                      return false;
-                    },
-                    child: _composer(context),
-                  ),
-                ),
-              ],
+      body: ChatBody(
+        notices: [
+          if (c.workspaceNotice != null)
+            ErrorNotice(
+              message: c.workspaceNotice!,
+              onDismiss: () {
+                c.workspaceNotice = null;
+                c.dismissError();
+              },
             ),
-          ),
-        ),
+          if (c.error != null)
+            ErrorNotice(message: c.error!, onDismiss: c.dismissError),
+          if (c.recoverableDrafts.isNotEmpty)
+            for (final recovered in c.recoverableDrafts)
+              ListTile(
+                dense: true,
+                title: Text(context.tr('有可恢复的草稿')),
+                subtitle: Text(
+                  recovered.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: TextButton(
+                  key: ValueKey('recover-draft:${recovered.sessionId}'),
+                  onPressed: () =>
+                      c.recoverConversationDraft(recovered.sessionId),
+                  child: Text(context.tr('恢复到新对话')),
+                ),
+              ),
+          if (c.current?.canContinue == false)
+            Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                context.tr("此会话由工作流、群聊或其他 Agent 管理。移动端仅供查看，请新建普通对话。"),
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+        ],
+        child: _composer(context),
       ),
     );
   }
@@ -379,213 +278,109 @@ class _HomeScreenState extends State<HomeScreen> {
   );
 
   Widget _readingLayout(Widget editor, Widget? handle, Widget? stop) {
-    final colors = Theme.of(context).colorScheme;
-    final rows = c.timeline.displayMessages;
+    final rows = c.displayMessages;
     final indices = <Key, int>{
       for (var i = 0; i < rows.length; i++)
         ValueKey(rows[i].renderKey): rows.length - i - 1,
     };
-    _anchors.prune(rows.map((m) => m.renderKey).toSet());
-    return Column(
-      children: [
-        Expanded(
-          child: NotificationListener<ScrollNotification>(
-            onNotification: _chatScrolled,
-            child: _swipeRegion(
-              SizedBox.expand(
-                key: const Key('reading-stage'),
-                child: Stack(
-                  key: _stage,
-                  children: [
-                    if (rows.isEmpty &&
-                        !c.loadingMessages &&
-                        !c.hasMoreMessages)
-                      _welcome(context)
-                    else if (c.loadingMessages &&
-                        rows.isEmpty &&
-                        !c.hasMoreMessages)
-                      const Center(child: CircularProgressIndicator.adaptive())
-                    else
-                      ListView.builder(
-                        key: const Key('message-list'),
-                        controller: _scroll,
-                        reverse: true,
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.only(bottom: 8, top: 8),
-                        itemCount: rows.length + (c.hasMoreMessages ? 1 : 0),
-                        findChildIndexCallback: (key) => indices[key],
-                        itemBuilder: (context, index) {
-                          if (index == rows.length) {
-                            return SizedBox(
-                              key: const Key('history-loading-edge'),
-                              height: 48,
-                              child: Center(
-                                child: c.historyPageError != null
-                                    ? TextButton.icon(
-                                        key: const Key('retry-earlier-history'),
-                                        onPressed:
-                                            c.connected &&
-                                                !c.syncing &&
-                                                !c.loadingMessages
-                                            ? c.retryEarlierHistory
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.refresh_rounded,
-                                          size: 16,
-                                        ),
-                                        label: Text(
-                                          c.historyPageError!,
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
-                                      )
-                                    : c.loadingMessages
-                                    ? Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          SizedBox(
-                                            width: 14,
-                                            height: 14,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 1.5,
-                                            ),
-                                          ),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            context.tr("正在加载更早的消息…"),
-                                            style: TextStyle(fontSize: 12),
-                                          ),
-                                        ],
-                                      )
-                                    : Text(
-                                        c.connected
-                                            ? context.tr("继续上滑查看更早消息")
-                                            : context.tr("连接恢复后加载历史"),
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                              ),
-                            );
-                          }
-                          final message = rows[rows.length - index - 1];
-                          return Container(
-                            key: ValueKey(message.renderKey),
-                            child: MessageBubble(
-                              key: _anchors.keyFor(message.renderKey),
-                              message: message,
-                              controller: c,
-                              anchorKey: (block) => _anchors.keyFor(
-                                '${message.renderKey}:$block',
-                              ),
-                              onRetry: c.canRetryMessage(message)
-                                  ? c.prepareRetry
+    readingAnchors.prune(rows.map((m) => m.renderKey).toSet());
+    return readingLayout(
+      history: Stack(
+        children: [
+          if (rows.isEmpty && !c.loadingMessages && !c.hasMoreMessages)
+            _welcome(context)
+          else if (c.loadingMessages && rows.isEmpty && !c.hasMoreMessages)
+            const Center(child: CircularProgressIndicator.adaptive())
+          else
+            ChatHistoryList(
+              listKey: const Key('message-list'),
+              controller: readingScroll,
+              itemCount: rows.length + (c.hasMoreMessages ? 1 : 0),
+              findChildIndexCallback: (key) => indices[key],
+              itemBuilder: (context, index) {
+                if (index == rows.length) {
+                  return SizedBox(
+                    key: const Key('history-loading-edge'),
+                    height: 48,
+                    child: Center(
+                      child: c.historyPageError != null
+                          ? TextButton.icon(
+                              key: const Key('retry-earlier-history'),
+                              onPressed:
+                                  c.connected &&
+                                      !c.syncing &&
+                                      !c.loadingMessages
+                                  ? c.retryEarlierHistory
                                   : null,
-                            ),
-                          );
-                        },
-                      ),
-                    if (_showReadingHint && handle != null)
-                      Positioned(
-                        left: 45,
-                        right: 45,
-                        bottom: 72,
-                        child: IgnorePointer(
-                          child: Center(
-                            child: Material(
-                              color: colors.surfaceContainerHighest.withValues(
-                                alpha: .94,
+                              icon: const Icon(Icons.refresh_rounded, size: 16),
+                              label: Text(
+                                c.historyPageError!,
+                                style: const TextStyle(fontSize: 12),
                               ),
-                              borderRadius: BorderRadius.circular(14),
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
+                            )
+                          : c.loadingMessages
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                  ),
                                 ),
-                                child: Text(
-                                  context.tr("轻点底部线条，继续输入"),
+                                SizedBox(width: 8),
+                                Text(
+                                  context.tr("正在加载更早的消息…"),
                                   style: TextStyle(fontSize: 12),
                                 ),
-                              ),
+                              ],
+                            )
+                          : Text(
+                              c.connected
+                                  ? context.tr("继续上滑查看更早消息")
+                                  : context.tr("连接恢复后加载历史"),
+                              style: const TextStyle(fontSize: 12),
                             ),
-                          ),
-                        ),
-                      ),
-                    if (handle != null)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 10,
-                        child: Center(child: RepaintBoundary(child: handle)),
-                      ),
-                    if (stop != null)
-                      Positioned(
-                        right: 20,
-                        bottom: _showJump ? 70 : 12,
-                        child: stop,
-                      ),
-                    if (_showJump)
-                      Positioned(
-                        bottom: 12,
-                        right: 20,
-                        child: FloatingActionButton.small(
-                          heroTag: 'jump',
-                          tooltip: context.tr("回到最新消息"),
-                          onPressed: () => _scroll.animateTo(
-                            0,
-                            duration: const Duration(milliseconds: 250),
-                            curve: Curves.easeOut,
-                          ),
-                          child: Badge(
-                            isLabelVisible: _hasNewContent,
-                            label: Text(context.tr("新")),
-                            child: const Icon(Icons.arrow_downward_rounded),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        ListenableBuilder(
-          listenable: c.speech,
-          builder: (context, _) => c.speech.activeId != null
-              ? Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.audiotrack_rounded, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          c.speech.loading
-                              ? context.tr("正在加载语音…")
-                              : context.tr("正在播放语音"),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => c.speech.stop(),
-                        child: Text(
-                          c.speech.loading
-                              ? context.tr("取消")
-                              : context.tr("停止播放"),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : c.speech.error == null
-              ? const SizedBox.shrink()
-              : Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    c.speech.error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  );
+                }
+                final message = rows[rows.length - index - 1];
+                return Container(
+                  key: ValueKey(message.renderKey),
+                  child: GestureDetector(
+                    onLongPress:
+                        MobileFeatures.messageSelection &&
+                            supportsSessionSelection(_selectionConversation)
+                        ? () => _selectMessages(message.id)
+                        : null,
+                    child: MessageBubble(
+                      onSelectMessage:
+                          MobileFeatures.messageSelection &&
+                              supportsSessionSelection(_selectionConversation)
+                          ? () => _selectMessages(message.id)
+                          : null,
+                      key: readingAnchors.keyFor(message.renderKey),
+                      message: message,
+                      controller: c,
+                      anchorKey: (block) =>
+                          readingAnchors.keyFor('${message.renderKey}:$block'),
+                      onRetry: c.canRetryMessage(message)
+                          ? c.prepareRetry
+                          : null,
                     ),
                   ),
-                ),
-        ),
+                );
+              },
+            ),
+        ],
+      ),
+      editor: editor,
+      handle: handle,
+      stop: stop,
+      wrapReading: _swipeRegion,
+      footer: [
+        ChatSpeechStatus(speech: c.speech),
         if (c.timeline.queue.isNotEmpty)
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 130),
@@ -624,36 +419,35 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         if (c.timeline.interaction != null)
-          _InteractionCard(
-            key: ValueKey(
-              '${c.profile}:${c.sessionId}:${c.timeline.interaction?["approval_id"] ?? c.timeline.interaction?["clarify_id"]}',
-            ),
-            controller: c,
-          ),
-        if (c.working && c.timeline.activity.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
-            child: Row(
-              children: [
-                const SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 1.5),
+          Builder(
+            builder: (_) {
+              final data = c.timeline.interaction!;
+              final approval = data['kind'] == 'approval.requested';
+              final owner = c.sessionId;
+              final interactionId = text(
+                data[approval ? 'approval_id' : 'clarify_id'],
+              );
+              return ChatInteractionCard(
+                key: ValueKey('${c.profile}:$owner:$interactionId'),
+                data: data,
+                enabled:
+                    c.connected &&
+                    !c.syncing &&
+                    !c.timeline.interactionExpired &&
+                    c.current?.canContinue != false,
+                submitting: c.timeline.interactionSubmitting,
+                error: c.timeline.interactionError,
+                onSync: c.syncCurrentConversation,
+                canSync: c.connected && !c.syncing,
+                onRespond: (value) => c.respondToInteraction(
+                  value,
+                  expectedSession: owner,
+                  expectedInteraction: interactionId,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    c.timeline.activity,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
-        editor,
+        ChatActivityStatus(working: c.working, activity: c.timeline.activity),
       ],
     );
   }
@@ -750,199 +544,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _composer(BuildContext context) => ChatComposer(
     controller: c,
     input: _input,
-    collapsed: _composerCollapsed,
-    onExpand: _expandComposer,
-    readingProgress: _readingProgress,
+    collapsed: composerCollapsed,
+    onExpand: expandReadingComposer,
+    readingProgress: readingProgress,
     layoutBuilder: _readingLayout,
   );
-}
-
-class _InteractionCard extends StatefulWidget {
-  const _InteractionCard({super.key, required this.controller});
-  final AppController controller;
-  @override
-  State<_InteractionCard> createState() => _InteractionCardState();
-}
-
-class _InteractionCardState extends State<_InteractionCard> {
-  final field = TextEditingController();
-  @override
-  void dispose() {
-    field.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final data = widget.controller.timeline.interaction!,
-        approval = data['kind'] == 'approval.requested';
-    final owner = widget.controller.sessionId;
-    final interactionId = text(data[approval ? 'approval_id' : 'clarify_id']);
-    final canRespond =
-        widget.controller.connected &&
-        !widget.controller.syncing &&
-        !widget.controller.timeline.interactionSubmitting &&
-        !widget.controller.timeline.interactionExpired &&
-        widget.controller.current?.canContinue != false;
-    void respond(String value) => widget.controller.respondToInteraction(
-      value,
-      expectedSession: owner,
-      expectedInteraction: interactionId,
-    );
-    final questionSet = approval
-        ? null
-        : StructuredQuestionSet.parse(data['questions']) ??
-              StructuredQuestionSet.parse(data['question']);
-    final choices = asList(data['choices']).whereType<String>().toList();
-    final colors = Theme.of(context).colorScheme;
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: questionSet == null ? 270 : 500),
-      child: SingleChildScrollView(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: colors.secondaryContainer,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                approval ? context.tr("需要你的授权") : context.tr("需要你补充信息"),
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              if (questionSet == null)
-                SelectableText(
-                  approval ? text(data['description']) : text(data['question']),
-                ),
-              if (approval && text(data['command']).isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: SelectableText(
-                    text(data['command']),
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 8),
-              if (widget.controller.timeline.interactionError != null)
-                Text(
-                  widget.controller.timeline.interactionError!,
-                  style: TextStyle(color: colors.error),
-                ),
-              if (widget.controller.timeline.interactionError != null)
-                TextButton(
-                  onPressed:
-                      !widget.controller.connected || widget.controller.syncing
-                      ? null
-                      : widget.controller.syncCurrentConversation,
-                  child: Text(context.tr("同步审批状态")),
-                ),
-              if (widget.controller.timeline.interactionSubmitting)
-                Text(context.tr("等待服务器确认…")),
-              if (approval)
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    OutlinedButton(
-                      onPressed: canRespond ? () => respond('deny') : null,
-                      child: Text(context.tr("拒绝")),
-                    ),
-                    if (choices.contains('once'))
-                      FilledButton(
-                        onPressed: canRespond ? () => respond('once') : null,
-                        child: Text(context.tr("仅允许本次")),
-                      ),
-                    if (choices.contains('always') &&
-                        data['allow_permanent'] == true)
-                      OutlinedButton(
-                        onPressed: !canRespond
-                            ? null
-                            : () async {
-                                final confirmed = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: Text(context.tr("确认永久授权？")),
-                                    content: Text(
-                                      context.l10n.format(
-                                        "同类操作后续可能不再询问。授权范围与撤销方式由服务端控制。\n{0}",
-                                        {
-                                          '0': text(
-                                            data['permission_key'] ??
-                                                data['description'],
-                                          ),
-                                        },
-                                      ),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        child: Text(context.tr("取消")),
-                                      ),
-                                      FilledButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        child: Text(context.tr("永久允许")),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (confirmed == true && mounted) {
-                                  respond('always');
-                                }
-                              },
-                        child: Text(context.tr("永久允许")),
-                      ),
-                  ],
-                )
-              else if (questionSet != null)
-                StructuredInteractionCard(
-                  questionSet: questionSet,
-                  enabled: canRespond,
-                  submitting: widget.controller.timeline.interactionSubmitting,
-                  onSubmit: respond,
-                )
-              else ...[
-                if (choices.isNotEmpty)
-                  Wrap(
-                    spacing: 6,
-                    children: choices
-                        .map(
-                          (v) => ActionChip(
-                            label: Text(v),
-                            onPressed: canRespond ? () => respond(v) : null,
-                          ),
-                        )
-                        .toList(),
-                  ),
-                TextField(
-                  controller: field,
-                  decoration: InputDecoration(
-                    hintText: context.tr("补充说明"),
-                    suffixIcon: IconButton(
-                      tooltip: context.tr("提交说明"),
-                      icon: const Icon(Icons.send_rounded),
-                      onPressed: !canRespond
-                          ? null
-                          : () {
-                              if (field.text.trim().isNotEmpty) {
-                                respond(field.text.trim());
-                                field.clear();
-                              }
-                            },
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

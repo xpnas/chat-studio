@@ -184,10 +184,16 @@ class AgentPickerButton extends StatelessWidget {
                                   agent.name,
                                   style: const TextStyle(fontSize: 14),
                                 ),
-                                subtitle: agent.supported
+                                subtitle: agent.selectable
                                     ? null
                                     : Text(
-                                        context.tr("当前服务协议暂不支持此 Agent"),
+                                        context.tr(
+                                          !agent.hasChatSurface
+                                              ? '此 Agent 没有聊天能力'
+                                              : agent.modes.isEmpty
+                                              ? '此 Agent 没有受支持的模式'
+                                              : "当前服务协议暂不支持此 Agent",
+                                        ),
                                         style: TextStyle(fontSize: 11),
                                       ),
                                 trailing: selected
@@ -198,9 +204,10 @@ class AgentPickerButton extends StatelessWidget {
                                       )
                                     : null,
                                 enabled: agent.selectable && !c.agentsLoading,
-                                onTap: () {
+                                onTap: () async {
                                   if (!valid()) return;
-                                  c.chooseEngine(agent.id);
+                                  await c.chooseEngine(agent.id);
+                                  if (!sheetContext.mounted) return;
                                   Navigator.of(sheetContext).pop();
                                 },
                               ),

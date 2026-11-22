@@ -154,6 +154,11 @@ class WorkspaceDrawer extends StatelessWidget {
                         : () => c.refreshWorkspaceFiles(),
                     icon: const Icon(Icons.refresh_rounded, size: 21),
                   ),
+                  IconButton(
+                    tooltip: context.tr('关闭'),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ],
               ),
             ),

@@ -18,6 +18,8 @@ Settings are scoped to the selected server and Profile. Switching either one rel
 
 The composer can show the context usage reported by the server, including used tokens, the model limit, and remaining capacity. The value is informational and depends on the selected model and server runtime.
 
+New-chat execution choices are separate for each server/account/Profile/Agent/mode. Migration keeps legacy scoped preferences and never overwrites a newer slot. Credentials are excluded. Global requests retain the native model selector and omit scoped Provider/API overrides. Existing conversations keep their mode; model/reasoning changes are locked during work and only become visible after the server accepts them. Conflicts or permission failures retain the prior effective configuration.
+
 ## Permissions
 
 Management routes are protected by the server. The app displays the server response when the current account or Profile cannot read or change a setting. Provider keys and other secrets are sent to the server only when a user explicitly saves a form; they are not stored in the mobile app.

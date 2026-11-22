@@ -41,7 +41,9 @@ void main() {
       addTearDown(h.dispose);
       await h.login();
       await h.controller.chooseModel(h.controller.models.last);
-      h.controller.chooseEngine('hermes');
+      await h.controller.chooseEngine('hermes');
+      expect(h.controller.selectedModel?.id, 'model-a');
+      await h.controller.chooseModel(h.controller.models.last);
       await Future<void>.delayed(Duration.zero);
       await h.controller.openConversation(
         const Conversation(
@@ -78,7 +80,7 @@ void main() {
     },
   );
   test(
-    'removed remembered model announces fallback instead of silently switching',
+    'missing remembered model retains the saved value with an unverified notice',
     () async {
       final h = TestHarness();
       addTearDown(h.dispose);
@@ -87,8 +89,8 @@ void main() {
         const ModelChoice(id: 'removed', provider: 'test', label: 'Removed'),
       );
       await h.controller.refreshWorkspace();
-      expect(h.controller.selectedModel?.id, 'model-a');
-      expect(h.controller.workspaceNotice, contains('已不可用'));
+      expect(h.controller.selectedModel?.id, 'removed');
+      expect(h.controller.workspaceNotice, contains('未重新验证'));
     },
   );
   test(

@@ -58,8 +58,10 @@ class StableMarkdown extends StatefulWidget {
     this.anchorKey,
     this.imageBuilder,
     this.audioLinkBuilder,
+    this.contextMenuBuilder,
   });
   final String data;
+  final EditableTextContextMenuBuilder? contextMenuBuilder;
   final Widget? Function(String href, String label)? audioLinkBuilder;
   final Widget Function(Uri, String?, String?)? imageBuilder;
   final void Function(String?, String?, String?)? onTapLink;
@@ -102,6 +104,12 @@ class _StableMarkdownState extends State<StableMarkdown> {
                     MarkdownBody(
                       data: blocks[i],
                       selectable: true,
+                      contextMenuBuilder: (context, state) =>
+                          widget.contextMenuBuilder?.call(context, state) ??
+                          AdaptiveTextSelectionToolbar.buttonItems(
+                            anchors: state.contextMenuAnchors,
+                            buttonItems: state.contextMenuButtonItems,
+                          ),
                       softLineBreak: true,
                       builders: {
                         'a': _AudioLinkBuilder(

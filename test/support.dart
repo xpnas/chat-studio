@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:chatstudio/data/app_storage.dart';
 import 'package:chatstudio/data/chat_transport.dart';
+import 'package:chatstudio/data/session_sync_transport.dart';
 import 'package:chatstudio/data/studio_api.dart';
 import 'package:chatstudio/state/app_controller.dart';
 
@@ -104,12 +105,74 @@ class FakeTransport implements ChatTransport {
   }
 }
 
+class FakeSessionSyncTransport implements SessionSyncTransport {
+  FakeSessionSyncTransport({this.autoSnapshot = true});
+  bool autoSnapshot;
+  @override
+  bool connected = false;
+  SocketEvent? listener;
+  int connections = 0, requests = 0, subscriptions = 0, disposals = 0;
+  final reads = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> sessions = [];
+  Future<Map<String, dynamic>> Function()? readReply, subscribeReply;
+  @override
+  void connect(StudioApi api, SocketEvent listener) {
+    this.listener = listener;
+    connections++;
+    connected = true;
+    listener('connected', {});
+    if (autoSnapshot) {
+      listener('sessions.state.snapshot', {'sessions': sessions});
+    }
+  }
+
+  void receive(String event, Map<String, dynamic> data) =>
+      listener?.call(event, data);
+  @override
+  void requestState() {
+    requests++;
+    if (autoSnapshot) {
+      receive('sessions.state.snapshot', {'sessions': sessions});
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> markRead(
+    String id,
+    int messageId,
+    int attentionId,
+  ) async {
+    reads.add({
+      'sessionId': id,
+      'messageId': messageId,
+      'attentionId': attentionId,
+    });
+    return readReply == null ? {'ok': true} : await readReply!();
+  }
+
+  @override
+  Future<Map<String, dynamic>> subscribeRemovals() async {
+    subscriptions++;
+    return subscribeReply == null
+        ? {'ok': true, 'schema_version': 1}
+        : await subscribeReply!();
+  }
+
+  @override
+  void dispose() {
+    disposals++;
+    connected = false;
+    listener = null;
+  }
+}
+
 class TestHarness {
   TestHarness({this.speech, this.transcription});
   final AudioTranscription? transcription;
   final SpeechPlayback? speech;
   final storage = MemoryStorage();
   final transport = FakeTransport();
+  final sessionSync = FakeSessionSyncTransport();
   final requests = <http.Request>[];
   Future<http.Response> Function(http.Request)? override;
   late final controller = AppController(
@@ -117,6 +180,7 @@ class TestHarness {
     speech: speech,
     transcription: transcription,
     transport: transport,
+    sessionSyncTransport: sessionSync,
     apiFactory: (address) => StudioApi(
       address,
       client: MockClient((request) async {
@@ -128,6 +192,7 @@ class TestHarness {
   );
   http.Response response(http.Request request) {
     final path = request.url.path;
+    if (path == '/api/studio/agents') return http.Response('Not Found', 404);
     final body = switch (path) {
       '/api/auth/login' => {
         'token': 'web-token',

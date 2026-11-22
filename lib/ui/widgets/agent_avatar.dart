@@ -3,7 +3,7 @@ import '../../data/agent_catalog.dart';
 import '../../data/studio_protocol.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../../state/app_controller.dart';
+import '../../state/message_controller.dart';
 import '../theme.dart';
 
 /// Matches the pinned Studio Agent Manager. Images are loaded from the user's
@@ -19,8 +19,8 @@ class AgentIdentity {
     return AgentIdentity(meta.name, meta.icon);
   }
 
-  static AgentIdentity current(AppController? c) =>
-      resolve(c?.current?.agent ?? c?.engine ?? '');
+  static AgentIdentity current(MessageController? c) =>
+      resolve(c?.messageAgentId ?? '');
 }
 
 class AgentAvatar extends StatelessWidget {
@@ -30,7 +30,7 @@ class AgentAvatar extends StatelessWidget {
     this.size = 22,
     this.agentId,
   });
-  final AppController? controller;
+  final MessageController? controller;
   final double size;
   final String? agentId;
   @override

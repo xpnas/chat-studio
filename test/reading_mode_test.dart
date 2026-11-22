@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:chatstudio/data/mobile_media.dart';
@@ -53,6 +54,28 @@ void main() {
         ),
       ),
     );
+    final serverMessages = h.controller.timeline.messages
+        .map(
+          (message) => {
+            'id': message.id,
+            'role': message.role,
+            'content': message.content,
+          },
+        )
+        .toList();
+    h.override = (request) async =>
+        request.url.path.endsWith('/messages/paginated')
+        ? http.Response(
+            jsonEncode({
+              'messages': serverMessages,
+              'offset': 0,
+              'total': serverMessages.length,
+              'hasMore': false,
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          )
+        : h.response(request);
     h.controller.dismissError();
     await tester.pumpAndSettle();
     return h;

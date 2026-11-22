@@ -1,12 +1,21 @@
 import '../data/server_workspace.dart';
 import '../data/agent_catalog.dart';
+import '../data/native_models.dart';
 import '../data/studio_protocol.dart';
 import 'dart:async';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import '../data/person_models.dart';
+import '../data/mobile_features.dart';
+import '../data/person_history_cache.dart';
+import 'person_controller.dart';
+import 'message_controller.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../core/server_address.dart';
 import '../data/app_storage.dart';
 import '../data/chat_transport.dart';
+import '../data/session_sync_transport.dart';
 import '../data/models.dart';
 import '../data/slash_commands.dart';
 import '../data/queued_message.dart';
@@ -15,31 +24,111 @@ import '../data/audio_transcription.dart';
 import '../data/studio_api.dart';
 import 'chat_timeline.dart';
 import 'conversation_state.dart';
+import 'session_sync_controller.dart';
 
 typedef ApiFactory = StudioApi Function(ServerAddress address);
 
-class AppController extends ChangeNotifier {
+class AppController extends ChangeNotifier implements MessageController {
+  static const botsEnabled = MobileFeatures.bots;
+  @override
+  bool get messageScopeValid => !_disposed && authenticated;
+  @override
+  String get messageAgentId => current?.agent ?? engine;
+  @override
+  String? get messageSenderName => null;
+  String? personToOpen;
+  final _personControllers = <String, PersonController>{};
+  final _personRequests = <String, Future<PersonController>>{};
+  Future<PersonController> personController(String id) => _personRequests
+      .putIfAbsent(id, () async {
+        if (!authenticated || api == null || !isPersonMain(id)) {
+          throw const ApiException('BOT 不可用');
+        }
+        final server = api!.address.value,
+            token = api!.token,
+            owner = account!.id;
+        bool valid() =>
+            !_disposed &&
+            api?.address.value == server &&
+            api?.token == token &&
+            account?.id == owner;
+        final root = await getApplicationSupportDirectory();
+        if (!valid()) throw const ApiException('账号已变化');
+        final existing = _personControllers[id];
+        if (existing != null) return existing;
+        final client = StudioApi(api!.address)
+          ..token = token
+          ..profile = profile;
+        client.onUnauthorized = () {
+          if (valid()) unawaited(logout(expired: true));
+        };
+        final controller = PersonController(
+          api: client,
+          account: owner,
+          sessionId: id,
+          cache: PersonHistoryCache(
+            Directory('${root.path}/bot-history'),
+            server,
+            '$owner',
+            id,
+          ),
+          identityValid: valid,
+        );
+        _personControllers[id] = controller;
+        await controller.initialize();
+        return controller;
+      })
+      .whenComplete(() => _personRequests.remove(id));
+  void _disposePersons() {
+    personToOpen = null;
+    _personRequests.clear();
+    for (final controller in _personControllers.values) {
+      controller.dispose();
+    }
+    _personControllers.clear();
+  }
+
   AppController({
     required this.storage,
     ChatTransport? transport,
+    SessionSyncTransport? sessionSyncTransport,
     ApiFactory? apiFactory,
     SpeechPlayback? speech,
     AudioTranscription? transcription,
   }) : transcription = transcription ?? AudioTranscription(),
        speech = speech ?? SpeechPlayback(),
        transport = transport ?? SocketChatTransport(),
-       _apiFactory = apiFactory ?? ((address) => StudioApi(address));
+       sessionSync = SessionSyncController(
+         sessionSyncTransport ?? SocketSessionSyncTransport(),
+       ),
+       _apiFactory = apiFactory ?? ((address) => StudioApi(address)) {
+    sessionSync.addListener(_notify);
+    sessionSync.onRemoval = _queueRemoteRemoval;
+  }
+  final SessionSyncController sessionSync;
+  @override
   final SpeechPlayback speech;
   final AudioTranscription transcription;
+  StudioApi createAccountClient() {
+    final current = api;
+    if (!authenticated || current == null) throw const ApiException('账号已变化');
+    return _apiFactory(current.address)
+      ..token = current.token
+      ..profile = current.profile;
+  }
+
   bool foreground = true;
   void onBackground() {
     foreground = false;
+    sessionSync.disconnect();
     transcription.cancel();
     unawaited(speech.stop());
   }
 
+  @override
   String audioAttachmentId(MessageAttachment file) =>
       'audio:$profile:$sessionId:${file.path}';
+  @override
   void playAudioAttachment(MessageAttachment file) {
     if (!authenticated || api == null || !foreground || !file.isAudio) return;
     final id = audioAttachmentId(file);
@@ -53,14 +142,213 @@ class AppController extends ChangeNotifier {
   final AppStorage storage;
   final ChatTransport transport;
   final ApiFactory _apiFactory;
+  @override
   StudioApi? api;
   ConversationState _view = ConversationState('default');
   final _states = <String, ConversationState>{};
   final _profileDrafts = <String, ConversationState>{};
+  final _recoveredDrafts = <(String, String), RecoveredConversationDraft>{};
+  final _invalidatedSessions = <String>{};
+  final _verifiedMetadata = <String, (int, Conversation)>{};
+  final _pendingRemovals = <String>{};
+  final _verifyingSessions = <String>{};
+  Timer? _removalTimer;
+  List<RecoveredConversationDraft> get recoverableDrafts => authenticated
+      ? _recoveredDrafts.entries
+            .where((entry) => entry.key.$1 == _choiceScope)
+            .map((entry) => entry.value)
+            .toList()
+      : const [];
+  void _queueRemoteRemoval(String id) {
+    if (!authenticated || api == null || id.length > 512) return;
+    _pendingRemovals.add(id);
+    if (_removalTimer?.isActive == true) return;
+    final epoch = _epoch, activeProfile = profile;
+    _removalTimer = Timer(const Duration(milliseconds: 150), () async {
+      final ids = _pendingRemovals.toList();
+      _pendingRemovals.clear();
+      if (!_valid(epoch) || profile != activeProfile) return;
+      await Future.wait([
+        refreshSessions(),
+        for (final id in ids.where(
+          (id) =>
+              _findState(id) != null ||
+              conversations.any(
+                (conversation) =>
+                    conversation.id == id &&
+                    conversation.profile == activeProfile,
+              ),
+        ))
+          verifyRemoteSession(id),
+      ]);
+    });
+  }
+
+  Future<void> verifyRemoteSession(String id) async {
+    final client = api;
+    if (client == null || !authenticated || !_verifyingSessions.add(id)) return;
+    final epoch = _epoch, activeProfile = profile;
+    try {
+      final metadata = await client.sessionMetadata(id);
+      if (!_valid(epoch) || client != api || profile != activeProfile) return;
+      if (metadata.profile != activeProfile) {
+        _detachRemoteSession(id, permissionDenied: true);
+        return;
+      }
+      _invalidatedSessions.remove(id);
+      _verifiedMetadata[id] = (_searchEpoch, metadata);
+      _setConversationOrganization(
+        id,
+        pinned: metadata.isPinned,
+        archived: metadata.isArchived,
+      );
+      conversations = conversations
+          .map(
+            (conversation) =>
+                conversation.id == id && conversation.profile == activeProfile
+                ? metadata
+                : conversation,
+          )
+          .toList();
+      final state = _findState(id);
+      if (state != null) state.conversation = metadata;
+      _notify();
+    } on ApiException catch (error) {
+      if (!_valid(epoch) || client != api || profile != activeProfile) return;
+      if (error.status == 403) {
+        _detachRemoteSession(id, permissionDenied: true);
+      } else if (error.status == 404 && error.message == 'Session not found') {
+        _detachRemoteSession(id, permissionDenied: false);
+      } else if (sessionId == id) {
+        workspaceNotice = '暂时无法核实远端会话，历史与草稿已保留，请稍后重试。';
+        _notify();
+      }
+    } catch (_) {
+      if (_valid(epoch) && client == api && sessionId == id) {
+        workspaceNotice = '暂时无法核实远端会话，历史与草稿已保留，请稍后重试。';
+        _notify();
+      }
+    } finally {
+      if (_valid(epoch)) _verifyingSessions.remove(id);
+    }
+  }
+
+  void _detachRemoteSession(String id, {required bool permissionDenied}) {
+    final state = _findState(id);
+    if (state != null) {
+      if (!state.draft.isEmpty) {
+        _recoveredDrafts[(_choiceScope, id)] = RecoveredConversationDraft(
+          id,
+          state.conversation?.title ?? id,
+          state.draft,
+        );
+      }
+      state.loadRequest++;
+      state.cancelTimers();
+      state.timeline.clear();
+    }
+    final key = _stateKey(profile, id);
+    _invalidatedSessions.add(id);
+    _states.remove(key);
+    _tasks.remove(key);
+    _activityTimes.remove(key);
+    sessionSync.projection.sessions.remove(id);
+    conversations = conversations
+        .where(
+          (conversation) =>
+              conversation.id != id || conversation.profile != profile,
+        )
+        .toList();
+    if (sessionId == id) {
+      _resetChat(preserve: false);
+      engine = _newChatEngine;
+      _view.agentMode = _newChatMode;
+      selectedModel = _newChatModel;
+      reasoningEffort = _newChatReasoning;
+    }
+    workspaceNotice = permissionDenied
+        ? '会话访问权限已变化，未发送草稿已保留。'
+        : '远端会话已删除，未发送草稿已保留。';
+    _notify();
+  }
+
+  bool recoverConversationDraft(String id) {
+    if (!authenticated) return false;
+    final key = (_choiceScope, id), recovered = _recoveredDrafts[key];
+    if (recovered == null) return false;
+    if (!draft.isEmpty || busy || working) {
+      reportError('请先处理当前草稿或运行，再恢复保留的草稿。');
+      return false;
+    }
+    _resetChat();
+    selectedModel = _newChatModel;
+    engine = _newChatEngine;
+    _view.agentMode = agentModes.contains(_newChatMode)
+        ? _newChatMode
+        : agentModes.firstOrNull ?? 'scoped';
+    reasoningEffort = _newChatReasoning;
+    draft.text = recovered.draft.text;
+    draft.files.addAll(recovered.draft.files);
+    draft.uploaded.addAll(recovered.draft.uploaded);
+    _recoveredDrafts.remove(key);
+    workspaceNotice = '草稿已恢复到新对话，发送前请检查内容。';
+    _notify();
+    unawaited(refreshAgents());
+    return true;
+  }
+
   final _tasks = <String, ConversationTaskStatus>{};
   final _activityTimes = <String, int>{};
   int _navigationRevision = 0, _sessionOffset = 0;
   ChatTimeline get timeline => _view.timeline;
+  List<ChatMessage> get displayMessages =>
+      (_view.readingTimeline ?? timeline).displayMessages;
+  bool get readingOlderWindow => _view.readingTimeline != null;
+  bool get hasNewerMessages => _view.hasNewerMessages;
+  void beginReadingWindow() {
+    if (_view.readingTimeline != null || sessionId == null) return;
+    _view.readingTimeline = ChatTimeline()
+      ..sessionId = sessionId
+      ..messages = List.of(timeline.messages)
+      ..mergeTaskPlans(timeline.taskPlans);
+  }
+
+  void _invalidateReadingWindow(
+    ConversationState state, {
+    bool clearTimeline = true,
+  }) {
+    state.readingTimeline = null;
+    state.returningLatest = false;
+    state.hasNewerMessages = false;
+    state.offset = 0;
+    state.hasMore = false;
+    state.draft.scrollOffset = 0;
+    if (clearTimeline) state.timeline.clearHistory();
+  }
+
+  Future<void> showLatestHistory() async {
+    final state = _view, epoch = _epoch;
+    if (state.readingTimeline == null) return;
+    if (working || state.syncing) {
+      state.returningLatest = true;
+      if (connected && !state.syncing) _resumeState(state);
+      return;
+    }
+    if (state.loading) return;
+    final request = state.loadRequest + 1;
+    await _loadHistoryState(state);
+    if (!_valid(epoch) ||
+        _view != state ||
+        state.loadRequest != request ||
+        !state.lastHistoryLoadSucceeded) {
+      return;
+    }
+    state.readingTimeline = null;
+    state.hasNewerMessages = false;
+    state.draft.scrollOffset = 0;
+    _notify();
+  }
+
   ConversationDraft get draft => _view.draft;
   String _stateKey(String profile, String id) => '$profile::$id';
   String _key(ConversationState state) => _stateKey(state.profile, state.id!);
@@ -97,6 +385,19 @@ class AppController extends ChangeNotifier {
         ? _view
         : _states[key];
     var status = _tasks[key] ?? ConversationTaskStatus.idle;
+    final observed = sessionSync.confirmed && conversation.profile == profile
+        ? sessionSync.projection.sessions[conversation.id]
+        : null;
+    if (observed?.working == true) {
+      return state?.timeline.interaction != null
+          ? ConversationTaskStatus.waiting
+          : ConversationTaskStatus.running;
+    }
+    if (observed?.working == false &&
+        state?.timeline.interaction == null &&
+        (status.active || state?.timeline.working == true)) {
+      return ConversationTaskStatus.idle;
+    }
     if (state?.timeline.interaction != null) {
       status = ConversationTaskStatus.waiting;
     } else if (state?.timeline.working == true &&
@@ -114,18 +415,65 @@ class AppController extends ChangeNotifier {
 
   bool get canConfigure =>
       authenticated &&
+      !_choiceLoading &&
       !busy &&
       !working &&
       !syncing &&
       !loadingMessages &&
       !workspaceSaving;
+  Future<bool> confirmVisibleRead({required bool atLatest}) async {
+    final id = sessionId;
+    if (id == null ||
+        readingOlderWindow ||
+        syncing ||
+        loadingMessages ||
+        !sessionSync.confirmed) {
+      return false;
+    }
+    final row = sessionSync.projection.sessions[id];
+    if (row == null || row.unread != true) return false;
+    var cursor = 0;
+    for (final message in timeline.messages) {
+      final candidate = int.tryParse(message.id);
+      if (message.role == 'assistant' &&
+          !message.pending &&
+          candidate != null &&
+          candidate > cursor) {
+        cursor = candidate;
+      }
+    }
+    if (cursor < row.lastMessageId) return false;
+    return sessionSync.readVisible(
+      id: id,
+      messageId: cursor,
+      attentionId: row.readAttentionId,
+      foreground: foreground,
+      atLatest: atLatest,
+      working: working,
+      hasUnseenAttention:
+          timeline.interaction != null ||
+          row.lastAttentionId > row.readAttentionId,
+    );
+  }
+
   void _disposeStates() {
+    sessionSync.disconnect();
+    _removalTimer?.cancel();
+    _pendingRemovals.clear();
+    _verifyingSessions.clear();
+    _recoveredDrafts.clear();
+    _invalidatedSessions.clear();
+    _verifiedMetadata.clear();
     transcription.clear();
     unawaited(speech.stop());
     for (final state in {..._states.values, _view}) {
       state.cancelTimers();
     }
     _states.clear();
+    _nativeLoading.clear();
+    _nativeResults.clear();
+    _nativeErrors.clear();
+    _selectionGeneration++;
     _profileDrafts.clear();
     _tasks.clear();
     _activityTimes.clear();
@@ -157,10 +505,173 @@ class AppController extends ChangeNotifier {
 
   String get engine => _view.engine;
   set engine(String value) => _view.engine = value;
+  String get agentMode =>
+      _view.agentMode ??
+      current?.agentMode ??
+      (agentModes.contains('scoped') ? 'scoped' : 'global');
+  List<String> get agentModes =>
+      agents.where((agent) => agent.id == engine).firstOrNull?.modes ??
+      AgentChoice.metadata(engine).modes;
+  NativeModelCatalog? get nativeCatalog => api?.cachedNativeModels(engine);
+  final _nativeResults = <String, NativeModelCatalog>{};
+  final _nativeLoading = <String, int>{};
+  int _nativeRequestGeneration = 0;
+  bool get _choiceLoading => _view.selectionLoading;
+  set _choiceLoading(bool value) => _view.selectionLoading = value;
+  final _nativeErrors = <String, String>{};
+  int _selectionGeneration = 0;
+  String get _nativeKey => '${authenticated ? _choiceScope : ''}|$engine';
+  bool get nativeModelsLoading => _nativeLoading.containsKey(_nativeKey);
+  String? get nativeModelsError => _nativeErrors[_nativeKey];
+  NativeModelStatus? get nativeModelStatus =>
+      _nativeResults[_nativeKey]?.status;
+  List<ModelChoice> get selectableModels => agentMode == 'global'
+      ? nativeCatalog?.choices ??
+            [
+              const ModelChoice(
+                id: '',
+                provider: '',
+                label: 'Agent 默认模型',
+                native: true,
+                providerLabel: '原生模型',
+                reasoningEfforts: [],
+              ),
+            ]
+      : models;
+  Map<String, String> get availableReasoningEfforts {
+    final selected = agentMode == 'global'
+        ? nativeCatalog?.models
+              .where((model) => model.id == selectedModel?.id)
+              .firstOrNull
+              ?.choice
+        : selectedModel;
+    final declared = selected?.reasoningEfforts;
+    if (agentMode == 'global' && declared == null) return const {'': '默认'};
+    if (declared == null) return reasoningEffortLabels;
+    return {
+      '': '默认',
+      for (final effort in declared)
+        effort: reasoningEffortLabels[effort] ?? effort,
+    };
+  }
+
+  Future<void> refreshNativeModels() async {
+    final client = api;
+    if (client == null || !authenticated || agentMode != 'global') return;
+    final id = engine, key = _nativeKey, epoch = _epoch;
+    if (_nativeLoading.containsKey(key)) return;
+    final request = ++_nativeRequestGeneration;
+    _nativeLoading[key] = request;
+    _nativeErrors.remove(key);
+    _notify();
+    try {
+      final result = await client.nativeModels(id, refresh: true);
+      if (!_valid(epoch) || client != api || key != _nativeKey) return;
+      _nativeResults[key] = result;
+      final selected = selectedModel;
+      if (result.usable && selected != null && selected.native) {
+        final match = result.models
+            .where((model) => model.id == selected.id)
+            .firstOrNull;
+        if (match != null) selectedModel = match.choice;
+      }
+    } catch (error) {
+      if (_valid(epoch) && client == api && key == _nativeKey) {
+        _nativeErrors[key] = '$error';
+      }
+    } finally {
+      if (_nativeLoading[key] == request) _nativeLoading.remove(key);
+      if (_valid(epoch) && client == api && key == _nativeKey) _notify();
+    }
+  }
+
+  Future<void> chooseAgentMode(String mode) async {
+    if (!canConfigure || !agentModes.contains(mode)) return;
+    if (sessionId != null) {
+      workspaceNotice = '已有会话的模式不可修改，请新建会话选择另一模式。';
+      _notify();
+      return;
+    }
+    if (mode == agentMode) return;
+    final state = _view,
+        agent = engine,
+        epoch = _epoch,
+        selection = ++_selectionGeneration;
+    await _rememberChoice();
+    if (!_valid(epoch) ||
+        state != _view ||
+        agent != engine ||
+        selection != _selectionGeneration ||
+        sessionId != null ||
+        !canConfigure) {
+      return;
+    }
+    _view.agentMode = mode;
+    selectedModel = mode == 'global' ? null : models.firstOrNull;
+    reasoningEffort = '';
+    _notify();
+    _choiceLoading = true;
+    try {
+      await _restoreAgentChoice();
+      await _rememberChoice();
+    } finally {
+      state.selectionLoading = false;
+      _notify();
+    }
+    if (agentMode == 'global') unawaited(refreshNativeModels());
+  }
+
+  Future<void> _restoreAgentChoice() async {
+    if (!authenticated || api == null) return;
+    final epoch = _epoch,
+        scope = _choiceScope,
+        agent = engine,
+        mode = agentMode,
+        state = _view,
+        request = ++_selectionGeneration;
+    final saved = await storage.readAgentChoice(scope, agent, mode);
+    if (!_valid(epoch) ||
+        state != _view ||
+        agent != engine ||
+        mode != agentMode ||
+        request != _selectionGeneration ||
+        sessionId != null) {
+      return;
+    }
+    if (saved != null) {
+      final id = text(saved['model']),
+          provider = mode == 'global' ? '' : text(saved['provider']);
+      selectedModel =
+          (mode == 'global' ? selectableModels : models)
+              .where((model) => model.id == id && model.provider == provider)
+              .firstOrNull ??
+          ModelChoice(
+            id: id,
+            provider: provider,
+            label: id,
+            apiMode: mode == 'global' ? '' : text(saved['api_mode']),
+            native: mode == 'global',
+            reasoningEfforts: mode == 'global' ? const [] : null,
+          );
+      reasoningEffort = text(saved['reasoning_effort']);
+      if (!selectableModels.any((model) => model.key == selectedModel?.key)) {
+        workspaceNotice = '已保存的模型未重新验证，保留原选择。';
+      }
+      if (mode == 'scoped' && text(saved['api_mode']).isNotEmpty) {
+        selectedModel = selectedModel?.withApiMode(text(saved['api_mode']));
+      }
+      _newChatModel = selectedModel;
+      _newChatReasoning = reasoningEffort;
+    }
+    _notify();
+  }
+
   String get reasoningEffort => _view.reasoningEffort;
   set reasoningEffort(String value) => _view.reasoningEffort = value;
   ModelChoice? _newChatModel;
-  String _newChatEngine = StudioProtocol.builtInAgentId, _newChatReasoning = '';
+  String _newChatEngine = StudioProtocol.builtInAgentId,
+      _newChatReasoning = '',
+      _newChatMode = 'scoped';
   String? workspaceNotice;
   String get workspacePath => _view.workspacePath;
   String get workspaceRelativePath => _view.workspaceRelativePath;
@@ -266,15 +777,19 @@ class AppController extends ChangeNotifier {
     _newChatModel = selectedModel;
     _newChatEngine = engine;
     _newChatReasoning = reasoningEffort;
+    _newChatMode = agentMode;
     final scope = _choiceScope;
+    final agent = engine, mode = agentMode;
     final choice = {
       'model': selectedModel?.id,
       'provider': selectedModel?.provider,
       'engine': engine,
       'reasoning_effort': reasoningEffort,
+      'api_mode': selectedModel?.apiMode ?? '',
+      'agent_mode': mode,
     };
     _choiceWrite = _choiceWrite
-        .then((_) => storage.saveChoice(scope, choice))
+        .then((_) => storage.saveAgentChoice(scope, agent, mode, choice))
         .catchError((Object _) {});
     await _choiceWrite;
   }
@@ -323,6 +838,16 @@ class AppController extends ChangeNotifier {
       agentsLoaded &&
       agentsError == null &&
       availableAgents.any((a) => a.id == engine);
+  bool get currentAgentAvailable {
+    if (AgentChoice.isPluginId(engine) && api?.enablePluginAgents != true) {
+      return false;
+    }
+    if (!agentsLoaded) return !AgentChoice.isPluginId(engine);
+    return availableAgents.any(
+      (a) => a.id == engine && a.modes.contains(agentMode),
+    );
+  }
+
   void _clearAgents() {
     _agentsRequest++;
     agents = const [];
@@ -393,9 +918,9 @@ class AppController extends ChangeNotifier {
     agentsErrorStatus = null;
     _notify();
     try {
-      final data = await client.request('/api/agents/availability');
+      final discovered = await client.discoverAgents();
       if (!valid()) return;
-      agents = AgentChoice.parse(data['agents']);
+      agents = discovered;
       client.retryAgentIcons();
       agentsLoaded = true;
       final choices = availableAgents;
@@ -413,6 +938,9 @@ class AppController extends ChangeNotifier {
         engine = _newChatEngine;
         workspaceNotice =
             '原 Agent 已不可用，新对话已改用 ${AgentChoice.metadata(engine).name}。';
+      }
+      if (sessionId != null && !currentAgentAvailable) {
+        workspaceNotice = '当前 Agent 已不可用，历史仍可阅读，请刷新 Agent 状态后重试。';
       }
     } catch (error) {
       if (valid()) _setAgentError(error);
@@ -547,6 +1075,7 @@ class AppController extends ChangeNotifier {
   bool get working => timeline.working;
   bool get canSend =>
       authenticated &&
+      !_choiceLoading &&
       profiles.isNotEmpty &&
       connected &&
       !syncing &&
@@ -558,7 +1087,9 @@ class AppController extends ChangeNotifier {
       !busy &&
       !workspaceSaving &&
       current?.canContinue != false &&
+      currentAgentAvailable &&
       (sessionId != null || newChatAgentAvailable);
+  @override
   String get profile => api?.profile ?? 'default';
   String get title => current?.title ?? '新对话';
   bool get allowLocalHttp => api?.address.allowLocalHttp ?? savedLocalHttp;
@@ -589,6 +1120,13 @@ class AppController extends ChangeNotifier {
 
   bool _valid(int epoch) => !_disposed && epoch == _epoch;
   void _bind(StudioApi value) {
+    _disposePersons();
+    sessionSync.disconnect();
+    _removalTimer?.cancel();
+    _pendingRemovals.clear();
+    _verifyingSessions.clear();
+    _invalidatedSessions.clear();
+    _verifiedMetadata.clear();
     api?.close();
     api = value;
     value.onUnauthorized = () {
@@ -714,6 +1252,8 @@ class AppController extends ChangeNotifier {
               .firstOrNull ??
           models.firstOrNull;
       final remembered = await storage.readChoice(_choiceScope);
+      final activeChoice =
+          await storage.readActiveAgentChoice(_choiceScope) ?? remembered;
       if (!_valid(epoch)) return;
       readingHintSeen = await storage.readReadingHintSeen();
       if (!_valid(epoch)) return;
@@ -729,9 +1269,12 @@ class AppController extends ChangeNotifier {
           ? ''
           : normalizeReasoningEffort(remembered?['reasoning_effort']);
       final rememberedAgent = AgentChoice.canonicalId(
-        text(remembered?['engine']),
+        text(activeChoice?['engine']),
       );
-      _newChatEngine = AgentChoice.supportedIds.contains(rememberedAgent)
+      _newChatEngine =
+          (AgentChoice.supportedIds.contains(rememberedAgent) ||
+              api!.enablePluginAgents &&
+                  AgentChoice.isPluginId(rememberedAgent))
           ? rememberedAgent
           : StudioProtocol.builtInAgentId;
       workspaceNotice = remembered?['model'] != null && storedModel == null
@@ -744,6 +1287,17 @@ class AppController extends ChangeNotifier {
       }
       await refreshCapabilities();
       if (!_valid(epoch)) return;
+      if (sessionId == null) {
+        final savedMode = text(activeChoice?['agent_mode']);
+        _view.agentMode = agentModes.contains(savedMode)
+            ? savedMode
+            : agentModes.firstOrNull ?? 'scoped';
+        if (agentMode == 'global') selectedModel = null;
+        await _restoreAgentChoice();
+        _newChatMode = agentMode;
+        _newChatEngine = engine;
+        if (agentMode == 'global') unawaited(refreshNativeModels());
+      }
       await _loadConversationOrganization();
       if (!_valid(epoch)) return;
       await _persistSession();
@@ -785,6 +1339,7 @@ class AppController extends ChangeNotifier {
     if (valid()) _notify();
   }
 
+  @override
   void reconnect() {
     if (!authenticated || api == null) return;
     connected = false;
@@ -800,6 +1355,7 @@ class AppController extends ChangeNotifier {
     transport.connect(api!, (event, data) {
       if (_valid(epoch) && profile == socketProfile) _event(event, data);
     });
+    if (foreground) sessionSync.connect(api!);
     _notify();
   }
 
@@ -824,6 +1380,12 @@ class AppController extends ChangeNotifier {
     }
     final epoch = ++_epoch;
     transport.dispose();
+    sessionSync.disconnect();
+    _removalTimer?.cancel();
+    _pendingRemovals.clear();
+    _verifyingSessions.clear();
+    _invalidatedSessions.clear();
+    _verifiedMetadata.clear();
     connected = false;
     syncing = false;
     busy = true;
@@ -1054,9 +1616,24 @@ class AppController extends ChangeNotifier {
         includeArchived: includeArchivedSessions,
       );
       if (!_valid(epoch) || searchEpoch != _searchEpoch) return;
-      final rows = asList(
+      final serverRows = asList(
         data[search.isEmpty ? 'sessions' : 'results'],
       ).map((s) => Conversation.fromJson(asMap(s))).toList();
+      final rows = serverRows
+          .where(
+            (row) =>
+                !_invalidatedSessions.contains(row.id) &&
+                !isPersonWorker(row.id),
+          )
+          .map((row) {
+            final verified = _verifiedMetadata[row.id];
+            if (verified != null && searchEpoch <= verified.$1) {
+              return verified.$2;
+            }
+            _verifiedMetadata.remove(row.id);
+            return row;
+          })
+          .toList();
       if (!more) {
         conversationCategories.clear();
         pinnedConversationIds.clear();
@@ -1073,8 +1650,8 @@ class AppController extends ChangeNotifier {
           conversationCategories[row.id] = category;
         }
       }
-      _sessionOffset = (more ? _sessionOffset : 0) + rows.length;
-      if (!more) _sessionOffset = rows.length;
+      _sessionOffset = (more ? _sessionOffset : 0) + serverRows.length;
+      if (!more) _sessionOffset = serverRows.length;
       final local = _states.values
           .where(
             (s) =>
@@ -1122,6 +1699,12 @@ class AppController extends ChangeNotifier {
     _resetChat();
     selectedModel = _newChatModel;
     engine = _newChatEngine;
+    _view.agentMode = agentModes.contains(_newChatMode)
+        ? _newChatMode
+        : agentModes.firstOrNull ?? 'scoped';
+    if (agentMode == 'global' && selectedModel?.native != true) {
+      selectedModel = null;
+    }
     reasoningEffort = _newChatReasoning;
     error = null;
     unawaited(refreshAgents());
@@ -1129,12 +1712,31 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> openConversation(Conversation conversation) async {
+    if (isPersonWorker(conversation.id)) {
+      reportError('私有 BOT 执行请从任务详情查看');
+      return;
+    }
+    if (isPersonMain(conversation.id)) {
+      if (!botsEnabled) {
+        workspaceNotice = 'BOT 功能尚未通过此版本验收，请在 Studio 使用';
+        _notify();
+        return;
+      }
+      personToOpen = conversation.id;
+      _notify();
+      return;
+    }
     if (busy) return;
     transcription.cancel();
     unawaited(speech.stop());
     if (conversation.profile != profile) {
       await switchProfile(conversation.profile);
       if (!authenticated || conversation.profile != profile) return;
+    }
+    if (_invalidatedSessions.contains(conversation.id)) {
+      workspaceNotice = '会话已删除或不可访问，请刷新后重试。';
+      _notify();
+      return;
     }
     _cacheView();
     _chatEpoch++;
@@ -1145,6 +1747,7 @@ class AppController extends ChangeNotifier {
     );
     _view = state;
     current = conversation;
+    state.agentMode = conversation.agentMode;
     if (state.timeline.messages.isEmpty) {
       state.timeline.contextUsage = conversation.contextUsage;
     }
@@ -1152,22 +1755,36 @@ class AppController extends ChangeNotifier {
         ? 'hermes'
         : AgentChoice.canonicalId(conversation.agent);
     if (state.model == null) {
-      selectedModel =
-          models
-              .where(
-                (m) =>
-                    m.id == conversation.model &&
-                    m.provider == conversation.provider,
-              )
-              .firstOrNull ??
-          (conversation.model.isEmpty
-              ? _newChatModel
-              : ModelChoice(
-                  id: conversation.model,
-                  provider: conversation.provider,
-                  label: conversation.model,
-                ));
-      reasoningEffort = normalizeReasoningEffort(conversation.reasoningEffort);
+      selectedModel = agentMode == 'global'
+          ? ModelChoice(
+              id: conversation.model,
+              provider: '',
+              label: conversation.model,
+              native: true,
+              reasoningEfforts: const [],
+            )
+          : models
+                    .where(
+                      (m) =>
+                          m.id == conversation.model &&
+                          m.provider == conversation.provider,
+                    )
+                    .firstOrNull ??
+                (conversation.model.isEmpty
+                    ? _newChatModel
+                    : ModelChoice(
+                        id: conversation.model,
+                        provider: conversation.provider,
+                        label: conversation.model,
+                        apiMode: conversation.apiMode,
+                      ));
+      if (agentMode == 'scoped' && conversation.apiMode.isNotEmpty) {
+        selectedModel = selectedModel?.withApiMode(conversation.apiMode);
+      }
+      reasoningEffort = conversation.reasoningEffort;
+    }
+    if (state.draft.scrollOffset > 120 && state.timeline.messages.isNotEmpty) {
+      beginReadingWindow();
     }
     error = null;
     _notify();
@@ -1184,6 +1801,19 @@ class AppController extends ChangeNotifier {
 
   Future<void> loadHistory({bool more = false}) =>
       _loadHistoryState(_view, more: more);
+
+  Future<void> reconcileMessageDeletion(String id) async {
+    final state = _findState(id), epoch = _epoch;
+    if (state == null) return;
+    state.loadRequest++;
+    state.loading = false;
+    _invalidateReadingWindow(state);
+    _notify();
+    await _loadHistoryState(state);
+    if (!_valid(epoch)) return;
+    if (connected && _findState(id) == state) _resumeState(state);
+    await refreshSessions();
+  }
 
   Future<void> retryEarlierHistory() async {
     if (!authenticated ||
@@ -1215,6 +1845,7 @@ class AppController extends ChangeNotifier {
         revision = state.revision,
         requestId = ++state.loadRequest;
     state.loading = true;
+    state.lastHistoryLoadSucceeded = false;
     if (state == _view) _notify();
     try {
       final page = await client.messages(sid, offset: more ? state.offset : 0);
@@ -1224,18 +1855,35 @@ class AppController extends ChangeNotifier {
           client != api) {
         return;
       }
+      if (!more && page.messages.isEmpty && !page.authoritativeTotal) {
+        state.historyPageError = '历史响应缺少权威总数，请重试';
+        return;
+      }
       if (more && page.hasMore && page.offset <= state.offset) {
         // Malformed/non-advancing pages must not cause an automatic request loop.
         state.historyPageError = '历史分页未推进，请重试';
         return;
       }
-      if (more) {
+      final target = more
+          ? state.readingTimeline ?? state.timeline
+          : state.timeline;
+      if (!more &&
+          page.authoritativeTotal &&
+          page.total == 0 &&
+          page.messages.isEmpty) {
+        _invalidateReadingWindow(state);
+      } else if (more) {
         state.historyPageError = null;
-        state.timeline.prepend(page.messages);
+        target.prepend(page.messages);
+        if (!identical(target, state.timeline)) {
+          state.timeline.prepend(page.messages);
+          state.timeline.mergeTaskPlans(page.taskPlans);
+        }
       } else {
-        state.timeline.replace(page.messages, keepOlder: page.hasMore);
+        target.replace(page.messages, keepOlder: page.hasMore);
       }
-      state.timeline.mergeTaskPlans(page.taskPlans);
+      target.mergeTaskPlans(page.taskPlans);
+      state.lastHistoryLoadSucceeded = true;
       if (more ||
           state.offset <= page.offset ||
           state.timeline.messages.length <= page.messages.length) {
@@ -1259,7 +1907,10 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> chooseReasoningEffort(String value) async {
-    if (!canConfigure || !reasoningEffortLabels.containsKey(value)) return;
+    if (!canConfigure || !availableReasoningEfforts.containsKey(value)) return;
+    // Native effort choices require the selected model's advertised catalog.
+    // In particular, an existing global session keeps its saved effort read-only.
+    if (agentMode == 'global' && sessionId != null) return;
     final state = _view, epoch = _epoch;
     busy = true;
     _notify();
@@ -1278,8 +1929,29 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> chooseApiMode(String mode) async {
+    final model = selectedModel;
+    if (model == null ||
+        !model.canOverrideApiMode ||
+        !const {
+          'chat_completions',
+          'codex_responses',
+          'anthropic_messages',
+          'bedrock_converse',
+          'codex_app_server',
+        }.contains(mode)) {
+      return;
+    }
+    await chooseModel(model.withApiMode(mode));
+  }
+
   Future<void> chooseModel(ModelChoice model) async {
     if (!canConfigure) return;
+    _selectionGeneration++;
+    if ((agentMode == 'global') != model.native) {
+      reportError('原生模式需要使用 Agent 的模型目录');
+      return;
+    }
     final epoch = _epoch, chatEpoch = _chatEpoch;
     busy = true;
     _notify();
@@ -1300,14 +1972,33 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void chooseEngine(String value) {
+  Future<void> chooseEngine(String value) async {
     if (sessionId == null &&
         !working &&
         !agentsLoading &&
         agentsError == null &&
         availableAgents.any((a) => a.id == value)) {
+      final state = _view, epoch = _epoch, selection = ++_selectionGeneration;
+      await _rememberChoice();
+      if (!_valid(epoch) ||
+          _view != state ||
+          sessionId != null ||
+          selection != _selectionGeneration) {
+        return;
+      }
       engine = value;
-      unawaited(_rememberChoice());
+      _view.agentMode = null;
+      selectedModel = agentMode == 'global' ? null : models.firstOrNull;
+      reasoningEffort = '';
+      _choiceLoading = true;
+      try {
+        await _restoreAgentChoice();
+        await _rememberChoice();
+      } finally {
+        state.selectionLoading = false;
+        _notify();
+      }
+      if (agentMode == 'global') unawaited(refreshNativeModels());
       _notify();
     }
   }
@@ -1323,6 +2014,7 @@ class AppController extends ChangeNotifier {
       !loadingMessages &&
       !busy &&
       current?.canContinue != false &&
+      currentAgentAvailable &&
       working &&
       !_view.awaitingStart;
 
@@ -1337,6 +2029,7 @@ class AppController extends ChangeNotifier {
           !loadingMessages &&
           !busy &&
           current?.canContinue != false &&
+          currentAgentAvailable &&
           working);
 
   bool send(String input, {List<Map<String, dynamic>> attachments = const []}) {
@@ -1370,11 +2063,14 @@ class AppController extends ChangeNotifier {
         if (engine != 'hermes') 'agent_id': engine,
         if (engine != 'hermes') 'source': 'coding_agent',
         if (engine != 'hermes' && engine != StudioProtocol.builtInAgentId)
-          'mode': 'scoped',
+          'mode': agentMode,
         'reasoning_effort': reasoningEffort,
-        if (selectedModel != null) 'model': selectedModel!.id,
-        if (selectedModel != null) 'provider': selectedModel!.provider,
-        if (selectedModel?.apiMode.isNotEmpty == true)
+        if (agentMode == 'global') 'model': selectedModel?.id ?? '',
+        if (agentMode == 'scoped' && selectedModel != null)
+          'model': selectedModel!.id,
+        if (selectedModel != null && agentMode == 'scoped')
+          'provider': selectedModel!.provider,
+        if (agentMode == 'scoped' && selectedModel?.apiMode.isNotEmpty == true)
           'api_mode': selectedModel!.apiMode,
       });
       _chatEpoch++;
@@ -1431,6 +2127,8 @@ class AppController extends ChangeNotifier {
         profile: profile,
         agent: engine,
         source: engine == 'hermes' ? '' : 'coding_agent',
+        agentMode: agentMode,
+        apiMode: agentMode == 'scoped' ? selectedModel?.apiMode ?? '' : '',
         model: selectedModel?.id ?? '',
         provider: selectedModel?.provider ?? '',
         reasoningEffort: reasoningEffort,
@@ -1528,6 +2226,11 @@ class AppController extends ChangeNotifier {
   void onForeground() {
     foreground = true;
     if (!authenticated) return;
+    if (api != null && !sessionSync.transport.connected) {
+      sessionSync.connect(api!);
+    } else {
+      sessionSync.refresh();
+    }
     if (sessionId == null) unawaited(refreshAgents());
     if (connected) {
       _recoverSessions();
@@ -1696,6 +2399,8 @@ class AppController extends ChangeNotifier {
             source: old.source,
             model: old.model,
             provider: old.provider,
+            agentMode: old.agentMode,
+            apiMode: old.apiMode,
             reasoningEffort: old.reasoningEffort,
           );
           state.conversation = renamed;
@@ -1707,6 +2412,7 @@ class AppController extends ChangeNotifier {
       if (data['ok'] != false && data['action'] == 'clear') {
         state.loadRequest++;
         state.loading = false;
+        _invalidateReadingWindow(state, clearTimeline: false);
         if (flag(data['clearHistory'])) {
           state.offset = 0;
           state.hasMore = false;
@@ -1743,28 +2449,82 @@ class AppController extends ChangeNotifier {
       state.loadRequest++;
       if (state == _view) _chatEpoch++;
       state.queueTimer?.cancel();
-      state.timeline.resume(data);
+      final cleared =
+          data['messages'] is List &&
+          asList(data['messages']).isEmpty &&
+          data['messageTotal'] == 0 &&
+          data['messagesCached'] != true &&
+          data['isWorking'] != true;
+      if (cleared) _invalidateReadingWindow(state);
+      state.timeline.resume(
+        cleared
+            ? {...data, 'events': <dynamic>[], 'taskPlans': <dynamic>[]}
+            : data,
+      );
+      if (state.returningLatest) {
+        state.readingTimeline = null;
+        state.returningLatest = false;
+        state.hasNewerMessages = false;
+        state.draft.scrollOffset = 0;
+      } else if (state.readingTimeline != null) {
+        final previous = {
+          for (final message in state.readingTimeline!.messages)
+            message.id: message.content,
+        };
+        state.hasNewerMessages =
+            state.hasNewerMessages ||
+            state.timeline.messages.any(
+              (message) => previous[message.id] != message.content,
+            );
+      }
       _armInteraction(state);
       final loaded = integer(data['messageLoadedCount']);
-      state.offset = loaded == 0 ? asList(data['messages']).length : loaded;
-      state.hasMore = flag(data['hasMoreBefore']);
+      state.readingTimeline?.mergeVisibleState(state.timeline);
+      if (state.readingTimeline == null && data['messages'] is List) {
+        state.offset = loaded == 0 ? asList(data['messages']).length : loaded;
+        state.hasMore = flag(data['hasMoreBefore']);
+      }
+      if (!cleared &&
+          state.readingTimeline != null &&
+          data['messages'] is List &&
+          asList(data['messages']).isEmpty &&
+          data['messagesCached'] != true &&
+          !state.timeline.working) {
+        unawaited(_loadHistoryState(state));
+      }
       if (data.containsKey('reasoning_effort')) {
-        state.reasoningEffort = normalizeReasoningEffort(
-          data['reasoning_effort'],
+        state.reasoningEffort = text(data['reasoning_effort']);
+      }
+      if (data.containsKey('agent_mode')) {
+        state.agentMode = sessionAgentMode(
+          data['agent_mode'],
+          fallback:
+              state.agentMode ?? state.conversation?.agentMode ?? 'scoped',
         );
       }
       final model = text(data['model']), provider = text(data['provider']);
-      if (model.isNotEmpty) {
-        state.model =
-            models
-                .where((m) => m.id == model && m.provider == provider)
-                .firstOrNull ??
-            ModelChoice(
-              id: model,
-              provider: provider,
-              label: model,
-              apiMode: text(data['api_mode']),
-            );
+      if (model.isNotEmpty ||
+          (state.agentMode == 'global' && data.containsKey('model'))) {
+        state.model = state.agentMode == 'global'
+            ? ModelChoice(
+                id: model,
+                provider: '',
+                label: model,
+                native: true,
+                reasoningEfforts: const [],
+              )
+            : models
+                      .where((m) => m.id == model && m.provider == provider)
+                      .firstOrNull ??
+                  ModelChoice(
+                    id: model,
+                    provider: provider,
+                    label: model,
+                    apiMode: text(data['api_mode']),
+                  );
+        if (state.agentMode != 'global' && data.containsKey('api_mode')) {
+          state.model = state.model?.withApiMode(text(data['api_mode']));
+        }
       }
       final status = state.timeline.interaction != null
           ? ConversationTaskStatus.waiting
@@ -1801,6 +2561,10 @@ class AppController extends ChangeNotifier {
         event == 'run.failed' &&
         state.timeline.queue.any((q) => q.id == text(data['queue_id']));
     if (!state.timeline.apply(event, data)) return;
+    state.readingTimeline?.mergeVisibleState(state.timeline);
+    if (state.readingTimeline != null && event.startsWith('message.')) {
+      state.hasNewerMessages = true;
+    }
     if (failedQueued) {
       _notify();
       return;
@@ -1983,6 +2747,8 @@ class AppController extends ChangeNotifier {
           source: conversation.source,
           model: conversation.model,
           provider: conversation.provider,
+          agentMode: conversation.agentMode,
+          apiMode: conversation.apiMode,
           reasoningEffort: conversation.reasoningEffort,
         );
       }
@@ -2068,6 +2834,7 @@ class AppController extends ChangeNotifier {
       ];
     }
     final records = List<Map<String, dynamic>>.of(servers);
+    _disposePersons();
     _epoch++;
     _searchEpoch++;
     transport.dispose();
@@ -2114,11 +2881,14 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposePersons();
     _disposed = true;
     _epoch++;
     _paintTimer?.cancel();
     _disposeStates();
     transport.dispose();
+    sessionSync.removeListener(_notify);
+    sessionSync.dispose();
     api?.close();
     transcription.dispose();
     speech.dispose();

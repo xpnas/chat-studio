@@ -5,10 +5,12 @@ import '../../data/models.dart';
 import '../../state/app_controller.dart';
 import '../../state/conversation_state.dart';
 import '../profile_screen.dart';
+import '../person_screens.dart';
 import '../theme.dart';
 import 'agent_avatar.dart';
 import 'conversation_activity_mark.dart';
 import 'history_browser.dart';
+import '../../data/protocol_capabilities.dart';
 
 class ConversationDrawer extends StatefulWidget {
   const ConversationDrawer({
@@ -18,18 +20,22 @@ class ConversationDrawer extends StatefulWidget {
     required this.onOpenConversation,
     required this.onOpenGroup,
     this.initialTab = 0,
+    this.selectedBotSessionId,
   });
   final AppController controller;
   final VoidCallback onNewChat;
   final ValueChanged<Conversation> onOpenConversation;
   final ValueChanged<GroupRoom> onOpenGroup;
   final int initialTab;
+  final String? selectedBotSessionId;
   @override
   State<ConversationDrawer> createState() => _ConversationDrawerState();
 }
 
 class _ConversationDrawerState extends State<ConversationDrawer> {
   final _search = TextEditingController();
+  final _botSearch = TextEditingController();
+  GlobalKey<PersonListScreenState> _botListKey = GlobalKey();
   Timer? _searchTimer;
   String _historyFilter = 'all', _historyCategory = '';
   late int _historyTab;
@@ -47,6 +53,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
     _historyTab = widget.initialTab;
     _api = c.api;
     _profile = c.profile;
+    _search.text = c.search;
     c.addListener(_changed);
     if (_historyTab == 1) unawaited(_loadGroupRooms());
   }
@@ -59,6 +66,8 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
       _profile = c.profile;
       _searchTimer?.cancel();
       _search.clear();
+      _botSearch.clear();
+      _botListKey = GlobalKey();
       _groupRooms = const [];
       _loadingGroupRooms = false;
       _groupRoomsError = null;
@@ -72,6 +81,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
     c.removeListener(_changed);
     _searchTimer?.cancel();
     _search.dispose();
+    _botSearch.dispose();
     super.dispose();
   }
 
@@ -436,11 +446,11 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
       return switch (_historyFilter) {
         'pinned' =>
           c.isConversationPinned(conversation) &&
-              (_historyTab == 2 || !archived),
+              (_historyTab == 3 || !archived),
         'archived' => archived,
         'category' =>
-          category == _historyCategory && (_historyTab == 2 || !archived),
-        _ => _historyTab == 2 || !archived,
+          category == _historyCategory && (_historyTab == 3 || !archived),
+        _ => _historyTab == 3 || !archived,
       };
     }).toList();
     final categories = c.conversationCategoryNames.toList()..sort();
@@ -479,47 +489,67 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.tonalIcon(
-                  onPressed: c.busy
+                  key: const Key('new-conversation-button'),
+                  onPressed: _historyTab == 2
+                      ? (AppController.botsEnabled
+                            ? () =>
+                                  _botListKey.currentState?.createConversation()
+                            : null)
+                      : c.busy
                       ? null
                       : () {
                           Navigator.pop(context);
                           widget.onNewChat();
                         },
                   icon: const Icon(Icons.add_rounded),
-                  label: Text(context.tr('新建对话')),
+                  label: Text(
+                    _historyTab == 1
+                        ? context.tr('新建单聊')
+                        : context.tr('新建对话'),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 14),
-            if (_historyTab == 0)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
-                  controller: _search,
-                  enabled: _historyTab != 1,
-                  decoration: InputDecoration(
-                    hintText: _historyTab == 1
-                        ? context.tr('群聊列表不支持搜索')
-                        : context.tr('搜索全部对话'),
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    isDense: true,
-                  ),
-                  onChanged: (value) {
-                    _searchTimer?.cancel();
-                    _searchTimer = Timer(
-                      const Duration(milliseconds: 350),
-                      () => c.refreshSessions(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                key: ValueKey('conversation-search:$_historyTab'),
+                controller: _historyTab == 2
+                    ? _botSearch
+                    : _historyTab == 0
+                    ? _search
+                    : null,
+                enabled: _historyTab == 0 || _historyTab == 2,
+                decoration: InputDecoration(
+                  hintText: switch (_historyTab) {
+                    2 => context.tr('搜索 BOT'),
+                    1 => context.tr('群聊列表不支持搜索'),
+                    3 => context.tr('历史记录暂不支持搜索'),
+                    _ => context.tr('搜索全部对话'),
+                  },
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  isDense: true,
+                ),
+                onChanged: (value) {
+                  _searchTimer?.cancel();
+                  _searchTimer = Timer(const Duration(milliseconds: 350), () {
+                    if (_historyTab == 2) {
+                      _botListKey.currentState?.searchFor(value);
+                    } else if (_historyTab == 0) {
+                      c.refreshSessions(
                         query: value,
                         includeArchived: _includeArchived,
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    }
+                  });
+                },
               ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: DefaultTabController(
-                length: 3,
+                length: 4,
                 initialIndex: _historyTab,
                 child: TabBar(
                   onTap: (value) {
@@ -540,22 +570,37 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                   tabs: [
                     Tab(text: context.tr('单聊')),
                     Tab(text: context.tr('群聊')),
+                    Tab(key: const Key('bot-tab'), text: context.tr('BOT')),
                     Tab(text: context.tr('历史')),
                   ],
                 ),
               ),
             ),
-            if (_historyTab != 2)
+            if (_historyTab < 2)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 16, 0),
                 child: Row(
                   children: [
+                    if (_historyTab == 0 && !c.sessionSync.confirmed)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Tooltip(
+                          message: context.tr(
+                            c.sessionSync.state == CapabilityState.unknown
+                                ? '会话状态同步中'
+                                : '跨设备状态暂不可用',
+                          ),
+                          child: Icon(
+                            Icons.sync,
+                            size: 14,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
                     Expanded(
                       child: Text(
                         _historyTab == 1
                             ? context.tr('群聊')
-                            : _historyTab == 2
-                            ? context.tr('全部历史')
                             : context.tr('对话记录'),
                         style: TextStyle(
                           fontSize: 13,
@@ -703,10 +748,29 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
             if (_historyTab == 0 && c.loadingSessions)
               const LinearProgressIndicator(minHeight: 2),
             Expanded(
-              child: _historyTab == 2 && c.api != null
+              child: _historyTab == 3 && c.api != null
                   ? HistoryBrowser(
                       key: ValueKey((_api, _profile)),
                       controller: c,
+                    )
+                  : _historyTab == 2 && c.authenticated && c.api != null
+                  ? PersonListScreen(
+                      key: _botListKey,
+                      app: c,
+                      embedded: true,
+                      showSearch: false,
+                      initialSearch: _botSearch.text,
+                      selectedSessionId: widget.selectedBotSessionId,
+                      onOpen: (bot) {
+                        Navigator.pop(context);
+                        widget.onOpenConversation(
+                          Conversation.fromJson({
+                            'id': bot.id,
+                            'title': bot.title,
+                            'agent': 'ekko-agent',
+                          }),
+                        );
+                      },
                     )
                   : _historyTab == 1
                   ? _groupRoomsView(context)
@@ -843,6 +907,32 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                                   ConversationActivityMark(status: task),
                                   const SizedBox(width: 6),
                                 ],
+                                if (c.sessionSync.confirmed &&
+                                    c
+                                            .sessionSync
+                                            .projection
+                                            .sessions[conversation.id]
+                                            ?.unread ==
+                                        true) ...[
+                                  Tooltip(
+                                    message: context.tr('未读'),
+                                    child: Semantics(
+                                      label: context.tr('未读'),
+                                      child: Container(
+                                        key: ValueKey(
+                                          'session-unread:${conversation.id}',
+                                        ),
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: colors.primary,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
                                 IconButton(
                                   tooltip: context.tr('管理对话'),
                                   visualDensity: VisualDensity.compact,
@@ -862,19 +952,20 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                     ),
             ),
             const Divider(height: 1),
-            ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-              leading: const Icon(Icons.layers_outlined),
-              title: Text(
-                c.profile,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            if (_historyTab != 2)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                leading: const Icon(Icons.layers_outlined),
+                title: Text(
+                  c.profile,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(context.tr('切换当前 Profile')),
+                trailing: const Icon(Icons.keyboard_arrow_up_rounded),
+                enabled: !c.busy && c.profiles.isNotEmpty,
+                onTap: _pickProfile,
               ),
-              subtitle: Text(context.tr('切换当前 Profile')),
-              trailing: const Icon(Icons.keyboard_arrow_up_rounded),
-              enabled: !c.busy && c.profiles.isNotEmpty,
-              onTap: _pickProfile,
-            ),
             ListTile(
               contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
               leading: CircleAvatar(

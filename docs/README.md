@@ -7,6 +7,8 @@
 - [Agent settings and Runtime](agent-runtime-settings.md)
 - [Agent capabilities](agent-capabilities.md)
 - [Task plans](task-plans.md)
+- [Persistent goals and message organization](session-goals-and-message-selection.md)
+- [BOT conversations, background tasks and collaboration](bot-conversations.md)
 - [Chat commands](chat-composer-commands.md)
 - [Server workspace and gestures](workspace-navigation.md)
 - [Naming and compatibility](naming.md)
@@ -15,6 +17,7 @@
 ## Maintainer guides
 
 - [Build and release](build-release.md)
+- [Pinned Studio compatibility and acceptance](studio-compatibility.md)
 - [Privacy and security](../PRIVACY.md)
 - [Third-party notices](../THIRD_PARTY_NOTICES.md)
 

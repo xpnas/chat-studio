@@ -9,6 +9,7 @@ import 'package:chatstudio/core/server_address.dart';
 import 'package:chatstudio/data/chat_transport.dart';
 import 'package:chatstudio/data/models.dart';
 import 'package:chatstudio/data/studio_api.dart';
+import 'package:chatstudio/data/agent_catalog.dart';
 import 'package:chatstudio/state/app_controller.dart';
 import 'package:chatstudio/state/conversation_state.dart';
 import 'support.dart';
@@ -18,6 +19,213 @@ import 'package:chatstudio/data/audio_transcription.dart';
 // Never point this at your production workspace.
 void main() {
   final server = Platform.environment['CHATSTUDIO_TEST_SERVER'];
+  test(
+    'isolated native Codex global conversation keeps model and mode across clients',
+    () async {
+      final firstTransport = _DisconnectableTransport(),
+          secondTransport = _DisconnectableTransport();
+      final first = AppController(
+        storage: MemoryStorage(),
+        transport: firstTransport,
+      );
+      final second = AppController(
+        storage: MemoryStorage(),
+        transport: secondTransport,
+      );
+      String? id;
+      Future<void> until(bool Function() condition) async {
+        final deadline = DateTime.now().add(const Duration(seconds: 75));
+        while (!condition()) {
+          if (DateTime.now().isAfter(deadline)) {
+            throw StateError(
+              'Native CLI contract timeout: ${first.error ?? second.error ?? ''}',
+            );
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+        }
+      }
+
+      try {
+        for (final client in [first, second]) {
+          await client.initialize();
+          expect(
+            await client.login(
+              server!,
+              'admin',
+              Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
+              true,
+            ),
+            true,
+          );
+        }
+        await until(() => first.canSend);
+        expect(
+          first.availableAgents.any((agent) => agent.id == 'codex'),
+          true,
+          reason: 'NativeCodex explicitly requires an installed CLI',
+        );
+        await first.chooseEngine('codex');
+        await first.chooseAgentMode('global');
+        await first.chooseModel(
+          const ModelChoice(
+            id: 'chatstudio-test',
+            provider: '',
+            label: 'Native fixture',
+            native: true,
+            reasoningEfforts: [],
+          ),
+        );
+        expect(first.send('Return the local fixture marker.'), true);
+        id = first.sessionId;
+        await until(
+          () =>
+              !first.working &&
+              first.timeline.messages.any(
+                (message) =>
+                    message.role == 'assistant' &&
+                    message.content.contains('NATIVE_CODEX_FIXTURE_OK'),
+              ),
+        );
+        final metadata = await first.api!.sessionMetadata(id!);
+        expect(metadata.agentMode, 'global');
+        expect(metadata.model, 'chatstudio-test');
+        await second.openConversation(metadata);
+        await until(() => !second.syncing && !second.loadingMessages);
+        expect(second.agentMode, 'global');
+        expect(second.selectedModel!.id, 'chatstudio-test');
+        expect(second.send('Continue the same native conversation.'), true);
+        await until(
+          () =>
+              !second.working &&
+              second.timeline.messages
+                      .where((message) => message.role == 'assistant')
+                      .length >=
+                  2,
+        );
+        expect(firstTransport.runs, 1);
+        expect(secondTransport.runs, 1);
+        expect((await second.api!.sessionMetadata(id)).agentMode, 'global');
+      } finally {
+        if (id != null) await first.api?.delete(id);
+        second.dispose();
+        first.dispose();
+      }
+    },
+    skip:
+        server == null ||
+            Platform.environment['CHATSTUDIO_TEST_NATIVE_CODEX'] != '1'
+        ? 'Requires isolated runner with NativeCodex and an installed Codex CLI'
+        : false,
+    timeout: const Timeout(Duration(minutes: 4)),
+  );
+  test(
+    'stable two-client state, visible read ACK, archive, deletion and offline recovery do not replay runs',
+    () async {
+      final transport = _DisconnectableTransport();
+      final sender = AppController(
+        storage: MemoryStorage(),
+        transport: transport,
+      );
+      final reader = AppController(storage: MemoryStorage());
+      String? id;
+      var deleted = false;
+      Future<void> until(bool Function() condition) async {
+        final deadline = DateTime.now().add(const Duration(seconds: 50));
+        while (!condition()) {
+          if (DateTime.now().isAfter(deadline)) {
+            throw StateError(
+              'Two-client state timeout: ${sender.error ?? reader.error ?? ''}',
+            );
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+
+      try {
+        for (final client in [sender, reader]) {
+          await client.initialize();
+          expect(
+            await client.login(
+              server!,
+              'admin',
+              Platform.environment['CHATSTUDIO_TEST_PASSWORD']!,
+              true,
+            ),
+            true,
+          );
+        }
+        await until(
+          () =>
+              sender.canSend &&
+              sender.sessionSync.confirmed &&
+              reader.sessionSync.confirmed,
+        );
+        expect(sender.send('SLOW two-client state contract'), true);
+        id = sender.sessionId;
+        await until(
+          () => reader.sessionSync.projection.sessions[id]?.working == true,
+        );
+        expect(reader.sessionId, isNull);
+        expect(reader.timeline.messages, isEmpty);
+        reader.onBackground();
+        await until(
+          () =>
+              !sender.working &&
+              sender.timeline.messages.any(
+                (message) => message.role == 'assistant' && !message.pending,
+              ),
+        );
+        reader.onForeground();
+        await until(
+          () => reader.sessionSync.projection.sessions[id]?.unread == true,
+        );
+        await reader.openConversation(sender.current!);
+        await until(
+          () =>
+              !reader.syncing &&
+              !reader.loadingMessages &&
+              reader.timeline.messages.any(
+                (message) =>
+                    message.role == 'assistant' &&
+                    int.tryParse(message.id) != null,
+              ),
+        );
+        // The UI's paint/visibility guard is independently exercised by widget tests.
+        // Here the fully restored latest page supplies the exact persisted cursor.
+        expect(await reader.confirmVisibleRead(atLatest: true), true);
+        await until(
+          () =>
+              reader.sessionSync.projection.sessions[id]?.unread == false &&
+              sender.sessionSync.projection.sessions[id]?.unread == false,
+        );
+        reader.draft.text = 'preserve across remote removal';
+        await sender.setConversationArchived(sender.current!, true);
+        await until(() => reader.current?.isArchived == true);
+        expect(reader.sessionId, id);
+        expect(reader.draft.text, 'preserve across remote removal');
+        expect(reader.timeline.messages, isNotEmpty);
+        await sender.api!.delete(id!);
+        deleted = true;
+        await until(
+          () =>
+              reader.sessionId != id &&
+              reader.recoverableDrafts.any((draft) => draft.sessionId == id),
+        );
+        expect(reader.timeline.messages, isEmpty);
+        expect(transport.runs, 1);
+      } finally {
+        if (id != null && !deleted) await sender.api?.delete(id);
+        reader.dispose();
+        sender.dispose();
+      }
+    },
+    skip: server == null
+        ? 'Requires isolated Studio'
+        : Platform.environment['CHATSTUDIO_TEST_BASELINE'] != 'stable'
+        ? 'Stable-only session state contract'
+        : false,
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
   test(
     'real remote workspace selection persists absolute path and lists files',
     () async {
@@ -105,7 +313,12 @@ void main() {
         final expected = asList(snapshot['agents'])
             .map(asMap)
             .where(
-              (a) => a['installed'] == true && a['source'] != 'not-installed',
+              (a) =>
+                  a['installed'] == true &&
+                  a['source'] != 'not-installed' &&
+                  (AgentChoice.supportedIds.contains(a['id']) ||
+                      c.api!.enablePluginAgents &&
+                          AgentChoice.isPluginId(text(a['id']))),
             )
             .map((a) => a['id'])
             .toSet();
@@ -472,21 +685,32 @@ void main() {
             agent: 'hermes',
           ),
         );
-        await until(() => c.canSend);
+        await until(() => !c.syncing && !c.loadingMessages);
         expect(c.engine, 'hermes');
-        expect(c.send('/usage'), isTrue);
+        expect(c.currentAgentAvailable, isFalse);
+        expect(c.canSend, isFalse);
+        expect(c.send('must not start an unavailable Hermes run'), isFalse);
+        // Exercise server-owned commands at the protocol layer. The mobile
+        // controller must still prohibit continuing an unavailable Agent.
+        void command(String input) => c.transport.emit('run', {
+          'input': input,
+          'session_id': commandSession,
+          'profile': c.profile,
+          'queue_id': const Uuid().v4(),
+        });
+        command('/usage');
         await until(
           () => c.timeline.messages.any(
             (m) => m.role == 'command' && m.content.startsWith('Usage:'),
           ),
         );
         expect(c.working, isFalse);
-        expect(c.send('/context'), isTrue);
+        command('/context');
         await until(
           () =>
               c.timeline.messages.any((m) => m.content.startsWith('Context:')),
         );
-        expect(c.send('/title mobile-command-contract'), isTrue);
+        command('/title mobile-command-contract');
         await until(() => c.title == 'mobile-command-contract');
         final listed = await c.api!.sessions(search: 'mobile-command-contract');
         expect(
@@ -495,11 +719,11 @@ void main() {
         );
         final before = await c.api!.messages(commandSession);
         expect(before.messages.where((m) => m.role == 'command'), isNotEmpty);
-        expect(c.send('/clear'), isTrue);
+        command('/clear');
         await until(() => c.timeline.messages.isEmpty);
         final after = await c.api!.messages(commandSession);
         expect(after.total, greaterThanOrEqualTo(before.total));
-        expect(c.send('/clear --history'), isTrue);
+        command('/clear --history');
         await until(
           () => c.timeline.messages.any(
             (m) => m.content.contains('history messages from the database'),
@@ -510,7 +734,7 @@ void main() {
           cleared.messages.any((m) => m.content.startsWith('Usage:')),
           isFalse,
         );
-        expect(c.canSend, isTrue);
+        expect(c.canSend, isFalse);
         // Catalog endpoints are real, not widget fixtures.
         await c.api!.commandSkills();
         await c.api!.commandBundles();

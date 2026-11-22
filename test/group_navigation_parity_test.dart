@@ -39,7 +39,7 @@ void main() {
           });
         }
         if (r.url.path.endsWith('/workspace-files/list')) {
-          expect(
+          expectSync(
             r.url.path,
             '/api/studio/group-chat/rooms/room-1/workspace-files/list',
           );

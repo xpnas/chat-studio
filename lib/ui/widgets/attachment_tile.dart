@@ -8,7 +8,7 @@ import 'audio_attachment_control.dart';
 import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../data/studio_api.dart';
-import '../../state/app_controller.dart';
+import '../../state/message_controller.dart';
 
 class AttachmentTile extends StatefulWidget {
   const AttachmentTile({
@@ -18,7 +18,7 @@ class AttachmentTile extends StatefulWidget {
     this.saveFile,
   });
   final MessageAttachment file;
-  final AppController controller;
+  final MessageController controller;
   final Future<String?> Function(String name, Uint8List bytes, String mimeType)?
   saveFile;
   @override
@@ -35,7 +35,18 @@ class _AttachmentTileState extends State<AttachmentTile> {
     super.initState();
     _api = widget.controller.api;
     _profile = widget.controller.profile;
+    widget.controller.addListener(_changed);
     if (widget.file.isImage) _load();
+  }
+
+  void _changed() {
+    if (mounted &&
+        (!widget.controller.messageScopeValid ||
+            _api != widget.controller.api ||
+            _profile != widget.controller.profile)) {
+      if (!_cancel.isCompleted) _cancel.complete();
+      setState(() => _preview = null);
+    }
   }
 
   void _load() {
@@ -51,14 +62,16 @@ class _AttachmentTileState extends State<AttachmentTile> {
 
   @override
   void dispose() {
-    _cancel.complete();
+    widget.controller.removeListener(_changed);
+    if (!_cancel.isCompleted) _cancel.complete();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    if (_api != widget.controller.api ||
+    if (!widget.controller.messageScopeValid ||
+        _api != widget.controller.api ||
         _profile != widget.controller.profile) {
       return const SizedBox.shrink();
     }
@@ -192,7 +205,7 @@ class AttachmentViewer extends StatefulWidget {
   });
   final MessageAttachment file;
   final bool downloadOnOpen;
-  final AppController controller;
+  final MessageController controller;
   final Future<String?> Function(String name, Uint8List bytes, String mimeType)?
   saveFile;
   @override
@@ -212,6 +225,7 @@ class _AttachmentViewerState extends State<AttachmentViewer> {
   bool _loading = false, _saving = false, _leaving = false;
   bool get _valid =>
       mounted &&
+      widget.controller.messageScopeValid &&
       _api == widget.controller.api &&
       _profile == widget.controller.profile;
   @override

@@ -7,6 +7,8 @@
 
 Chat Studio 是一个面向 [Hermes Studio](https://github.com/EKKOLearnAI/hermes-studio) 兼容接口的 Flutter 移动客户端，支持 Android 和 iOS。应用使用原生 Flutter 界面直接连接服务端 REST 与 Socket.IO 接口，不是 WebView 包装。
 
+当前同步目标为 [Ekko Studio](https://github.com/EKKOLearnAI/ekko-studio)（原 Hermes Studio）的固定兼容版本，见[兼容矩阵与验收范围](docs/studio-compatibility.md)。来源声明保留在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 ## 功能
 
 - 使用 Studio 的账号密码登录，支持多服务器、Profile 切换和安全保存会话。
@@ -14,6 +16,10 @@ Chat Studio 是一个面向 [Hermes Studio](https://github.com/EKKOLearnAI/herme
 - 支持流式回答、Markdown、思考内容折叠、停止生成、断线恢复和多会话切换。
 - 动态读取服务端已安装的 Agent，支持 Hermes、Ekko、Claude、Codex、Pi、Grok、OpenCode 和 DSH 等 Agent 的选择与识别。
 - 模型按照 Provider 分组显示，支持模型选择和思考深度设置。
+- 支持 scoped/global 执行模式、原生模型目录和按服务器、账号、Profile、Agent、模式隔离的选择；已有会话沿用保存的配置。
+- 独立同步其他设备的运行、未读与已读状态，保护旧页阅读位置和远端删除后的草稿。
+- [任务中心与消息整理](docs/session-goals-and-message-selection.md)：管理跨轮目标，按服务端完整分组确认删除单聊或群聊记录。
+- [已配置 BOT、后台任务与协作](docs/bot-conversations.md)已通过本地受控模型驱动的真实 Studio 闭环和 Android 模拟器验收，默认启用并可独立关闭。真实模型未验证；本次按用户要求免测 iOS。
 - 支持图片、文件和音频附件；语音输入使用服务端 STT，语音播放使用服务端 TTS。
 - 支持 Agent 任务计划、工具状态、审批提示和运行状态展示。
 - 支持服务器工作区浏览、远程文件预览和工作目录选择。
@@ -129,4 +135,4 @@ Chat Studio 是独立的第三方客户端，不是 EKKOLearnAI 官方项目，�
 
 ## 隐私
 
-客户端保存登录会话和应用偏好，不保存密码或模型密钥。聊天、附件、工具执行、模型调用和数据保留由所连接的 Studio 服务端及其 Provider 配置决定。完整说明见 [PRIVACY.md](PRIVACY.md)。
+客户端保存登录会话和应用偏好，不保存密码或模型密钥。启用 BOT 的版本还会在应用专用目录保存按账号隔离的有界展示历史缓存和待核对操作信息。聊天、附件、工具执行、模型调用和服务端数据保留由所连接的 Studio 服务端及其 Provider 配置决定。完整说明见 [PRIVACY.md](PRIVACY.md)。

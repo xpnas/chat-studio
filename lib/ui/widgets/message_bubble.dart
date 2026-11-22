@@ -1,9 +1,10 @@
 import '../../l10n.dart';
 import 'chat_text_style.dart';
 import 'task_plan_card.dart';
+import 'message_selection_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../state/app_controller.dart';
+import '../../state/message_controller.dart';
 import 'stable_markdown.dart';
 import 'attachment_tile.dart';
 import 'agent_avatar.dart';
@@ -19,12 +20,16 @@ class MessageBubble extends StatelessWidget {
     this.anchorKey,
     this.onRetry,
     this.agentId,
+    this.onSelectMessage,
+    this.senderLabel,
   });
-  final AppController? controller;
+  final MessageController? controller;
   final Key Function(int)? anchorKey;
   final VoidCallback? onRetry;
   final ChatMessage message;
   final String? agentId;
+  final VoidCallback? onSelectMessage;
+  final String? senderLabel;
   Future<void> _openLink(BuildContext context, String? href) async {
     final reference = messageFileReference(
       href ?? '',
@@ -159,8 +164,12 @@ class MessageBubble extends StatelessWidget {
                           child: Text(
                             command
                                 ? context.tr("命令")
+                                : senderLabel != null
+                                ? senderLabel!
                                 : message.senderName.isNotEmpty
                                 ? message.senderName
+                                : controller?.messageSenderName != null
+                                ? controller!.messageSenderName!
                                 : (agentId == null
                                           ? AgentIdentity.current(controller)
                                           : AgentIdentity.resolve(agentId!))
@@ -266,9 +275,24 @@ class MessageBubble extends StatelessWidget {
                         ),
                       if (message.bodyText.isNotEmpty)
                         if (user)
-                          SelectableText(message.bodyText, style: chatBodyStyle)
+                          SelectableText(
+                            message.bodyText,
+                            style: chatBodyStyle,
+                            contextMenuBuilder: (context, state) =>
+                                messageSelectionMenu(
+                                  context,
+                                  state,
+                                  onSelectMessage,
+                                ),
+                          )
                         else
                           StableMarkdown(
+                            contextMenuBuilder: (context, state) =>
+                                messageSelectionMenu(
+                                  context,
+                                  state,
+                                  onSelectMessage,
+                                ),
                             data: message.bodyText,
                             anchorKey: anchorKey,
                             audioLinkBuilder: (href, label) {

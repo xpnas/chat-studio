@@ -35,7 +35,7 @@ void main() {
       addTearDown(h.dispose);
       await h.login();
       final c = h.controller;
-      c.chooseEngine('hermes');
+      await c.chooseEngine('hermes');
       expect(c.send('/status'), isTrue);
       final sid = c.sessionId;
       expect(h.transport.emitted.last.$1, 'run');
@@ -85,7 +85,7 @@ void main() {
       final h = TestHarness();
       addTearDown(h.dispose);
       await h.login();
-      h.controller.chooseEngine('codex');
+      await h.controller.chooseEngine('codex');
       expect(h.controller.send('/compact'), isTrue);
       expect(h.transport.emitted.last.$2['agent_id'], 'codex');
       expect(h.transport.emitted.last.$2['input'], '/compact');
@@ -143,7 +143,7 @@ void main() {
       addTearDown(h.dispose);
       await h.login();
       final c = h.controller;
-      c.chooseEngine('hermes');
+      await c.chooseEngine('hermes');
       c.send('/title 原标题');
       final sid = c.sessionId;
       c.newChat();
@@ -277,7 +277,7 @@ void main() {
       final h = TestHarness();
       addTearDown(h.dispose);
       await h.login();
-      h.controller.chooseEngine('hermes');
+      await h.controller.chooseEngine('hermes');
       final input = TextEditingController();
       addTearDown(input.dispose);
       tester.view.physicalSize = const Size(320, 640);
@@ -321,7 +321,7 @@ void main() {
     (tester) async {
       final h = TestHarness();
       await h.login();
-      h.controller.chooseEngine('hermes');
+      await h.controller.chooseEngine('hermes');
       h.override = (r) async => r.url.path == '/api/hermes/skills'
           ? http.Response(
               jsonEncode({

@@ -94,6 +94,15 @@ void main() {
     expect(set.questions[0].choices.first.recommended, true);
     expect(set.questions[1].choices.first.label, '选项 A');
     expect(set.questions[2].multiSelect, true);
+    final stringFlag = StructuredQuestionSet.parse([
+      {
+        'qid': 'multi-string',
+        'question': '字符串多选',
+        'choices': ['A', 'B'],
+        'multi_select': 'true',
+      },
+    ])!;
+    expect(stringFlag.questions.single.multiSelect, true);
     expect(set.questions[3].isOpen, true);
 
     final response =

@@ -336,7 +336,16 @@ void main() {
       await h.login();
       await h.controller.chooseReasoningEffort('high');
       expect(h.controller.reasoningEffort, 'high');
-      expect(h.storage.choices.values.single['reasoning_effort'], 'high');
+      final scope =
+          '${h.controller.api!.address.value}|${h.controller.account!.id}|${h.controller.profile}';
+      expect(
+        (await h.storage.readAgentChoice(
+          scope,
+          h.controller.engine,
+          h.controller.agentMode,
+        ))!['reasoning_effort'],
+        'high',
+      );
       expect(h.controller.send('deep task'), true);
       expect(h.transport.emitted.last.$2['reasoning_effort'], 'high');
       final sid = h.controller.sessionId!;

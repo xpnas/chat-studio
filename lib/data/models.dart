@@ -12,6 +12,13 @@ int integer(dynamic value) =>
     value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 bool flag(dynamic value) => value == true || value == 1;
 
+// Older sessions store an empty mode for scoped execution. A blank resume
+// field must also preserve an already known native/global session mode.
+String sessionAgentMode(dynamic value, {String fallback = 'scoped'}) {
+  final mode = text(value).trim();
+  return mode.isEmpty ? (fallback.isEmpty ? 'scoped' : fallback) : mode;
+}
+
 String messageText(dynamic value) {
   if (value is String) {
     // Some persisted messages serialize content blocks instead of plain text.
@@ -74,9 +81,26 @@ class ModelChoice {
     required this.label,
     this.providerLabel = '',
     this.apiMode = '',
+    this.native = false,
+    this.reasoningEfforts,
+    this.canOverrideApiMode = false,
   });
   final String id, provider, label, providerLabel, apiMode;
+  final bool native;
+  final bool canOverrideApiMode;
+  final List<String>? reasoningEfforts;
   String get key => '$provider::$id';
+  String get groupKey => provider;
+  ModelChoice withApiMode(String mode) => ModelChoice(
+    id: id,
+    provider: provider,
+    label: label,
+    providerLabel: providerLabel,
+    apiMode: mode,
+    native: native,
+    reasoningEfforts: reasoningEfforts,
+    canOverrideApiMode: canOverrideApiMode,
+  );
   static List<ModelChoice> parseGroups(dynamic raw) => asList(raw).expand((
     rawGroup,
   ) {
@@ -93,7 +117,17 @@ class ModelChoice {
                 ? id
                 : text(asMap(metadata[id])['alias']),
             providerLabel: text(group['label']),
-            apiMode: text(group['api_mode']),
+            canOverrideApiMode: text(group['api_mode']).isEmpty,
+            apiMode: asMap(group['api_mode_by_model']).containsKey(id)
+                ? text(asMap(group['api_mode_by_model'])[id])
+                : text(group['api_mode']),
+            reasoningEfforts: asMap(metadata[id])['reasoning_efforts'] is List
+                ? List.unmodifiable(
+                    asList(
+                      asMap(metadata[id])['reasoning_efforts'],
+                    ).whereType<String>(),
+                  )
+                : null,
           ),
         );
     // Deliberately never retain server provider credentials (api_key/base_url).
@@ -347,6 +381,8 @@ class Conversation {
     this.provider = '',
     this.updatedAt = 0,
     this.reasoningEffort = '',
+    this.agentMode = 'scoped',
+    this.apiMode = '',
     this.categoryId,
     this.isPinned = false,
     this.isArchived = false,
@@ -354,14 +390,24 @@ class Conversation {
   });
   final ContextUsage contextUsage;
   final String reasoningEffort;
+  final String agentMode, apiMode;
   final String id, title, preview, profile, agent, source, model, provider;
   final int updatedAt;
   final int? categoryId;
   final bool isPinned, isArchived;
   bool get canContinue =>
+      const {'scoped', 'global'}.contains(agentMode) &&
       (agent.isEmpty ||
-          AgentChoice.supportedIds.contains(AgentChoice.canonicalId(agent))) &&
-      !['workflow', 'group_chat', 'global_agent'].contains(source);
+          AgentChoice.supportedIds.contains(AgentChoice.canonicalId(agent)) ||
+          AgentChoice.isPluginId(agent)) &&
+      const {
+        '',
+        'cli',
+        'api_server',
+        'desktop',
+        'builtin_agent',
+        'coding_agent',
+      }.contains(source);
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
     id: text(json['id']),
     title: text(json['title']).isEmpty ? '未命名对话' : text(json['title']),
@@ -372,6 +418,8 @@ class Conversation {
     model: text(json['model']),
     provider: text(json['provider']),
     reasoningEffort: text(json['reasoning_effort']),
+    agentMode: sessionAgentMode(json['agent_mode']),
+    apiMode: text(json['api_mode']),
     updatedAt: integer(json['last_active'] ?? json['started_at']),
     categoryId: json['category_id'] == null
         ? null
@@ -380,6 +428,23 @@ class Conversation {
     isArchived: flag(json['is_archived']),
     contextUsage: const ContextUsage().merge(json),
   );
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'preview': preview,
+    'profile': profile,
+    'agent': agent,
+    'source': source,
+    'model': model,
+    'provider': provider,
+    'agent_mode': agentMode,
+    'api_mode': apiMode,
+    'reasoning_effort': reasoningEffort,
+    'last_active': updatedAt,
+    'category_id': categoryId,
+    'is_pinned': isPinned,
+    'is_archived': isArchived,
+  };
 }
 
 class MessageAttachment {
@@ -608,11 +673,13 @@ class MessagePage {
     this.total,
     this.hasMore, {
     this.taskPlans = const [],
+    this.authoritativeTotal = false,
   });
   final List<TaskPlan> taskPlans;
   final List<ChatMessage> messages;
   final int offset, total;
   final bool hasMore;
+  final bool authoritativeTotal;
 }
 
 class ApiException implements Exception {

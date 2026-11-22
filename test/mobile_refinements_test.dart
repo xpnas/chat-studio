@@ -44,7 +44,7 @@ void main() {
     final h = TestHarness();
     addTearDown(h.dispose);
     await h.login();
-    h.controller.chooseEngine('codex');
+    await h.controller.chooseEngine('codex');
     expect(h.controller.send('hello'), isTrue);
     final run = h.transport.emitted.last.$2;
     expect(run['agent_id'], 'codex');

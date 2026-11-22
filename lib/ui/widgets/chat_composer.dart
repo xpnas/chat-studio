@@ -13,6 +13,10 @@ import 'reading_handle.dart';
 import 'model_sheet.dart';
 import 'slash_command_picker.dart';
 import 'package:flutter/foundation.dart';
+import '../../data/native_models.dart';
+import '../../state/person_controller.dart';
+import '../../data/person_models.dart';
+import 'person_model_picker.dart';
 
 typedef ComposerLayoutBuilder =
     Widget Function(Widget editor, Widget? readingHandle, Widget? stopButton);
@@ -29,7 +33,8 @@ class ChatComposer extends StatefulWidget {
     this.readingProgress = const AlwaysStoppedAnimation<double>(0),
     this.layoutBuilder,
     this.group,
-  });
+    this.person,
+  }) : assert(group == null || person == null);
   final AppController controller;
   final TextEditingController input;
   final MediaAccess? media;
@@ -38,6 +43,7 @@ class ChatComposer extends StatefulWidget {
   final ValueListenable<double> readingProgress;
   final ComposerLayoutBuilder? layoutBuilder;
   final GroupChatController? group;
+  final PersonController? person;
   @override
   State<ChatComposer> createState() => _ChatComposerState();
 }
@@ -60,13 +66,41 @@ class _ChatComposerState extends State<ChatComposer>
   Timer? _timer;
   Completer<void>? _cancel;
   AppController get c => widget.controller;
+  String _modelLabel(BuildContext context) {
+    if (person != null) {
+      final saved = text(asMap(person!.snapshot?.settings['model'])['model']);
+      return saved.isEmpty ? context.tr('模型与工作区沿用 BOT 配置') : saved;
+    }
+    final model = c.selectedModel;
+    if (model?.native == true && model!.id.isEmpty) {
+      return context.tr('Agent 默认模型');
+    }
+    return model == null || model.label.isEmpty
+        ? context.tr('服务端默认模型')
+        : model.label;
+  }
+
   GroupChatController? get group => widget.group;
-  bool get _working => group?.working ?? c.working;
-  bool get _connected => group?.connected ?? c.connected;
-  bool get _canCompose => group?.canSend ?? (c.canSend || c.canQueue);
-  bool _canSubmit(String text) => group?.canSend ?? c.canSubmit(text);
+  PersonController? get person => widget.person;
+  bool get _ordinary => group == null && person == null;
+  bool get _working => person?.working ?? group?.working ?? c.working;
+  bool get _connected => person?.connected ?? group?.connected ?? c.connected;
+  bool get _hasPendingInteraction => person != null
+      ? (person!.live.interaction != null || person!.interactions.isNotEmpty)
+      : group != null
+      ? group!.timeline.interaction != null
+      : c.timeline.interaction != null;
+  bool get _canStop =>
+      _connected &&
+      (person != null || group != null || c.current?.canContinue != false);
+  bool get _canCompose =>
+      person?.canSend ?? group?.canSend ?? (c.canSend || c.canQueue);
+  bool _canSubmit(String text) =>
+      person?.canSend ?? group?.canSend ?? c.canSubmit(text);
   void _stop(String? owner) {
-    if (group != null) {
+    if (person != null) {
+      person!.stop();
+    } else if (group != null) {
       unawaited(group!.stop());
     } else {
       c.stop(expectedSession: owner);
@@ -79,7 +113,7 @@ class _ChatComposerState extends State<ChatComposer>
     super.initState();
     _focus.addListener(_focusChanged);
     _retryRevision = c.retryRevision;
-    _draft = group?.draft ?? c.draft;
+    _draft = person?.draft ?? group?.draft ?? c.draft;
     if (_draft.text.isNotEmpty) {
       widget.input.text = _draft.text;
     } else {
@@ -87,7 +121,12 @@ class _ChatComposerState extends State<ChatComposer>
     }
     widget.input.addListener(_saveDraft);
     c.addListener(_contextChanged);
+    person?.addListener(_personChanged);
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _personChanged() {
+    if (mounted) setState(() {});
   }
 
   void _focusChanged() {
@@ -97,7 +136,7 @@ class _ChatComposerState extends State<ChatComposer>
   void _saveDraft() => _draft.text = widget.input.text;
 
   void _contextChanged() {
-    if (group != null) return;
+    if (!_ordinary) return;
     if (!identical(_draft, c.draft)) {
       _abort();
       _focus.unfocus();
@@ -165,7 +204,8 @@ class _ChatComposerState extends State<ChatComposer>
     }
   }
 
-  bool _valid(int operation) => mounted && operation == _operation;
+  bool _valid(int operation) =>
+      mounted && operation == _operation && (person?.valid ?? true);
   void _error(Object error) {
     if (mounted) {
       setState(() => _inlineError = '$error');
@@ -175,6 +215,7 @@ class _ChatComposerState extends State<ChatComposer>
   @override
   void dispose() {
     c.removeListener(_contextChanged);
+    person?.removeListener(_personChanged);
     widget.input.removeListener(_saveDraft);
     _focus.removeListener(_focusChanged);
     _focus.dispose();
@@ -188,17 +229,155 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   Future<void> _models() async {
+    final bot = person;
+    if (bot != null) {
+      final selection = await showPersonModelPicker(
+        context,
+        api: bot.api,
+        scopeChanges: Listenable.merge([bot, c]),
+        valid: () => bot.valid,
+        selected: PersonModelChoice.fromSelection(
+          bot.snapshot?.settings['model'],
+        ),
+        canSelect: () => bot.canChangeModel,
+      );
+      if (!mounted || !bot.valid || selection == null) return;
+      final saved = await bot.changeModel(selection);
+      if (!mounted || !bot.valid) return;
+      setState(() => _inlineError = saved ? null : bot.modelError);
+      if (saved) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.tr('BOT 模型已更新'))));
+      }
+      return;
+    }
     final draft = c.draft;
+    if (c.agentMode == 'global') unawaited(c.refreshNativeModels());
     final selected = await showModalBottomSheet<ModelChoice>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) =>
-          ModelSheet(models: c.models, selected: c.selectedModel),
+      builder: (context) => AnimatedBuilder(
+        animation: c,
+        builder: (context, _) {
+          final selected = c.selectedModel;
+          final models = c.selectableModels;
+          final missing =
+              selected != null &&
+              !models.any((model) => model.key == selected.key);
+          final status = switch (c.nativeModelStatus) {
+            NativeModelStatus.ready => '原生模型已更新',
+            NativeModelStatus.empty => '没有原生模型，可使用 Agent 默认模型',
+            NativeModelStatus.notInstalled => '服务端未安装此 Agent',
+            NativeModelStatus.authRequired => 'Agent 原生账号需要登录',
+            NativeModelStatus.unsupported => '服务端不支持原生模型发现',
+            NativeModelStatus.timeout => '原生模型发现超时，请重试',
+            NativeModelStatus.error => '原生模型发现失败，请重试',
+            null => '使用 Agent 原生模型与默认配置',
+          };
+          return SizedBox(
+            height: MediaQuery.sizeOf(context).height * .86,
+            child: Column(
+              children: [
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final mode in c.agentModes)
+                      ChoiceChip(
+                        key: ValueKey('agent-mode:$mode'),
+                        label: Text(
+                          context.tr(mode == 'global' ? '原生模式' : 'Provider 模式'),
+                        ),
+                        selected: c.agentMode == mode,
+                        onSelected: c.canConfigure && c.sessionId == null
+                            ? (_) => c.chooseAgentMode(mode)
+                            : null,
+                      ),
+                  ],
+                ),
+                if (c.sessionId != null && c.agentModes.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(context.tr('已有会话的模式不可修改，请新建会话选择另一模式。')),
+                  ),
+                if (!c.canConfigure)
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(context.tr('请等待当前回复结束后修改模型')),
+                  ),
+                if (c.agentMode == 'global')
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      context.tr(
+                        c.nativeModelsError != null ? '原生模型发现失败，请重试' : status,
+                      ),
+                    ),
+                    trailing: c.nativeModelsLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : IconButton(
+                            tooltip: context.tr('刷新原生模型'),
+                            onPressed: c.refreshNativeModels,
+                            icon: const Icon(Icons.refresh_rounded),
+                          ),
+                  ),
+                if (missing)
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(
+                      '${selected.id} · ${context.tr('已保存，当前目录未重新验证')}',
+                    ),
+                  ),
+                Expanded(
+                  child: AbsorbPointer(
+                    absorbing: !c.canConfigure,
+                    child: ModelSheet(
+                      models: [if (missing) selected, ...models],
+                      selected: selected,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
     if (mounted && identical(draft, c.draft) && selected != null) {
-      await c.chooseModel(selected);
+      var choice = selected;
+      if (choice.canOverrideApiMode && choice.key == c.selectedModel?.key) {
+        final protocol = await showDialog<String>(
+          context: context,
+          builder: (context) => SimpleDialog(
+            title: Text(context.tr('选择 API 协议')),
+            children: [
+              for (final mode in const [
+                'auto',
+                'chat_completions',
+                'codex_responses',
+                'anthropic_messages',
+                'bedrock_converse',
+                'codex_app_server',
+              ])
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, mode),
+                  child: Text(mode == 'auto' ? context.tr('使用服务端模型协议') : mode),
+                ),
+            ],
+          ),
+        );
+        if (protocol == null || !mounted || !identical(draft, c.draft)) return;
+        choice = choice.withApiMode(
+          protocol == 'auto' ? selected.apiMode : protocol,
+        );
+      }
+      await c.chooseModel(choice);
     }
   }
 
@@ -227,7 +406,7 @@ class _ChatComposerState extends State<ChatComposer>
             Expanded(
               child: ListView(
                 children: [
-                  for (final entry in reasoningEffortLabels.entries)
+                  for (final entry in c.availableReasoningEfforts.entries)
                     ListTile(
                       key: ValueKey('reasoning:${entry.key}'),
                       selected: c.reasoningEffort == entry.key,
@@ -400,14 +579,14 @@ class _ChatComposerState extends State<ChatComposer>
 
   Future<void> _send() async {
     if (_busy || !_canSubmit(widget.input.text)) return;
-    if (group == null &&
+    if (_ordinary &&
         c.working &&
         c.isBridgeCommand(widget.input.text) &&
         (_attachments.isNotEmpty || _remoteAttachments.isNotEmpty)) {
       _error(context.tr("运行中发送命令不能携带附件，请先移除附件"));
       return;
     }
-    final operation = ++_operation, client = c.api;
+    final operation = ++_operation, client = person?.api ?? c.api;
     final input = widget.input.text;
     _inlineError = null;
     _uploadProgress = 0;
@@ -433,7 +612,9 @@ class _ChatComposerState extends State<ChatComposer>
       _remoteAttachments.addAll(MessageAttachment.parse(blocks));
       _attachments.clear();
       final attachments = _remoteAttachments.map((f) => f.toBlock()).toList();
-      final sent = group == null
+      final sent = person != null
+          ? person!.send(input, attachments: attachments)
+          : group == null
           ? c.send(input, attachments: attachments)
           : await group!.send(input, attachments: attachments);
       if (!_valid(operation)) return;
@@ -461,20 +642,21 @@ class _ChatComposerState extends State<ChatComposer>
         !_focus.hasFocus &&
         _attachments.isEmpty &&
         _remoteAttachments.isEmpty &&
-        (group != null || c.timeline.interaction == null);
-    final editor = AnimatedSize(
-      duration: MediaQuery.of(context).disableAnimations
-          ? Duration.zero
-          : const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.bottomCenter,
-      // Keep the editor subtree mounted, but consume zero height when folded.
-      child: Visibility(
-        visible: !folded,
-        maintainState: true,
-        child: _expanded(context),
-      ),
+        !_hasPendingInteraction;
+    final editorBody = Visibility(
+      visible: !folded,
+      maintainState: true,
+      child: _expanded(context),
     );
+    final editor = MediaQuery.of(context).disableAnimations
+        ? editorBody
+        : AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.bottomCenter,
+            // Keep the editor subtree mounted, but consume zero height when folded.
+            child: editorBody,
+          );
     final handle = folded
         ? ValueListenableBuilder(
             key: const Key('collapsed-composer'),
@@ -490,10 +672,7 @@ class _ChatComposerState extends State<ChatComposer>
         ? IconButton.filledTonal(
             key: const Key('collapsed-stop-button'),
             tooltip: context.tr("停止生成"),
-            onPressed:
-                _connected && (group != null || c.current?.canContinue != false)
-                ? () => _stop(owner)
-                : null,
+            onPressed: _canStop ? () => _stop(owner) : null,
             icon: const Icon(Icons.stop_rounded, size: 21),
           )
         : null;
@@ -524,7 +703,7 @@ class _ChatComposerState extends State<ChatComposer>
         controller: c,
         input: widget.input,
         focus: _focus,
-        enabled: !_busy && group == null,
+        enabled: !_busy && _ordinary,
         child: DecoratedBox(
           key: const Key('composer-surface'),
           decoration: BoxDecoration(
@@ -545,7 +724,7 @@ class _ChatComposerState extends State<ChatComposer>
                           padding: const EdgeInsets.all(8),
                           child: Text(
                             context.l10n.format("{0} · 草稿已保留", {
-                              '0': _inlineError,
+                              '0': context.tr(_inlineError!),
                             }),
                             style: TextStyle(fontSize: 12, color: colors.error),
                           ),
@@ -728,7 +907,7 @@ class _ChatComposerState extends State<ChatComposer>
                       ),
                     ],
                   ),
-                if (group == null)
+                if (_ordinary)
                   ComposerContextInfo(controller: c, input: widget.input),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -743,9 +922,11 @@ class _ChatComposerState extends State<ChatComposer>
                     textCapitalization: TextCapitalization.sentences,
                     keyboardType: TextInputType.multiline,
                     decoration: InputDecoration(
-                      hintText: group == null
+                      hintText: person != null
+                          ? context.tr("发送给当前 BOT")
+                          : group == null
                           ? context.tr("发消息，输入 / 使用命令")
-                          : '发消息，输入 @ 选择 Agent',
+                          : context.tr("发消息，输入 @ 选择 Agent"),
                       counterText: '',
                       filled: false,
                       contentPadding: EdgeInsets.symmetric(vertical: 8),
@@ -770,16 +951,17 @@ class _ChatComposerState extends State<ChatComposer>
                         icon: const Icon(Icons.add_rounded, size: 22),
                       ),
                     ),
-                    if (group == null)
+                    if (_ordinary || person != null)
                       Expanded(
                         child: Tooltip(
                           message: context.l10n.format("选择模型 · {0}", {
-                            '0':
-                                c.selectedModel?.label ?? context.tr("服务端默认模型"),
+                            '0': _modelLabel(context),
                           }),
                           child: TextButton(
                             key: const Key('model-button'),
-                            onPressed: !_busy && c.canConfigure
+                            onPressed:
+                                !_busy &&
+                                    (person?.canChangeModel ?? c.canConfigure)
                                 ? _models
                                 : null,
                             style: TextButton.styleFrom(
@@ -792,8 +974,7 @@ class _ChatComposerState extends State<ChatComposer>
                               children: [
                                 Expanded(
                                   child: Text(
-                                    c.selectedModel?.label ??
-                                        context.tr("默认模型"),
+                                    _modelLabel(context),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 12),
@@ -805,7 +986,7 @@ class _ChatComposerState extends State<ChatComposer>
                           ),
                         ),
                       ),
-                    if (group == null)
+                    if (_ordinary)
                       Tooltip(
                         message: context.l10n.format("思考深度 · {0}", {
                           '0': context.tr(
@@ -816,7 +997,11 @@ class _ChatComposerState extends State<ChatComposer>
                           width: 64,
                           child: TextButton(
                             key: const Key('reasoning-button'),
-                            onPressed: !_busy && c.canConfigure
+                            onPressed:
+                                !_busy &&
+                                    c.canConfigure &&
+                                    !(c.agentMode == 'global' &&
+                                        c.sessionId != null)
                                 ? _reasoning
                                 : null,
                             style: TextButton.styleFrom(
@@ -839,23 +1024,24 @@ class _ChatComposerState extends State<ChatComposer>
                           ),
                         ),
                       ),
-                    SizedBox(
-                      width: 44,
-                      child: IconButton(
-                        key: const Key('voice-button'),
-                        tooltip: c.sttProvider == null
-                            ? context.tr("配置语音输入")
-                            : context.tr("语音输入"),
-                        onPressed: !_busy && _canCompose ? _voice : null,
-                        icon: Icon(
-                          Icons.mic_none_rounded,
-                          size: 22,
-                          color: c.sttProvider == null
-                              ? colors.onSurfaceVariant
-                              : colors.primary,
+                    if (person == null)
+                      SizedBox(
+                        width: 44,
+                        child: IconButton(
+                          key: const Key('voice-button'),
+                          tooltip: c.sttProvider == null
+                              ? context.tr("配置语音输入")
+                              : context.tr("语音输入"),
+                          onPressed: !_busy && _canCompose ? _voice : null,
+                          icon: Icon(
+                            Icons.mic_none_rounded,
+                            size: 22,
+                            color: c.sttProvider == null
+                                ? colors.onSurfaceVariant
+                                : colors.primary,
+                          ),
                         ),
                       ),
-                    ),
                     if (group != null) const Spacer(),
                     ValueListenableBuilder(
                       valueListenable: widget.input,
@@ -865,9 +1051,7 @@ class _ChatComposerState extends State<ChatComposer>
                               width: 40,
                               child: IconButton(
                                 tooltip: context.tr("停止生成"),
-                                onPressed: _connected
-                                    ? () => _stop(owner)
-                                    : null,
+                                onPressed: _canStop ? () => _stop(owner) : null,
                                 icon: const Icon(Icons.stop_rounded),
                               ),
                             )
@@ -890,7 +1074,7 @@ class _ChatComposerState extends State<ChatComposer>
                                 _attachments.isEmpty &&
                                 _remoteAttachments.isEmpty
                             ? context.tr("停止生成")
-                            : group == null &&
+                            : _ordinary &&
                                   c.working &&
                                   !c.isBridgeCommand(value.text)
                             ? context.tr("加入队列")
@@ -900,11 +1084,7 @@ class _ChatComposerState extends State<ChatComposer>
                                 value.text.trim().isEmpty &&
                                 _attachments.isEmpty &&
                                 _remoteAttachments.isEmpty
-                            ? (_connected &&
-                                      (group != null ||
-                                          c.current?.canContinue != false)
-                                  ? () => _stop(owner)
-                                  : null)
+                            ? (_canStop ? () => _stop(owner) : null)
                             : (!_busy &&
                                       _canSubmit(value.text) &&
                                       (value.text.trim().isNotEmpty ||

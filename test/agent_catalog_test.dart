@@ -26,6 +26,28 @@ void catalog(TestHarness h, List<Map<String, dynamic>> rows) {
 }
 
 void main() {
+  test(
+    'pinned stable protocol metadata covers sixteen agents without implying installation',
+    () {
+      expect(AgentChoice.supportedIds, hasLength(16));
+      for (final id in AgentChoice.supportedIds) {
+        final meta = AgentChoice.metadata(id);
+        expect(meta.selectable, false);
+        expect(meta.modes, isNotEmpty);
+        expect(AgentChoice.metadata(id, installed: true).selectable, true);
+        expect(AgentChoice.canonicalId(meta.sessionAgentId), id);
+      }
+      expect(AgentChoice.metadata('cursor').modes, ['global']);
+      expect(AgentChoice.metadata('qoder').modes, ['global']);
+      expect(AgentChoice.metadata('opencode').supportsCompact, false);
+      expect(AgentChoice.metadata('qwen').supportsContext, false);
+      expect(
+        AgentChoice.metadata('new-agent', installed: true).selectable,
+        false,
+      );
+      expect(AgentChoice.metadata('new-agent').modes, isEmpty);
+    },
+  );
   test('icon failures are cached, unauthenticated and retryable', () async {
     final h = TestHarness();
     addTearDown(h.dispose);
@@ -85,7 +107,7 @@ void main() {
         h.requests.where((r) => r.url.path == '/api/coding-agents'),
         isEmpty,
       );
-      h.controller.chooseEngine('codex');
+      await h.controller.chooseEngine('codex');
       expect(h.controller.engine, 'pi');
     },
   );
@@ -154,7 +176,7 @@ void main() {
     addTearDown(h.dispose);
     catalog(h, [installed('new-agent')]);
     await h.login();
-    h.controller.chooseEngine('new-agent');
+    await h.controller.chooseEngine('new-agent');
     expect(h.controller.send('no wrong Claude fallback'), false);
     catalog(h, []);
     await h.controller.refreshAgents();
@@ -210,6 +232,8 @@ void main() {
       catalog(h, [installed('codex')]);
       await h.controller.refreshAgents();
       expect(h.controller.engine, 'claude-code');
+      expect(h.controller.currentAgentAvailable, false);
+      expect(h.controller.canSend, false);
     },
   );
 
@@ -221,7 +245,7 @@ void main() {
         addTearDown(h.dispose);
         catalog(h, [installed(id)]);
         await h.login();
-        h.controller.chooseEngine(id);
+        await h.controller.chooseEngine(id);
         expect(h.controller.send('hello'), true);
         final data = h.transport.emitted.last.$2;
         expect(data['agent_id'], id);
@@ -267,7 +291,7 @@ void main() {
       installed('grok', yes: false),
     ]);
     await h.login();
-    h.controller.chooseEngine('codex');
+    await h.controller.chooseEngine('codex');
     await tester.pumpWidget(
       ChatStudioApp(controller: h.controller, initialize: false),
     );

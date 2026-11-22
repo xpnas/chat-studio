@@ -13,6 +13,12 @@ class ConversationDraft {
   bool get isEmpty => text.isEmpty && files.isEmpty && uploaded.isEmpty;
 }
 
+class RecoveredConversationDraft {
+  const RecoveredConversationDraft(this.sessionId, this.title, this.draft);
+  final String sessionId, title;
+  final ConversationDraft draft;
+}
+
 class ConversationState {
   ConversationState(this.profile);
   final String profile;
@@ -25,8 +31,14 @@ class ConversationState {
 
   Conversation? conversation;
   final timeline = ChatTimeline();
+  ChatTimeline? readingTimeline;
+  bool hasNewerMessages = false,
+      returningLatest = false,
+      lastHistoryLoadSucceeded = false;
   final draft = ConversationDraft();
   ModelChoice? model;
+  String? agentMode;
+  bool selectionLoading = false;
   String engine = StudioProtocol.builtInAgentId, reasoningEffort = '';
   bool syncing = false, loading = false, hasMore = false;
   int offset = 0, revision = 0, loadRequest = 0;

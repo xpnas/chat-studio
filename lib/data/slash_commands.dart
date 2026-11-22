@@ -1,4 +1,6 @@
-/// Mirrored from official Studio v1.0.3 bridge-session-commands.ts and ChatInput.vue.
+import 'agent_catalog.dart';
+
+/// Commands verified against pinned Studio protocol metadata.
 /// Commands are sent verbatim; interpretation belongs to the server/runtime.
 class SlashCommand {
   const SlashCommand(this.insert, this.description, {this.args = ''});
@@ -42,12 +44,17 @@ List<SlashCommand> commandsForEngine(String engine) => engine == 'hermes'
     ? slashCommands
     : slashCommands
           .where(
-            (c) => const [
-              'context',
-              'compact',
-              'usage',
-              'status',
-            ].contains(c.name),
+            (c) =>
+                const [
+                  'context',
+                  'compact',
+                  'usage',
+                  'status',
+                ].contains(c.name) &&
+                (c.name != 'context' ||
+                    AgentChoice.metadata(engine).supportsContext) &&
+                (c.name != 'compact' ||
+                    AgentChoice.metadata(engine).supportsCompact),
           )
           .toList();
 

@@ -13,7 +13,7 @@ class ModelSheet extends StatefulWidget {
 class _ModelSheetState extends State<ModelSheet> {
   String query = '';
   late final Set<String> expanded = {
-    if (widget.selected != null) widget.selected!.provider,
+    if (widget.selected != null) widget.selected!.groupKey,
   };
   @override
   Widget build(BuildContext context) {
@@ -23,14 +23,14 @@ class _ModelSheetState extends State<ModelSheet> {
       if ('${model.label} ${model.id} ${model.providerLabel} ${model.provider}'
           .toLowerCase()
           .contains(search)) {
-        grouped.putIfAbsent(model.provider, () => []).add(model);
+        grouped.putIfAbsent(model.groupKey, () => []).add(model);
       }
     }
     // Keep the selected provider and model visible at the top without
     // duplicating the model row when the list is long.
     final providerOrder = grouped.keys.toList()
       ..sort((a, b) {
-        final selectedProvider = widget.selected?.provider;
+        final selectedProvider = widget.selected?.groupKey;
         if (a == selectedProvider && b != selectedProvider) return -1;
         if (b == selectedProvider && a != selectedProvider) return 1;
         return a.toLowerCase().compareTo(b.toLowerCase());
@@ -112,7 +112,7 @@ class _ModelSheetState extends State<ModelSheet> {
                             ),
                             subtitle: Text(
                               context.l10n.format("{0} · {1} 个模型", {
-                                '0': row.provider,
+                                '0': first.provider,
                                 '1': grouped[row.provider]!.length,
                               }),
                             ),
@@ -167,7 +167,9 @@ class _ModelSheetState extends State<ModelSheet> {
                                 horizontal: 12,
                               ),
                               title: Text(
-                                model.label,
+                                model.native && model.id.isEmpty
+                                    ? context.tr('Agent 默认模型')
+                                    : model.label,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -177,7 +179,7 @@ class _ModelSheetState extends State<ModelSheet> {
                                 ),
                               ),
                               subtitle: Text(
-                                '${selected ? context.tr("当前使用 · ") : ''}${model.id}',
+                                '${selected ? context.tr("当前使用 · ") : ''}${model.id}${selected && model.canOverrideApiMode ? context.tr(" · 点击切换 API 协议") : ''}',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),

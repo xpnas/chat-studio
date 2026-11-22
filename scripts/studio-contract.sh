@@ -3,8 +3,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STUDIO="$(cd "${1:?Usage: bash scripts/studio-contract.sh /path/to/pinned-studio}" && pwd)"
-EXPECTED=b44c74318fe5a0a1f3aed29d5095393964fc3d62
-[[ "$(git -C "$STUDIO" rev-parse HEAD)" == "$EXPECTED" ]] || { echo 'Wrong Studio revision' >&2; exit 1; }
+BASELINE="${2:-legacy}"
+node "$ROOT/tools/studio-baselines.mjs" verify "$BASELINE" "$STUDIO"
+if [[ "${3:-}" == --preflight-only ]]; then exit 0; fi
+ENTRYPOINT="$(node "$ROOT/tools/studio-baselines.mjs" entrypoint "$BASELINE")"
 [[ -d "$STUDIO/node_modules" ]] || { echo 'Run npm ci in Studio first' >&2; exit 1; }
 # Fail before bootstrap if either port belongs to another process.
 node --input-type=module - <<'JS'
@@ -45,6 +47,8 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 export CHATSTUDIO_TEST_MEDIA=1 CHATSTUDIO_TEST_SERVER=http://127.0.0.1:18647
+export CHATSTUDIO_TEST_BASELINE="$BASELINE" MOCK_PROVIDER_PORT=18648
+export CHATSTUDIO_TEST_SHA="$(git -C "$STUDIO" rev-parse HEAD)"
 export CHATSTUDIO_TEST_PASSWORD
 CHATSTUDIO_TEST_PASSWORD="$(openssl rand -hex 24)"
 if [[ "${GITHUB_ACTIONS:-}" == true ]]; then echo "::add-mask::$CHATSTUDIO_TEST_PASSWORD"; fi
@@ -62,10 +66,15 @@ mkdir -p "$HERMES_HOME" "$HERMES_WEB_UI_HOME"
 cp "$ROOT/tools/mock-provider/config.yaml" "$HERMES_HOME/config.yaml"
 # Isolate HOME only for Studio: preserve the caller's Flutter SDK/pub caches.
 mkdir -p "$STATE/home"
+if [[ "${CHATSTUDIO_TEST_NATIVE_CODEX:-0}" == 1 ]]; then
+  node "$ROOT/tools/mock-provider/native-codex.mjs" "$STATE/home/.codex"
+fi
 cd "$ROOT"
 setsid node tools/mock-provider/server.mjs > "$STATE/provider.log" 2>&1 &
 FIXTURE_PID=$!
-(cd "$STUDIO" && HOME="$STATE/home" exec setsid node -r ts-node/register packages/server/src/index.ts) > "$STATE/studio.log" 2>&1 &
+(cd "$STUDIO" && HOME="$STATE/home" CODEX_HOME="$STATE/home/.codex" CHATSTUDIO_NATIVE_FIXTURE_KEY=local-fixture-not-a-secret exec setsid node -r ts-node/register "$ENTRYPOINT") > "$STATE/studio.log" 2>&1 &
 STUDIO_PID=$!
 node tools/mock-provider/bootstrap.mjs
-flutter test test/live_contract_test.dart --reporter expanded
+flutter pub get --enforce-lockfile
+flutter test test/live_contract_test.dart test/plugin_live_contract_test.dart test/session_tasks_live_contract_test.dart test/group_selection_live_contract_test.dart test/person_live_contract_test.dart test/person_cache_live_contract_test.dart --concurrency=1 --no-pub --reporter json > "$STATE/client-results.jsonl"
+node tools/contract-report.mjs "$STATE/client-results.jsonl"

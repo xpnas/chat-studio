@@ -224,7 +224,7 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
   Widget build(BuildContext context) => Column(
     children: [
       Padding(
-        padding: const EdgeInsets.only(left: 20, right: 8),
+        padding: const EdgeInsets.fromLTRB(20, 10, 16, 0),
         child: Row(
           children: [
             Expanded(
@@ -232,9 +232,10 @@ class _HistoryBrowserState extends State<HistoryBrowser> {
                 selecting
                     ? context.l10n.format('已选 {0} 条', {'0': selected.length})
                     : context.tr('历史'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),

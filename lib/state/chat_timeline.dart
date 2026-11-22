@@ -173,6 +173,29 @@ class ChatTimeline {
     _touch();
   }
 
+  void clearHistory() {
+    final finished = Set<String>.of(_finishedRuns);
+    final unresolved = messages
+        .where(
+          (message) =>
+              message.delivery == 'uncertain' || message.delivery == 'sending',
+        )
+        .toList();
+    clear();
+    _finishedRuns.addAll(finished);
+    messages = unresolved;
+  }
+
+  void mergeVisibleState(ChatTimeline source) {
+    final keys = _plans.keys.toSet();
+    mergeTaskPlans(source.taskPlans.where((plan) => keys.contains(plan.key)));
+    final runs = _plans.values.map((plan) => plan.runId).toSet();
+    for (final entry in source._planOutcomes.entries) {
+      if (runs.contains(entry.key)) _planOutcomes[entry.key] = entry.value;
+    }
+    _touch();
+  }
+
   void begin(
     String input,
     String localId, {
@@ -742,9 +765,11 @@ class ChatTimeline {
             .lastOrNull ??
         '';
     final marker = eventMarker.isNotEmpty ? eventMarker : previousRun ?? '';
-    final snapshot = asList(
-      data['messages'],
-    ).map((m) => ChatMessage.fromJson(asMap(m))).toList();
+    final snapshot = data['messages'] is List
+        ? asList(
+            data['messages'],
+          ).map((m) => ChatMessage.fromJson(asMap(m))).toList()
+        : List<ChatMessage>.of(previous);
     // A terminal live event may overtake an asynchronous resume response.
     // Never resurrect a run that this client has already observed finishing.
     if (flag(data['isWorking']) &&

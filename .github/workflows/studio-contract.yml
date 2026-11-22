@@ -5,17 +5,34 @@ on:
 permissions:
   contents: read
 jobs:
-  contract:
+  baselines:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.13.1'
+      - id: matrix
+        run: echo "matrix=$(node tools/studio-baselines.mjs matrix)" >> "$GITHUB_OUTPUT"
+      - run: node --test tools/studio-contract.test.mjs
+  contract:
+    needs: baselines
+    continue-on-error: ${{ !matrix.releaseGate }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.baselines.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
           path: mobile
       - uses: actions/checkout@v4
         with:
-          repository: EKKOLearnAI/hermes-studio
-          ref: b44c74318fe5a0a1f3aed29d5095393964fc3d62
+          repository: EKKOLearnAI/ekko-studio
+          ref: ${{ matrix.sha }}
           path: studio
       - uses: actions/setup-node@v4
         with:
@@ -34,9 +51,10 @@ jobs:
           key: ${{ runner.os }}-flutter-pub-${{ hashFiles('mobile/pubspec.lock') }}
           restore-keys: |
             ${{ runner.os }}-flutter-pub-
+      - name: Verify pinned baseline before installing or starting services
+        working-directory: mobile
+        run: node tools/studio-baselines.mjs verify '${{ matrix.baseline }}' ../studio
       - run: npm ci --ignore-scripts --no-audit --no-fund
-        working-directory: studio
-      - run: npx vitest run tests/server/app-connections-auth.test.ts tests/server/user-auth.test.ts
         working-directory: studio
       - run: python3 scripts/verify-app-identity.py
         working-directory: mobile
@@ -45,4 +63,4 @@ jobs:
       - name: Exercise real Studio with local model fixture
         shell: bash
         working-directory: mobile
-        run: bash scripts/studio-contract.sh ../studio
+        run: bash scripts/studio-contract.sh ../studio '${{ matrix.baseline }}'

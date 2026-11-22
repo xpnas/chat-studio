@@ -93,12 +93,43 @@ class StructuredQuestionSet {
           id: id,
           question: question,
           choices: List.unmodifiable(choices),
-          multiSelect: flag(map['multi_select'] ?? map['multiSelect']),
+          multiSelect: _readMultiSelect(map),
         ),
       );
     }
     return StructuredQuestionSet(List.unmodifiable(questions));
   }
+}
+
+bool _readMultiSelect(Map<String, dynamic> map) {
+  final value =
+      map['multi_select'] ??
+      map['multiSelect'] ??
+      map['multiple'] ??
+      map['allow_multiple'] ??
+      map['allowMultiple'];
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    switch (value.trim().toLowerCase()) {
+      case 'true':
+      case '1':
+      case 'yes':
+      case 'on':
+      case 'multi':
+      case 'multiple':
+      case 'multi_select':
+      case 'multi-select':
+        return true;
+      default:
+        break;
+    }
+  }
+  final type = text(map['type']).trim().toLowerCase();
+  return type == 'multi' ||
+      type == 'multiple' ||
+      type == 'multi_select' ||
+      type == 'multi-select';
 }
 
 List<dynamic>? _decodeQuestionList(dynamic value) {

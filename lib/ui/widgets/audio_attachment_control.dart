@@ -1,7 +1,7 @@
 import '../../l10n.dart';
 import 'package:flutter/material.dart';
 import '../../data/models.dart';
-import '../../state/app_controller.dart';
+import '../../state/message_controller.dart';
 
 class AudioAttachmentControl extends StatelessWidget {
   const AudioAttachmentControl({
@@ -10,7 +10,7 @@ class AudioAttachmentControl extends StatelessWidget {
     required this.controller,
   });
   final MessageAttachment file;
-  final AppController controller;
+  final MessageController controller;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller.speech,

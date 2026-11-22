@@ -7,6 +7,8 @@
 
 Chat Studio is a Flutter mobile client for interfaces compatible with [Hermes Studio](https://github.com/EKKOLearnAI/hermes-studio). It supports Android and iOS and connects directly to the server through REST and Socket.IO. It is a native Flutter application, not a WebView wrapper.
 
+Current synchronization targets pinned versions of [Ekko Studio](https://github.com/EKKOLearnAI/ekko-studio), formerly Hermes Studio. See the [compatibility matrix](docs/studio-compatibility.md) and the preserved [third-party notices](THIRD_PARTY_NOTICES.md).
+
 ## Features
 
 - Sign in with Studio credentials, manage multiple servers, switch Profiles, and securely persist sessions.
@@ -14,6 +16,10 @@ Chat Studio is a Flutter mobile client for interfaces compatible with [Hermes St
 - Streaming responses, Markdown, collapsible reasoning, stop generation, reconnect/resume, and independent multi-session state.
 - Dynamic discovery of server-installed Agents, including Hermes, Ekko, Claude, Codex, Pi, Grok, OpenCode, and DSH where supported by the server.
 - Provider-grouped model selection and reasoning-depth settings.
+- Scoped/global execution, native model directories, and choices isolated by server/account/Profile/Agent/mode. Existing conversations retain their saved configuration.
+- Independent cross-device running/unread/read state, protected older reading windows, and recovery of drafts after remote removal.
+- [Persistent goals and message organization](docs/session-goals-and-message-selection.md), with server-defined complete groups and explicit deletion confirmation.
+- [Configured BOT conversations, tasks and collaboration](docs/bot-conversations.md), enabled after real Studio execution with a controlled local model and Android emulator acceptance. Real models remain unverified; iOS testing was waived for this change.
 - Image, file, and audio attachments; voice input uses server-side STT and voice playback uses server-side TTS.
 - Agent task plans, tool status, approval prompts, and running-state indicators.
 - Server workspace browsing, remote file previews, and server-side workspace selection.
@@ -129,4 +135,4 @@ Original code in this repository is licensed under [Apache License 2.0](LICENSE)
 
 ## Privacy
 
-The client stores session credentials and application preferences, but not passwords or model keys. Chat data, attachments, tool execution, model calls, and retention are controlled by the connected Studio server and its Provider configuration. See [PRIVACY.md](PRIVACY.md) for details.
+The client stores session credentials and application preferences, but not passwords or model keys. BOT-enabled builds also keep bounded, account-scoped display-history caches and unresolved operation journals in application storage. Chat data, attachments, tool execution, model calls, and server retention are controlled by the connected Studio server and its Provider configuration. See [PRIVACY.md](PRIVACY.md) for details.

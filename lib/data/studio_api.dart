@@ -8,14 +8,89 @@ import 'package:http/http.dart' as http;
 import '../core/server_address.dart';
 import 'models.dart';
 import 'mobile_media.dart';
+import 'protocol_capabilities.dart';
+import 'agent_catalog.dart';
+import 'native_models.dart';
 
 class StudioApi {
   StudioApi(this.address, {http.Client? client})
     : _client = client ?? http.Client();
   final ServerAddress address;
   final http.Client _client;
-  String token = '';
-  String profile = 'default';
+  final capabilities = ProtocolCapabilities();
+  int _identityGeneration = 0;
+  String _token = '';
+  String _profile = 'default';
+  String get token => _token;
+  set token(String value) {
+    if (value == _token) return;
+    _token = value;
+    resetCapabilities();
+  }
+
+  String get profile => _profile;
+  set profile(String value) {
+    if (value == _profile) return;
+    _profile = value;
+    resetCapabilities();
+  }
+
+  void resetCapabilities() {
+    _identityGeneration++;
+    capabilities.invalidate();
+    _nativeModels.clear();
+    _nativeModelRequests.clear();
+  }
+
+  final _nativeModels = <String, NativeModelCatalog>{};
+  final _nativeModelRequests = <String, int>{};
+  NativeModelCatalog? cachedNativeModels(String agent) => _nativeModels[agent];
+  Future<NativeModelCatalog> nativeModels(
+    String agent, {
+    bool refresh = false,
+  }) async {
+    if (!AgentChoice.supportedIds.contains(agent) &&
+        !(enablePluginAgents && AgentChoice.isPluginId(agent))) {
+      throw const ApiException('不支持的 Agent 模型路由');
+    }
+    final generation = _identityGeneration;
+    final requestId = (_nativeModelRequests[agent] ?? 0) + 1;
+    _nativeModelRequests[agent] = requestId;
+    final unified =
+        capabilities[ProtocolCapability.agents] == CapabilityState.supported;
+    final response = await request(
+      unified
+          ? '/api/studio/agents/${Uri.encodeComponent(agent)}/models'
+          : '/api/coding-agents/models',
+      query: {if (!unified) 'agent': agent, 'refresh': '$refresh'},
+    );
+    if (generation != _identityGeneration ||
+        requestId != _nativeModelRequests[agent]) {
+      throw const StaleProtocolResponse();
+    }
+    final data = unified
+        ? response
+        : asList(
+            response['agents'],
+          ).map(asMap).where((row) => row['agentId'] == agent).firstOrNull;
+    if (data == null) {
+      throw const FormatException('Native model directory missing Agent');
+    }
+    final catalog = NativeModelCatalog.fromJson(agent, data);
+    if (catalog.usable) _nativeModels[agent] = catalog;
+    return catalog;
+  }
+
+  Future<Map<String, dynamic>> readCapability(
+    ProtocolCapability capability,
+    String path, {
+    Map<String, String>? query,
+    bool Function(Object error)? isMissingRoute,
+  }) => capabilities.read(
+    capability,
+    () => request(path, query: query),
+    isMissingRoute: isMissingRoute,
+  );
   void Function()? onUnauthorized;
   final _images = <String, Uint8List>{};
   int _imageBytes = 0;
@@ -89,6 +164,7 @@ class StudioApi {
     bool public = false,
     Duration timeout = const Duration(seconds: 25),
   }) async {
+    final generation = _identityGeneration;
     final uri = address.uri.replace(path: path, queryParameters: query);
     final request = http.Request(method, uri)..followRedirects = false;
     request.headers.addAll({
@@ -102,14 +178,20 @@ class StudioApi {
       final response = await (() async => http.Response.fromStream(
         await _client.send(request),
       ))().timeout(timeout);
+      if (generation != _identityGeneration) {
+        throw const StaleProtocolResponse();
+      }
+      if (response.statusCode == 401 && !public) onUnauthorized?.call();
       Map<String, dynamic> data;
       try {
         data = asMap(jsonDecode(utf8.decode(response.bodyBytes)));
       } on FormatException {
+        if (response.statusCode == 404 && response.body.trim() == 'Not Found') {
+          throw const ApiException('Not Found', 404);
+        }
         throw ApiException('服务返回了非 JSON 内容，请检查地址和反向代理', response.statusCode);
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        if (response.statusCode == 401 && !public) onUnauthorized?.call();
         throw ApiException(
           text(data['error']).isEmpty
               ? '请求失败 (${response.statusCode})'
@@ -624,11 +706,64 @@ class StudioApi {
           .toList();
   Future<Map<String, dynamic>> models() =>
       request('/api/hermes/available-models', query: {'profile': profile});
+  Future<Conversation> sessionMetadata(String id) async {
+    final response = await request(
+      '/api/studio/sessions/${Uri.encodeComponent(id)}',
+    );
+    final session = asMap(response['session']);
+    if (session['id'] != id) {
+      throw const FormatException('Invalid session metadata');
+    }
+    return Conversation.fromJson(session);
+  }
 
   // Management APIs mirror the v1.0.3 Studio web client. These methods keep
   // credentials on the server and return only the fields needed by mobile UI.
   Future<Map<String, dynamic>> agentAvailability() =>
       request('/api/agents/availability');
+
+  // Verified against the pinned preview. Compile-time switch permits rollback.
+  bool enablePluginAgents = const bool.fromEnvironment(
+    'STUDIO_PLUGIN_AGENTS',
+    defaultValue: true,
+  );
+  Future<List<AgentChoice>> discoverAgents() async {
+    final generation = _identityGeneration;
+    List<AgentChoice>? descriptors;
+    try {
+      descriptors = await capabilities.read(
+        ProtocolCapability.agents,
+        () async {
+          final data = await request('/api/studio/agents');
+          return AgentChoice.parseDescriptors(
+            data['agents'],
+            enablePlugins: enablePluginAgents,
+          );
+        },
+        isMissingRoute: (error) => error is ApiException && error.status == 404,
+      );
+    } catch (error) {
+      if (classifyProtocolFailure(
+            error,
+            confirmedMissingRoute: error is ApiException && error.status == 404,
+          ) !=
+          ProtocolFailure.unsupported) {
+        rethrow;
+      }
+    }
+    if (generation != _identityGeneration) throw const StaleProtocolResponse();
+    final availability = AgentChoice.parse(
+      (await agentAvailability())['agents'],
+    );
+    if (generation != _identityGeneration) throw const StaleProtocolResponse();
+    // The unified registry contains Coding Agents and plugins, not Hermes/Ekko.
+    // Only a missing registry permits availability to supply Coding Agents.
+    if (descriptors == null) return availability;
+    return List.unmodifiable([
+      ...availability.where((agent) => AgentChoice.coreIds.contains(agent.id)),
+      ...descriptors.where((agent) => !AgentChoice.coreIds.contains(agent.id)),
+    ]);
+  }
 
   Future<Map<String, dynamic>> codingAgents() => request('/api/coding-agents');
 
@@ -1075,6 +1210,7 @@ class StudioApi {
       integer(data['total']),
       flag(data['hasMore']),
       taskPlans: TaskPlan.parseList(data['taskPlans'], sessionId: id),
+      authoritativeTotal: data['messages'] is List && data['total'] is num,
     );
   }
 
@@ -1191,7 +1327,7 @@ class StudioApi {
       method: 'POST',
       body: {
         'model': model.id,
-        'provider': model.provider,
+        if (!model.native) 'provider': model.provider,
         if (model.apiMode.isNotEmpty) 'api_mode': model.apiMode,
       },
     );
@@ -1214,6 +1350,7 @@ class StudioApi {
   }
 
   void close() {
+    resetCapabilities();
     _images.clear();
     _imageBytes = 0;
     _client.close();

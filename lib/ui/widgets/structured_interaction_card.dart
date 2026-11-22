@@ -96,13 +96,17 @@ class _StructuredInteractionCardState extends State<StructuredInteractionCard> {
     widget.onSubmit(widget.questionSet.encodeResponses(answers));
   }
 
-  void _select(StructuredQuestion question, String value) {
+  void _select(StructuredQuestion question, String value, bool isSelected) {
     setState(() {
-      final selected = _selected.putIfAbsent(question.id, () => <String>{});
+      final values = _selected.putIfAbsent(question.id, () => <String>{});
       if (question.multiSelect) {
-        selected.contains(value) ? selected.remove(value) : selected.add(value);
+        if (isSelected) {
+          values.add(value);
+        } else {
+          values.remove(value);
+        }
       } else {
-        selected
+        values
           ..clear()
           ..add(value);
       }
@@ -206,16 +210,42 @@ class _StructuredInteractionCardState extends State<StructuredInteractionCard> {
                 isDense: true,
               ),
             )
+          else if (question.multiSelect)
+            Column(
+              children: [
+                for (final choice in question.choices)
+                  CheckboxListTile(
+                    key: ValueKey('${question.id}:${choice.value}'),
+                    value: selected.contains(choice.value),
+                    onChanged: widget.enabled && !widget.submitting
+                        ? (isSelected) => _select(
+                            question,
+                            choice.value,
+                            isSelected == true,
+                          )
+                        : null,
+                    title: Text(choice.label),
+                    secondary: choice.recommended
+                        ? Icon(Icons.star_rounded, color: colors.primary)
+                        : null,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+              ],
+            )
           else
             Wrap(
               spacing: 7,
               runSpacing: 6,
               children: [
                 for (final choice in question.choices)
-                  FilterChip(
+                  ChoiceChip(
+                    key: ValueKey('${question.id}:${choice.value}'),
                     selected: selected.contains(choice.value),
                     onSelected: widget.enabled && !widget.submitting
-                        ? (_) => _select(question, choice.value)
+                        ? (isSelected) =>
+                              _select(question, choice.value, isSelected)
                         : null,
                     avatar: choice.recommended
                         ? Icon(

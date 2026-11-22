@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "repository": "EKKOLearnAI/ekko-studio",
+  "baselines": [
+    {
+      "id": "legacy",
+      "sha": "b44c74318fe5a0a1f3aed29d5095393964fc3d62",
+      "releaseGate": true,
+      "entrypoint": "packages/server/src/index.ts",
+      "configDirectory": "hermes",
+      "capabilities": ["chat", "profiles", "resume", "attachments", "group-chat", "task-plan"]
+    },
+    {
+      "id": "stable",
+      "sha": "312425cca7d707a115d230f0252e9d55786ec57e",
+      "releaseGate": true,
+      "entrypoint": "packages/server/src/index.ts",
+      "configDirectory": "hermes",
+      "capabilities": ["chat", "profiles", "resume", "attachments", "group-chat", "task-plan", "native-models", "session-state", "session-tasks", "message-selection", "person", "person-timeline"]
+    },
+    {
+      "id": "preview-agents",
+      "sha": "302cf39b7cc77410430694eebfb79dc8aff11b97",
+      "releaseGate": false,
+      "entrypoint": "packages/server/src/index.ts",
+      "configDirectory": "hermes",
+      "capabilities": ["agent-descriptors", "plugin-agents"]
+    }
+  ]
+}
