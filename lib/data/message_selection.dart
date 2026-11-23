@@ -2,6 +2,7 @@ import 'models.dart';
 import 'protocol_capabilities.dart';
 import 'session_tasks.dart';
 import 'studio_api.dart';
+import 'studio_protocol.dart';
 
 class MessageSelectionGroup<T extends Object> {
   const MessageSelectionGroup(
@@ -69,7 +70,12 @@ bool supportsSessionSelection(Conversation? session) =>
       'desktop',
       'builtin_agent',
     ].contains(session.source) &&
-    const ['', 'hermes', 'ekko-agent', 'builtin'].contains(session.agent);
+    const [
+      '',
+      'hermes',
+      StudioProtocol.builtInAgentId,
+      'builtin',
+    ].contains(session.agent);
 
 extension MessageSelectionApi on StudioApi {
   Future<MessageSelection<int, int>> sessionMessageSelection(String id) async =>

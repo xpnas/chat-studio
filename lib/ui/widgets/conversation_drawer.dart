@@ -11,6 +11,7 @@ import 'agent_avatar.dart';
 import 'conversation_activity_mark.dart';
 import 'history_browser.dart';
 import '../../data/protocol_capabilities.dart';
+import '../../data/studio_protocol.dart';
 
 class ConversationDrawer extends StatefulWidget {
   const ConversationDrawer({
@@ -767,7 +768,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                           Conversation.fromJson({
                             'id': bot.id,
                             'title': bot.title,
-                            'agent': 'ekko-agent',
+                            'agent': StudioProtocol.builtInAgentId,
                           }),
                         );
                       },

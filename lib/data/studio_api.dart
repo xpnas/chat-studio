@@ -756,7 +756,7 @@ class StudioApi {
       (await agentAvailability())['agents'],
     );
     if (generation != _identityGeneration) throw const StaleProtocolResponse();
-    // The unified registry contains Coding Agents and plugins, not Hermes/Ekko.
+    // The unified registry contains Coding Agents and plugins, not core built-in Agents.
     // Only a missing registry permits availability to supply Coding Agents.
     if (descriptors == null) return availability;
     return List.unmodifiable([

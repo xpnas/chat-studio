@@ -8,6 +8,7 @@ import '../data/person_models.dart';
 import '../data/person_history_cache.dart';
 import '../data/session_sync_transport.dart';
 import '../data/studio_api.dart';
+import '../data/studio_protocol.dart';
 import '../data/speech_playback.dart';
 import 'message_controller.dart';
 import 'chat_timeline.dart';
@@ -49,7 +50,7 @@ class PersonController extends ChangeNotifier implements MessageController {
   @override
   bool get messageScopeValid => valid;
   @override
-  String get messageAgentId => 'ekko-agent';
+  String get messageAgentId => StudioProtocol.builtInAgentId;
   @override
   String? get messageSenderName => snapshot?.session.title ?? 'BOT';
   @override
