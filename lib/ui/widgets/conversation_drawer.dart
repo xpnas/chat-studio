@@ -504,9 +504,7 @@ class _ConversationDrawerState extends State<ConversationDrawer> {
                         },
                   icon: const Icon(Icons.add_rounded),
                   label: Text(
-                    _historyTab == 1
-                        ? context.tr('新建单聊')
-                        : context.tr('新建对话'),
+                    _historyTab == 1 ? context.tr('新建单聊') : context.tr('新建对话'),
                   ),
                 ),
               ),

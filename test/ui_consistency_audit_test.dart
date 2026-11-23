@@ -385,7 +385,9 @@ void main() {
     await tester.tap(find.byKey(ValueKey('model:$key')));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('The BOT configuration changed or a reply is running.'),
+      find.textContaining(
+        'The BOT configuration changed or a reply is running.',
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('BOT 配置已变化'), findsNothing);
@@ -412,7 +414,11 @@ void main() {
       '并行分组（从 1 连续）',
       '移除阶段',
     ]) {
-      expect(appEnglishCatalog.containsKey(key), isTrue, reason: 'Missing $key');
+      expect(
+        appEnglishCatalog.containsKey(key),
+        isTrue,
+        reason: 'Missing $key',
+      );
     }
   });
 }

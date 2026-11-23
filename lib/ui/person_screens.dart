@@ -1402,7 +1402,10 @@ class _PersonTaskScreenState extends State<PersonTaskScreen> {
                 const SizedBox(height: 8),
                 Text(
                   personStateLabel(context, c.execution!.state),
-                  style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
                 if (c.execution!.error.isNotEmpty)
                   Padding(
@@ -1670,12 +1673,16 @@ class _PersonFlowFormState extends State<PersonFlowForm> {
                     const SizedBox(height: 10),
                     TextField(
                       controller: stage.goal,
-                      decoration: InputDecoration(labelText: context.tr('阶段目标')),
+                      decoration: InputDecoration(
+                        labelText: context.tr('阶段目标'),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: stage.expectation,
-                      decoration: InputDecoration(labelText: context.tr('返回期望')),
+                      decoration: InputDecoration(
+                        labelText: context.tr('返回期望'),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Row(
